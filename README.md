@@ -2,7 +2,7 @@
 
 **Client LLM « IDE premium » léger et fluide** — un onglet de navigateur, zéro process en fond, zéro Docker. Pensé pour une machine sous charge.
 
-[![CI](https://github.com/mickaeldunoyer/chatdeck/actions/workflows/ci.yml/badge.svg)](https://github.com/mickaeldunoyer/chatdeck/actions/workflows/ci.yml)
+[![CI](https://github.com/Azumizeus/chatdeck/actions/workflows/ci.yml/badge.svg)](https://github.com/Azumizeus/chatdeck/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-4f8cff.svg)](LICENSE)
 ![Svelte 5 + TypeScript + Vite 6](https://img.shields.io/badge/Svelte%205%20%2B%20TypeScript%20%2B%20Vite%206-ChatDeck-ff3e00)
 ![svelte-check](https://img.shields.io/badge/svelte--check-0%20erreur%2C%200%20warning-brightgreen)
