@@ -1,7 +1,8 @@
 <script lang="ts">
   // Barre d'état façon IDE : fournisseur, modèle, latence, tokens approximatifs, état du stream.
   import type { Conversation, CustomProvider } from '../store'
-  import { providerOf } from '../llm'
+  import { providerOf, priceLookup } from '../llm'
+  import { conversationCost, formatCost } from '../cost'
 
   let {
     conv,
@@ -18,24 +19,8 @@
   } = $props()
 
   const provider = $derived(conv ? providerOf(conv.providerId, customs) : null)
-  const tokensOut = $derived(
-    conv
-      ? Math.ceil(
-          conv.messages
-            .filter((m) => m.role === 'assistant')
-            .reduce((n, m) => n + m.content.length, 0) / 4,
-        )
-      : 0,
-  )
-  const tokensIn = $derived(
-    conv
-      ? Math.ceil(
-          conv.messages
-            .filter((m) => m.role === 'user')
-            .reduce((n, m) => n + m.content.length, 0) / 4,
-        )
-      : 0,
-  )
+  const cost = $derived(conv ? conversationCost(conv, customs, priceLookup) : null)
+  const realTokens = $derived(Boolean(conv?.messages.some((m) => m.usage)))
 </script>
 
 <footer class="status">
@@ -54,7 +39,14 @@
       <span class="mono" title="Latence d'ouverture du stream">⏱ {latencyMs} ms</span>
       <span class="sep">·</span>
     {/if}
-    <span class="mono" title="Estimation ~4 caractères/token">↑{tokensIn} ↓{tokensOut} tok</span>
+    <span
+      class="mono"
+      title={realTokens ? 'Tokens réels (usage API)' : 'Estimation ~4 caractères/token'}
+    >↑{cost?.promptTokens ?? 0} ↓{cost?.completionTokens ?? 0} tok{realTokens ? '' : '~'}</span>
+    <span class="sep">·</span>
+    <span class="mono" title={cost?.realPricing ? 'Prix réels du catalogue' : 'Prix indicatifs'}>
+      {formatCost(cost?.cost ?? null)}{cost && !cost.realPricing && cost.cost !== null ? '~' : ''}
+    </span>
     <span class="sep">·</span>
     <span class="mono">UTF-8</span>
   </div>

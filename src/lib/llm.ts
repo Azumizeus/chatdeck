@@ -132,6 +132,8 @@ export interface StreamOpts {
   maxTokens: number
   signal: AbortSignal
   onDelta: (text: string) => void
+  /** Usage réel renvoyé par l'API (chunk final, si disponible) */
+  onUsage?: (usage: { prompt: number; completion: number }) => void
   /** Fournisseurs personnalisés (pour résoudre base/path) */
   customs?: CustomProvider[]
 }
@@ -157,6 +159,8 @@ export async function streamChat(opts: StreamOpts): Promise<string> {
         stream: true,
         temperature: opts.temperature,
         max_tokens: opts.maxTokens,
+        // OpenRouter inclut l'usage réel dans le chunk final quand on le demande
+        ...(opts.providerId === 'openrouter' ? { stream_options: { include_usage: true } } : {}),
       }),
     })
   } catch (e) {
@@ -201,6 +205,15 @@ export async function streamChat(opts: StreamOpts): Promise<string> {
           full += delta
           opts.onDelta(delta)
         }
+        const u = (j.usage ?? j.choices?.[0]?.usage) as
+          | { prompt_tokens?: unknown; completion_tokens?: unknown }
+          | undefined
+        if (u && opts.onUsage) {
+          const prompt = Number(u.prompt_tokens)
+          const completion = Number(u.completion_tokens)
+          if (Number.isFinite(prompt) && Number.isFinite(completion))
+            opts.onUsage({ prompt, completion })
+        }
         const err = j.error?.message
         if (err) throw new Error(`${p.label} : ${err}`)
       } catch (e) {
@@ -215,18 +228,35 @@ export async function streamChat(opts: StreamOpts): Promise<string> {
   return full
 }
 
+/** Prix d'un modèle via le catalogue OpenRouter en cache (null si inconnu). */
+export function priceLookup(modelId: string): ModelPrice | null {
+  const m = catalogCache?.models.find((x) => x.id === modelId)
+  if (!m || m.promptPrice === undefined || m.completionPrice === undefined) return null
+  return { prompt: m.promptPrice, completion: m.completionPrice }
+}
+
 /* ---------- catalogue OpenRouter (458 modèles) ---------- */
 
 export interface CatalogModel {
   id: string
   label: string
   context?: number
+  /** Prix USD par token (OpenRouter) */
+  promptPrice?: number
+  completionPrice?: number
+}
+
+/** Prix USD par token d'un modèle. */
+export interface ModelPrice {
+  prompt: number
+  completion: number
 }
 
 interface OpenRouterModelRaw {
   id?: unknown
   name?: unknown
   context_length?: unknown
+  pricing?: { prompt?: unknown; completion?: unknown }
 }
 
 /**
@@ -243,11 +273,17 @@ export async function fetchOpenRouterCatalog(): Promise<CatalogModel[]> {
     const j = (await r.json()) as { data?: OpenRouterModelRaw[] }
     const models: CatalogModel[] = (j.data ?? [])
       .filter((m): m is OpenRouterModelRaw & { id: string } => typeof m?.id === 'string')
-      .map((m) => ({
-        id: m.id,
-        label: typeof m.name === 'string' && m.name ? m.name : m.id,
-        context: typeof m.context_length === 'number' ? m.context_length : undefined,
-      }))
+      .map((m) => {
+        const promptPrice = Number(m.pricing?.prompt)
+        const completionPrice = Number(m.pricing?.completion)
+        return {
+          id: m.id,
+          label: typeof m.name === 'string' && m.name ? m.name : m.id,
+          context: typeof m.context_length === 'number' ? m.context_length : undefined,
+          promptPrice: Number.isFinite(promptPrice) && promptPrice >= 0 ? promptPrice : undefined,
+          completionPrice: Number.isFinite(completionPrice) && completionPrice >= 0 ? completionPrice : undefined,
+        }
+      })
       .sort((a, b) => a.id.localeCompare(b.id))
     if (!models.length) throw new Error('catalogue vide')
     catalogCache = { at: Date.now(), models }

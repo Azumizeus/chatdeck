@@ -290,6 +290,9 @@
           patchLive((m) => ({ ...m, content: m.content + d }))
           scrollDown()
         },
+        onUsage: (u) => {
+          patchLive((m) => ({ ...m, usage: u }))
+        },
       })
       latencyMs = Math.round(performance.now() - started)
     } catch (e) {

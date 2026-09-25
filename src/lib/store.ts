@@ -7,6 +7,8 @@ export interface Msg {
   content: string
   ts: number
   error?: boolean
+  /** Usage réel renvoyé par l'API (chunk final SSE, si fourni) */
+  usage?: { prompt: number; completion: number }
 }
 
 export interface Conversation {
@@ -137,7 +139,15 @@ function sanitizeConversation(c: Conversation): Conversation | null {
     createdAt: typeof c.createdAt === 'number' ? c.createdAt : Date.now(),
     messages: c.messages
       .filter((m) => typeof m?.content === 'string')
-      .map((m) => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content, ts: m.ts ?? 0 })),
+      .map((m) => ({
+        role: m.role === 'assistant' ? 'assistant' : 'user',
+        content: m.content,
+        ts: m.ts ?? 0,
+        usage:
+          m.usage && Number.isFinite(m.usage?.prompt) && Number.isFinite(m.usage?.completion)
+            ? { prompt: m.usage.prompt, completion: m.usage.completion }
+            : undefined,
+      })),
     open: false,
     incognito: Boolean(c.incognito),
   }
