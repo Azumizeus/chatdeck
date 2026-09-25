@@ -1,0 +1,38 @@
+# CI ChatDeck : vérifications de types, tests unitaires et build de production.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  check-test-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Installation des dépendances
+        run: npm ci
+
+      - name: svelte-check (0 erreur, 0 warning)
+        run: npm run check:ci
+
+      - name: Tests unitaires (Vitest)
+        run: npm test
+
+      - name: Build de production
+        run: npm run build
+
+      - name: Publication de l'artifact dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist
+          retention-days: 7
