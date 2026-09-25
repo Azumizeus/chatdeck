@@ -124,6 +124,31 @@ export class LayoutManager {
     saveLayout(this.layout)
   }
 
+  /* ---------- mode duel (deux conversations côte à côte) ---------- */
+
+  get duel(): { left: string; right: string } | null {
+    return this.layout.duel ?? null
+  }
+
+  get duelSplit(): number {
+    return this.layout.duelSplit ?? 50
+  }
+
+  startDuel(left: string, right: string): void {
+    this.layout.duel = { left, right }
+    saveLayout(this.layout)
+  }
+
+  stopDuel(): void {
+    this.layout.duel = null
+    saveLayout(this.layout)
+  }
+
+  setDuelSplit(n: number): void {
+    this.layout.duelSplit = Math.min(80, Math.max(20, Math.round(n)))
+    saveLayout(this.layout)
+  }
+
   /* ---------- popouts ---------- */
 
   /** Ouvre un popout ; renvoie null si bloqué (popup blocker) → repli en dock. */

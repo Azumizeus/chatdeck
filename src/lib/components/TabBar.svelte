@@ -7,7 +7,7 @@
   let {
     conversations,
     currentId,
-    streamingId,
+    streamingIds,
     customs = [],
     onSelect,
     onClose,
@@ -16,8 +16,8 @@
   }: {
     conversations: Conversation[]
     currentId: string | null
-    /** Conversation en cours de streaming (indicateur animé) */
-    streamingId: string | null
+    /** Conversations en cours de streaming (indicateurs animés, duel inclus) */
+    streamingIds: Set<string>
     customs?: CustomProvider[]
     onSelect: (id: string) => void
     onClose: (id: string) => void
@@ -63,7 +63,7 @@
     >
       <span class="dot" style="background: {color(c)}" title="Fournisseur"></span>
       <span class="name">{c.incognito ? '👻 ' : ''}{c.title}</span>
-      {#if streamingId === c.id}
+      {#if streamingIds.has(c.id)}
         <span class="stream" title="Génération en cours"></span>
       {/if}
       <button

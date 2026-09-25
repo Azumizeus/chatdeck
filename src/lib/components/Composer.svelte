@@ -15,6 +15,7 @@
     onProvider,
     onModel,
     onAgents,
+    onSendBoth,
   }: {
     streaming: boolean
     providerId: ProviderId
@@ -27,6 +28,8 @@
     onProvider: (pid: ProviderId) => void
     onModel: (model: string) => void
     onAgents: (list: AgentId[]) => void
+    /** Présent en mode duel : envoie le même texte aux deux conversations */
+    onSendBoth?: (text: string) => void
   } = $props()
 
   let text = $state('')
@@ -46,6 +49,14 @@
     const t = text.trim()
     if (!t || streaming) return
     onSend(t)
+    text = ''
+    requestAnimationFrame(autosize)
+  }
+
+  function submitBoth(): void {
+    const t = text.trim()
+    if (!t || !onSendBoth) return
+    onSendBoth(t)
     text = ''
     requestAnimationFrame(autosize)
   }
@@ -106,6 +117,9 @@
     {#if streaming}
       <button class="stop" onclick={onStop} title="Arrêter la génération">■</button>
     {:else}
+      {#if onSendBoth}
+        <button class="send both" onclick={submitBoth} disabled={!text.trim()} title="Envoyer aux deux">⇉</button>
+      {/if}
       <button class="send" onclick={submit} disabled={!text.trim()} title="Envoyer">↑</button>
     {/if}
   </div>
@@ -178,6 +192,13 @@
   .send {
     background: var(--accent);
     color: #fff;
+  }
+  .send.both {
+    background: color-mix(in srgb, var(--accent) 40%, var(--panel));
+    width: auto;
+    border-radius: 10px;
+    padding: 0 10px;
+    font-size: 13px;
   }
   .send:disabled {
     opacity: 0.35;

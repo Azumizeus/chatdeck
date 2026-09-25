@@ -50,8 +50,9 @@
   let keys = $state<Keys>(loadKeys())
   let settings = $state<Settings>(loadSettings())
   let customs = $state<CustomProvider[]>(loadCustomProviders())
-  let streaming = $state(false)
-  let streamingId = $state<string | null>(null)
+  /** Conversations en cours de streaming (streams concurrents : mode duel) */
+  let streamingIds = $state<Set<string>>(new Set())
+  const anyStreaming = $derived(streamingIds.size > 0)
   let latencyMs = $state<number | null>(null)
   let showPalette = $state(false)
   let showFiles = $state(false)
@@ -59,7 +60,6 @@
   /** ts du message à surligner (saut depuis la recherche) */
   let flashTs = $state<number | null>(null)
   let scroller: HTMLDivElement | undefined = $state()
-
   const current = $derived(conversations.find((c) => c.id === currentId) ?? null)
 
   // Garde-fou d'initialisation : la conversation restaurée doit exister + préchargement des clés dev
@@ -132,8 +132,11 @@
 
   /* ---------- utilitaires ---------- */
 
-  function scrollDown(): void {
-    requestAnimationFrame(() => scroller?.scrollTo({ top: scroller.scrollHeight, behavior: 'auto' }))
+  function scrollDown(convId?: string): void {
+    // En mode duel, on scrolle la colonne du fil concerné ; sinon le fil principal
+    const el = convId ? document.querySelector<HTMLDivElement>(`.duel-col[data-conv="${convId}"] .messages`) : null
+    const target = el ?? scroller
+    requestAnimationFrame(() => target?.scrollTo({ top: target.scrollHeight, behavior: 'auto' }))
   }
 
   function keyOf(pid: ProviderId): string {
@@ -180,7 +183,7 @@
   }
 
   function deleteChat(id: string): void {
-    if (streaming && streamingId === id) return
+    if (streamingIds.has(id)) return
     conversations = conversations.filter((c) => c.id !== id)
     if (currentId === id) {
       if (conversations.length) currentId = conversations[0].id
@@ -209,14 +212,14 @@
   }
 
   function setProvider(pid: ProviderId): void {
-    if (!current || streaming) return
+    if (!current || streamingIds.has(current.id)) return
     conversations = conversations.map((c) =>
       c.id === current.id ? { ...c, providerId: pid, model: providerOf(pid, customs).models[0].id } : c,
     )
   }
 
   function setModel(m: string): void {
-    if (!current || streaming) return
+    if (!current || streamingIds.has(current.id)) return
     conversations = conversations.map((c) => (c.id === current.id ? { ...c, model: m } : c))
   }
 
@@ -271,12 +274,16 @@
   }
 
   function setAgents(list: AgentId[]): void {
-    if (!current || streaming) return
-    conversations = conversations.map((c) => (c.id === current.id ? { ...c, agents: list } : c))
+    if (current) setAgentsFor(current.id, list)
+  }
+
+  function setAgentsFor(convId: string, list: AgentId[]): void {
+    if (streamingIds.has(convId)) return
+    conversations = conversations.map((c) => (c.id === convId ? { ...c, agents: list } : c))
   }
 
   async function sendTo(convId: string, text: string): Promise<void> {
-    if (streaming) return
+    if (streamingIds.has(convId)) return
     const conv = conversations.find((c) => c.id === convId)
     if (!conv) return
     const apiKey = keyOf(conv.providerId)
@@ -304,13 +311,12 @@
     if (conv.title === 'Nouvelle conversation' || conv.title === '👻 Conversation incognito') {
       conversations = conversations.map((c) => (c.id === convId ? { ...c, title: text.slice(0, 46) } : c))
     }
-    scrollDown()
+    scrollDown(convId)
 
     const live = conversations.find((c) => c.id === convId)!.messages.slice(-1)[0]
-    streaming = true
-    streamingId = convId
+    streamingIds = new Set([...streamingIds, convId])
     const controller = new AbortController()
-    activeAbort = controller
+    aborts.set(convId, controller)
     const started = performance.now()
 
     const patchLive = (patch: (m: Msg) => Msg): void => {
@@ -362,7 +368,7 @@
           onDelta: (d) => {
             phaseContent += d
             patchLive((m) => ({ ...m, content: m.content + d }))
-            scrollDown()
+            scrollDown(convId)
           },
           onUsage: (u) => {
             patchLive((m) => ({ ...m, usage: u }))
@@ -442,7 +448,7 @@
           customs,
           onDelta: (d) => {
             patchLive((m) => ({ ...m, content: m.content + d }))
-            scrollDown()
+            scrollDown(convId)
           },
           onUsage: (u) => {
             patchLive((m) => ({ ...m, usage: u }))
@@ -469,10 +475,9 @@
         }))
       }
     } finally {
-      streaming = false
-      streamingId = null
-      if (activeAbort === controller) activeAbort = null
-      scrollDown()
+      streamingIds = new Set([...streamingIds].filter((x) => x !== convId))
+      aborts.delete(convId)
+      scrollDown(convId)
     }
   }
 
@@ -494,11 +499,12 @@
     setTimeout(() => (flashTs = null), 1800)
   }
 
-  function stop(): void {
-    activeAbort?.abort()
+  /** Stoppe le stream d'une conversation (courante par défaut). */
+  function stop(id?: string): void {
+    aborts.get(id ?? currentId ?? '')?.abort()
   }
 
-  let activeAbort: AbortController | null = null
+  const aborts = new Map<string, AbortController>()
 
   /* ---------- fenêtre flottante / pill ---------- */
 
@@ -519,6 +525,43 @@
 
   function togglePill(): void {
     layout.setAppMode(layout.appMode === 'pill' ? 'floating' : 'pill')
+  }
+
+  /* ---------- mode duel ---------- */
+
+  function toggleDuel(): void {
+    if (layout.duel) {
+      layout.stopDuel()
+      return
+    }
+    if (!current) return
+    const other = conversations.find((c) => c.id !== current.id)
+    if (other) layout.startDuel(current.id, other.id)
+    else {
+      const c = newConversation(current.providerId, current.model)
+      conversations = [c, ...conversations]
+      layout.startDuel(current.id, c.id)
+    }
+  }
+
+  function startDuelResize(e: PointerEvent): void {
+    e.preventDefault()
+    const move = (ev: PointerEvent): void =>
+      layout.setDuelSplit((ev.clientX / window.innerWidth) * 100)
+    const up = (): void => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+  }
+
+  /** Duel : même texte envoyé simultanément aux deux conversations. */
+  function sendBoth(text: string): void {
+    const d = layout.duel
+    if (!d) return
+    void sendTo(d.left, text)
+    void sendTo(d.right, text)
   }
 
   /** Fait avancer le cycle de snap au clavier/palette : quarters → moitiés → plein écran → retour. */
@@ -628,6 +671,7 @@
     { id: 'agents', label: current?.agents?.length ? 'Désactiver les agents Nexus & Seeker' : 'Activer les agents Nexus & Seeker (sandbox)', run: () => setAgents(current?.agents?.length ? [] : ['nexus', 'seeker']) },
     { id: 'files', label: showFiles ? 'Fermer le panneau Fichiers (sandbox)' : 'Ouvrir le panneau Fichiers (sandbox)', run: () => (showFiles = !showFiles) },
     { id: 'search', label: 'Rechercher dans toutes les conversations', hint: '⌘⇧F', run: () => (showSearch = true) },
+    { id: 'duel', label: layout.duel ? 'Quitter le mode duel' : 'Mode duel : deux conversations côte à côte', run: toggleDuel },
     { id: 'float', label: 'Fenêtre flottante', run: () => floatWith(layout.appGeo) },
     { id: 'snap', label: 'Snap : zone suivante (quarter → moitié → plein écran)', hint: '⌘⌥S', run: cycleSnap },
     { id: 'pill', label: layout.appMode === 'pill' ? 'Restaurer depuis la barre de tâches' : 'Réduire en barre de tâches (pill)', run: togglePill },
@@ -642,23 +686,80 @@
 
 <svelte:window onkeydown={onKeydown} />
 
+<!-- Une colonne de conversation, réutilisée pour les deux côtés du duel -->
+{#snippet convPane(convId: string)}
+  {@const c = conversations.find((x) => x.id === convId)}
+  {#if c}
+    <div class="col-head">
+      <span class="dot" style="background:{providerOf(c.providerId, customs).color}"></span>
+      <span class="col-title">{c.incognito ? '👻 ' : ''}{c.title}</span>
+      <span class="mono col-model">{c.model}</span>
+      <button class="mini" onclick={() => stop(convId)} disabled={!streamingIds.has(convId)} title="Arrêter">■</button>
+    </div>
+    <div class="messages">
+      {#each c.messages as m, i (i)}
+        <div class="msg" class:flash={flashTs === m.ts} data-ts={m.ts}>
+          <ChatMessage msg={m} />
+        </div>
+      {/each}
+    </div>
+    <Composer
+      streaming={streamingIds.has(convId)}
+      providerId={c.providerId}
+      model={c.model}
+      {customs}
+      agents={c.agents ?? []}
+      onSend={(t) => void sendTo(convId, t)}
+      onStop={() => stop(convId)}
+      onProvider={setProvider}
+      onModel={setModel}
+      onAgents={(l) => setAgentsFor(convId, l)}
+      onSendBoth={sendBoth}
+    />
+  {/if}
+{/snippet}
+
 {#if layout.appMode === 'pill'}
   <TaskbarPill
     conv={current}
-    {streaming}
+    streaming={anyStreaming}
     tokens={current?.messages.filter((m) => m.role === 'assistant').at(-1)?.usage?.completion ?? 0}
     {customs}
     onRestore={() => layout.setAppMode('floating')}
   />
+{:else if layout.duel}
+  <div class="app">
+    <WindowFrame
+      title="ChatDeck — duel"
+      onMinimize={togglePill}
+      onMaximize={() => document.documentElement.requestFullscreen?.().catch(() => {})}
+      onClose={() => layout.stopDuel()}
+    >
+      <div class="shell">
+        <div class="duel-col" data-conv={layout.duel.left} style="width:{layout.duelSplit}%">
+          {@render convPane(layout.duel.left)}
+        </div>
+        <div class="splitter duel-split" role="separator" aria-orientation="vertical"
+          onpointerdown={startDuelResize}
+          ondblclick={() => layout.setDuelSplit(50)}
+        ></div>
+        <div class="duel-col" data-conv={layout.duel.right} style="width:{100 - layout.duelSplit}%">
+          {@render convPane(layout.duel.right)}
+        </div>
+      </div>
+    </WindowFrame>
+
+    <StatusBar conv={current} streaming={anyStreaming} {latencyMs} {customs} />
+  </div>
 {:else if layout.appMode === 'floating'}
   <FloatingWindow
-    geo={layout.appGeo}
-    title="ChatDeck — IDE premium"
-    onGeo={floatWith}
-    onSnap={floatSnap}
-    onRestore={restoreDocked}
-    onMinimize={togglePill}
-  >
+      geo={layout.appGeo}
+      title="ChatDeck — IDE premium"
+      onGeo={floatWith}
+      onSnap={floatSnap}
+      onRestore={restoreDocked}
+      onMinimize={togglePill}
+    >
     <div class="shell">
       {#if !layout.layout.sidebarCollapsed}
         <div class="dock-left" style="width: {layout.layout.sidebarWidth}px">
@@ -688,7 +789,7 @@
         <TabBar
           {conversations}
           {currentId}
-          {streamingId}
+          {streamingIds}
           {customs}
           onSelect={selectChat}
           onClose={closeTab}
@@ -717,7 +818,7 @@
             {/if}
           </div>
           <Composer
-            {streaming}
+            streaming={streamingIds.has(current.id)}
             providerId={current.providerId}
             model={current.model}
             {customs}
@@ -755,7 +856,7 @@
         </div>
       {/if}
     </div>
-    <StatusBar conv={current} {streaming} {latencyMs} {customs} />
+    <StatusBar conv={current} streaming={anyStreaming} {latencyMs} {customs} />
   </FloatingWindow>
 {:else}
   <div class="app">
@@ -794,7 +895,7 @@
         <TabBar
           {conversations}
           {currentId}
-          {streamingId}
+          {streamingIds}
           {customs}
           onSelect={selectChat}
           onClose={closeTab}
@@ -823,7 +924,7 @@
             {/if}
           </div>
           <Composer
-            {streaming}
+            streaming={streamingIds.has(current.id)}
             providerId={current.providerId}
             model={current.model}
             {customs}
@@ -863,7 +964,7 @@
     </div>
     </WindowFrame>
 
-    <StatusBar conv={current} {streaming} {latencyMs} {customs} />
+    <StatusBar conv={current} streaming={anyStreaming} {latencyMs} {customs} />
   </div>
 {/if}
 
@@ -988,5 +1089,73 @@
   .chip:hover {
     color: var(--text);
     border-color: var(--accent);
+  }
+  /* mode duel */
+  .duel-col {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    border-right: 1px solid var(--border);
+  }
+  .duel-col:last-child {
+    border-right: none;
+  }
+  .col-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--border);
+    background: color-mix(in srgb, var(--panel) 60%, transparent);
+  }
+  .col-head .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .col-title {
+    font-size: 12.5px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1;
+  }
+  .col-model {
+    font-size: 11px;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .mini {
+    font-size: 11px;
+    padding: 1px 7px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--muted);
+    background: none;
+  }
+  .mini:hover:not(:disabled) {
+    color: var(--text);
+    border-color: var(--accent);
+  }
+  .mini:disabled {
+    opacity: 0.4;
+  }
+  .duel-col .messages {
+    padding: 14px 16px 6px;
+  }
+  .duel-col :global(.composer) {
+    padding: 6px 14px 12px;
+  }
+  .duel-split {
+    width: 5px;
+    margin: 0 -2px;
+    cursor: col-resize;
+    z-index: 5;
+    flex-shrink: 0;
+  }
+  .duel-split:hover {
+    background: color-mix(in srgb, var(--accent) 35%, transparent);
   }
 </style>

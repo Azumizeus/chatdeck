@@ -86,6 +86,10 @@ export interface Layout {
   appMode?: AppMode
   /** Géométrie de la fenêtre flottante */
   appGeo?: PaneGeometry
+  /** Mode duel : ids des conversations gauche/droite */
+  duel?: { left: string; right: string } | null
+  /** Part de la moitié gauche du duel, en % (20–80) */
+  duelSplit?: number
 }
 
 export const MIN_SIDEBAR = 180
