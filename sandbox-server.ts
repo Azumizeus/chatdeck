@@ -23,7 +23,7 @@
 import type { Plugin } from 'vite'
 import { spawn } from 'node:child_process'
 import { mkdir, readdir, readFile, writeFile, rm, stat } from 'node:fs/promises'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import path from 'node:path'
 
@@ -137,6 +137,63 @@ async function walk(dir: string, depth: number, budget: { n: number }): Promise<
         /* ignore */
       }
       out.push({ name: e.name, type: 'file', size })
+    }
+  }
+  return out
+}
+
+/**
+ * Coffrets Obsidian connus (registre officiel ~/.config/obsidian, lecture seule).
+ * Le chemin est résolu CÔTÉ SERVEUR : le client ne passe jamais un chemin arbitraire.
+ */
+function obsidianVaults(): { name: string; path: string }[] {
+  try {
+    const reg = readFileSync(path.join(homedir(), 'Library', 'Application Support', 'obsidian', 'obsidian.json'), 'utf8')
+    const j = JSON.parse(reg) as { vaults?: Record<string, { path?: string }> }
+    const seen = new Map<string, number>()
+    return Object.values(j.vaults ?? {})
+      .filter((v): v is { path: string } => typeof v.path === 'string' && Boolean(v.path))
+      .map((v) => {
+        // Noms uniques : deux coffrets peuvent porter le même basename
+        const n = (seen.get(path.basename(v.path)) ?? 0) + 1
+        seen.set(path.basename(v.path), n)
+        return { name: n > 1 ? `${path.basename(v.path)} ·${n}` : path.basename(v.path), path: v.path }
+      })
+  } catch {
+    return []
+  }
+}
+
+/** Liste bornée des fichiers .md d'un dossier (récursif, 200 fichiers / 30 000 entrées max).
+ *  Les chemins sont relatifs à la racine passée (root), pas au sous-dossier courant. */
+async function listMd(
+  root: string,
+  dir: string,
+  budget: { n: number },
+  out: { path: string; size: number }[] = [],
+): Promise<{ path: string; size: number }[]> {
+  if (budget.n <= 0 || out.length >= 200) return out
+  budget.n--
+  let entries: import('node:fs').Dirent[]
+  try {
+    entries = await readdir(dir, { withFileTypes: true })
+  } catch {
+    return out
+  }
+  for (const e of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+    if (out.length >= 200 || budget.n <= 0) break
+    const full = path.join(dir, e.name)
+    if (e.isDirectory()) {
+      if (e.name === '.obsidian' || e.name === 'node_modules' || e.name.startsWith('.')) continue
+      await listMd(root, full, budget, out)
+    } else if (e.isFile() && e.name.endsWith('.md')) {
+      let size = 0
+      try {
+        size = (await stat(full)).size
+      } catch {
+        /* ignore */
+      }
+      out.push({ path: path.relative(root, full), size })
     }
   }
   return out
@@ -382,6 +439,60 @@ export function sandboxServer(): Plugin {
               } catch (e) {
                 return json(res, 400, { error: (e as Error).message })
               }
+            }
+
+            // health par conversation (utilisé par le panneau Fichiers)
+            if (action === 'health' && req.method === 'GET') {
+              const m = existsSync(base) ? await measure(base) : { sizeBytes: 0, files: 0 }
+              return json(res, 200, { exists: existsSync(base), ...m })
+            }
+
+            // Obsidian : coffrets connus (route à un segment : convId porte le nom)
+            if (req.method === 'GET' && (action === 'obsidian-vaults' || convId === 'obsidian-vaults')) {
+              return json(res, 200, { vaults: obsidianVaults() })
+            }
+
+            // Obsidian : notes d'un coffret (chemin résolu CÔTÉ SERVEUR par nom de coffret)
+            if (req.method === 'GET' && (action === 'obsidian-notes' || convId === 'obsidian-notes')) {
+              const vault = obsidianVaults().find((v) => v.name === query.get('vault'))
+              if (!vault) return json(res, 404, { error: 'coffret inconnu' })
+              return json(res, 200, { vault: vault.name, path: vault.path, notes: await listMd(vault.path, vault.path, { n: 30_000 }) })
+            }
+
+            // Obsidian : contenu d'une note (fichier .md de l'un des coffrets enregistrés)
+            if (req.method === 'GET' && (action === 'obsidian-read' || convId === 'obsidian-read')) {
+              const vault = obsidianVaults().find((v) => v.name === query.get('vault'))
+              const note = query.get('note') ?? ''
+              if (!vault) return json(res, 404, { error: 'coffret inconnu' })
+              const t = path.resolve(vault.path, note)
+              if (!t.startsWith(vault.path + path.sep) || !note.endsWith('.md')) {
+                return json(res, 400, { error: 'chemin de note invalide' })
+              }
+              const content = await readFile(t, 'utf8')
+              return json(res, 200, { content: content.length > MAX_FILE_BYTES ? content.slice(0, MAX_FILE_BYTES) : content })
+            }
+
+            // PromptDeck : arborescence du MEGA PACK (agents + skills, lecture seule)
+            if (req.method === 'GET' && (action === 'promptdeck' || convId === 'promptdeck')) {
+              const base = process.env.PROMPTDECK_HOME ?? path.join(homedir(), 'Desktop', 'Skill Install')
+              if (!existsSync(base)) return json(res, 404, { error: 'PromptDeck introuvable (PROMPTDECK_HOME non défini ?)' })
+              const budget = { n: 6_000 }
+              const walk2 = async (dir: string, depth: number): Promise<TreeNode[]> => {
+                if (depth > 3) return []
+                const entries = await readdir(dir, { withFileTypes: true }).catch(() => [])
+                const out: TreeNode[] = []
+                for (const e of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+                  if (budget.n-- <= 0) break
+                  if (e.name.startsWith('.') || e.name === 'node_modules') continue
+                  const full = path.join(dir, e.name)
+                  if (e.isDirectory()) out.push({ name: e.name, type: 'dir', children: await walk2(full, depth + 1) })
+                  else out.push({ name: e.name, type: 'file' })
+                  if (out.length >= 300) break
+                    }
+                return out
+              }
+              const tree = await walk2(base, 0)
+              return json(res, 200, { path: base, tree })
             }
 
             // run : terminal réel (spawn borné, sortie streamée)

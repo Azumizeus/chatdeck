@@ -125,6 +125,15 @@ export function toolsFor(agent: AgentId): ToolDef[] {
         },
       },
     },
+    {
+      type: 'function',
+      function: {
+        name: 'promptdeck_browse',
+        description:
+          'Explore le MEGA PACK PromptDeck (190 agents spécialistes + 133 skills) : renvoie l\'arborescence du dossier pour découvrir agents, skills et cartes disponibles.',
+        parameters: { type: 'object', properties: {} },
+      },
+    },
     ...write,
   ]
 }
@@ -191,6 +200,14 @@ export async function execTool(convId: string, call: ToolCall): Promise<string> 
       const cmd = String(call.args.cmd ?? '')
       const j = await api<{ out: string }>('GET', convId, 'exec', undefined, `?cmd=${encodeURIComponent(cmd)}`)
       return j.out
+    }
+    case 'promptdeck_browse': {
+      const r = await fetch('/api/sandbox/promptdeck')
+      const j = (await r.json()) as { path?: string; tree?: { name: string; type: string; children?: { name: string; type: string }[] }[]; error?: string }
+      if (j.error) return `PromptDeck indisponible : ${j.error}`
+      const fmt = (nodes: { name: string; type: string }[] | undefined, d = 0): string =>
+        (nodes ?? []).map((n) => `${'  '.repeat(d)}${n.type === 'dir' ? '📁' : '📄'} ${n.name}${n.type === 'dir' && 'children' in n && Array.isArray((n as { children?: unknown }).children) ? ` (${((n as { children: unknown[] }).children).length})` : ''}`).join('\n')
+      return `PromptDeck : ${j.path}\n\n${fmt(j.tree)}`
     }
     default:
       throw new Error(`outil inconnu : ${call.name}`)

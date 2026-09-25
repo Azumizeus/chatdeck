@@ -103,6 +103,8 @@
       const theme = settings.theme === 'auto' ? (prefersLight.matches ? 'light' : 'dark') : settings.theme
       document.documentElement.dataset.theme = theme
       document.documentElement.style.setProperty('--app-font-size', `${settings.fontSize}px`)
+      if (settings.fontFamily) document.documentElement.style.setProperty('--app-font-family', settings.fontFamily)
+      else document.documentElement.style.removeProperty('--app-font-family')
       document.documentElement.classList.toggle('reduce-motion', settings.reduceMotion)
       layout.broadcastTheme(theme)
     }
@@ -696,6 +698,120 @@
 
 <svelte:window onkeydown={onKeydown} />
 
+{#snippet ideShell()}
+  <Toolbar
+    conv={current}
+    streaming={anyStreaming}
+    duelActive={Boolean(layout.duel)}
+    agentsActive={Boolean(current?.agents?.length)}
+    filesOpen={showFiles}
+    terminalOpen={showTerminal}
+    onToggleAgents={() => setAgents(current?.agents?.length ? [] : ['nexus', 'seeker'])}
+    onToggleDuel={toggleDuel}
+    onToggleFiles={() => (showFiles = !showFiles)}
+    onToggleTerminal={toggleTerminal}
+    onSearch={() => (showSearch = true)}
+    onSettings={() => layout.toggleSettings()}
+  />
+  <div class="shell">
+    {#if !layout.layout.sidebarCollapsed}
+      <div class="dock-left" style="width: {layout.layout.sidebarWidth}px">
+        <Sidebar
+          {conversations}
+          {currentId}
+          {customs}
+          onNew={() => newChat()}
+          onNewIncognito={() => newChat(true)}
+          onSelect={selectChat}
+          onDelete={deleteChat}
+          onMergeIncognito={mergeIncognito}
+          onExportAll={exportAll}
+          onExportCurrent={exportCurrent}
+          onImport={(f) => void importFile(f)}
+        />
+        <div class="splitter" role="separator" aria-orientation="vertical"
+          onpointerdown={(e) => startSidebarResize(e)}
+          ondblclick={() => layout.setSidebarWidth(248)}
+        ></div>
+      </div>
+    {:else}
+      <button class="rail" onclick={() => layout.toggleSidebar()} title="Afficher le panneau latéral (⌘\\)">»</button>
+    {/if}
+
+    <main class="main">
+      <TabBar
+        {conversations}
+        {currentId}
+        {streamingIds}
+        {customs}
+        onSelect={selectChat}
+        onClose={closeTab}
+        onNew={() => newChat()}
+        onReorder={reorderTabs}
+      />
+      {#if current}
+        <div class="messages" bind:this={scroller}>
+          {#if current.messages.length === 0}
+            <div class="hero">
+              <div class="logo">⚡</div>
+              <h1>ChatDeck</h1>
+              <p>Chat LLM léger — {providerOf(current.providerId, customs).label} · <code class="mono">{current.model}</code></p>
+              <div class="chips">
+                {#each SUGGESTIONS as s}
+                  <button class="chip" onclick={() => send(s)}>{s}</button>
+                {/each}
+              </div>
+            </div>
+          {:else}
+            {#each current.messages as m, i (i)}
+              <div class="msg" class:flash={flashTs === m.ts} data-ts={m.ts}>
+                <ChatMessage msg={m} />
+              </div>
+            {/each}
+          {/if}
+        </div>
+        <Composer
+          streaming={streamingIds.has(current.id)}
+          providerId={current.providerId}
+          model={current.model}
+          {customs}
+          agents={current.agents ?? []}
+          onSend={send}
+          onStop={stop}
+          onProvider={setProvider}
+          onModel={setModel}
+          onAgents={setAgents}
+        />
+      {/if}
+    </main>
+
+    {#if !layout.layout.settingsCollapsed}
+      <div class="dock-right" style="width: {layout.layout.settingsWidth}px">
+        <SettingsPanel
+          {keys}
+          {settings}
+          {customs}
+          onKeys={(k) => (keys = k)}
+          onSettings={(s) => (settings = s)}
+          onAddCustom={() => {
+            const id = `custom:${Math.random().toString(36).slice(2, 7)}`
+            customs = [...customs, { id, name: 'Nouveau fournisseur', baseUrl: '', keyHeader: 'Authorization', models: [] }]
+          }}
+          onUpdateCustom={(p) => (customs = customs.map((x) => (x.id === p.id ? p : x)))}
+          onRemoveCustom={(id) => (customs = customs.filter((x) => x.id !== id))}
+          onClose={() => layout.toggleSettings()}
+          onPopout={() => void popout('settings')}
+          onSendNote={send}
+        />
+        <div class="splitter" role="separator" aria-orientation="vertical"
+          onpointerdown={(e) => startSettingsResize(e)}
+          ondblclick={() => layout.setSettingsWidth(400)}
+        ></div>
+      </div>
+    {/if}
+  </div>
+{/snippet}
+
 <!-- Une colonne de conversation, réutilisée pour les deux côtés du duel -->
 {#snippet convPane(convId: string)}
   {@const c = conversations.find((x) => x.id === convId)}
@@ -784,116 +900,7 @@
       onRestore={restoreDocked}
       onMinimize={togglePill}
     >
-    <Toolbar
-      conv={current}
-      streaming={anyStreaming}
-      duelActive={Boolean(layout.duel)}
-      agentsActive={Boolean(current?.agents?.length)}
-      filesOpen={showFiles}
-      terminalOpen={showTerminal}
-      onToggleAgents={() => setAgents(current?.agents?.length ? [] : ['nexus', 'seeker'])}
-      onToggleDuel={toggleDuel}
-      onToggleFiles={() => (showFiles = !showFiles)}
-      onToggleTerminal={toggleTerminal}
-      onSearch={() => (showSearch = true)}
-      onSettings={() => layout.toggleSettings()}
-    />
-    <div class="shell">
-      {#if !layout.layout.sidebarCollapsed}
-        <div class="dock-left" style="width: {layout.layout.sidebarWidth}px">
-          <Sidebar
-            {conversations}
-            {currentId}
-            {customs}
-            onNew={() => newChat()}
-            onNewIncognito={() => newChat(true)}
-            onSelect={selectChat}
-            onDelete={deleteChat}
-            onMergeIncognito={mergeIncognito}
-            onExportAll={exportAll}
-            onExportCurrent={exportCurrent}
-            onImport={(f) => void importFile(f)}
-          />
-          <div class="splitter" role="separator" aria-orientation="vertical"
-            onpointerdown={(e) => startSidebarResize(e)}
-            ondblclick={() => layout.setSidebarWidth(248)}
-          ></div>
-        </div>
-      {:else}
-        <button class="rail" onclick={() => layout.toggleSidebar()} title="Afficher le panneau latéral (⌘\)">»</button>
-      {/if}
-
-      <main class="main">
-        <TabBar
-          {conversations}
-          {currentId}
-          {streamingIds}
-          {customs}
-          onSelect={selectChat}
-          onClose={closeTab}
-          onNew={() => newChat()}
-          onReorder={reorderTabs}
-        />
-        {#if current}
-          <div class="messages" bind:this={scroller}>
-            {#if current.messages.length === 0}
-              <div class="hero">
-                <div class="logo">⚡</div>
-                <h1>ChatDeck</h1>
-                <p>Chat LLM léger — {providerOf(current.providerId, customs).label} · <code class="mono">{current.model}</code></p>
-                <div class="chips">
-                  {#each SUGGESTIONS as s}
-                    <button class="chip" onclick={() => send(s)}>{s}</button>
-                  {/each}
-                </div>
-              </div>
-            {:else}
-              {#each current.messages as m, i (i)}
-                <div class="msg" class:flash={flashTs === m.ts} data-ts={m.ts}>
-                  <ChatMessage msg={m} />
-                </div>
-              {/each}
-            {/if}
-          </div>
-          <Composer
-            streaming={streamingIds.has(current.id)}
-            providerId={current.providerId}
-            model={current.model}
-            {customs}
-            agents={current.agents ?? []}
-            onSend={send}
-            onStop={stop}
-            onProvider={setProvider}
-            onModel={setModel}
-            onAgents={setAgents}
-          />
-        {/if}
-      </main>
-
-      {#if !layout.layout.settingsCollapsed}
-        <div class="dock-right" style="width: {layout.layout.settingsWidth}px">
-          <SettingsPanel
-            {keys}
-            {settings}
-            {customs}
-            onKeys={(k) => (keys = k)}
-            onSettings={(s) => (settings = s)}
-            onAddCustom={() => {
-              const id = `custom:${Math.random().toString(36).slice(2, 7)}`
-              customs = [...customs, { id, name: 'Nouveau fournisseur', baseUrl: '', keyHeader: 'Authorization', models: [] }]
-            }}
-            onUpdateCustom={(p) => (customs = customs.map((x) => (x.id === p.id ? p : x)))}
-            onRemoveCustom={(id) => (customs = customs.filter((x) => x.id !== id))}
-            onClose={() => layout.toggleSettings()}
-            onPopout={() => void popout('settings')}
-          />
-          <div class="splitter" role="separator" aria-orientation="vertical"
-            onpointerdown={(e) => startSettingsResize(e)}
-            ondblclick={() => layout.setSettingsWidth(400)}
-          ></div>
-        </div>
-      {/if}
-    </div>
+    {@render ideShell()}
     <StatusBar conv={current} streaming={anyStreaming} {latencyMs} {customs} />
   </FloatingWindow>
 {:else}
@@ -904,116 +911,7 @@
       onMaximize={() => document.documentElement.requestFullscreen?.().catch(() => {})}
       onClose={restoreDocked}
     >
-    <Toolbar
-      conv={current}
-      streaming={anyStreaming}
-      duelActive={Boolean(layout.duel)}
-      agentsActive={Boolean(current?.agents?.length)}
-      filesOpen={showFiles}
-      terminalOpen={showTerminal}
-      onToggleAgents={() => setAgents(current?.agents?.length ? [] : ['nexus', 'seeker'])}
-      onToggleDuel={toggleDuel}
-      onToggleFiles={() => (showFiles = !showFiles)}
-      onToggleTerminal={toggleTerminal}
-      onSearch={() => (showSearch = true)}
-      onSettings={() => layout.toggleSettings()}
-    />
-    <div class="shell">
-      {#if !layout.layout.sidebarCollapsed}
-        <div class="dock-left" style="width: {layout.layout.sidebarWidth}px">
-          <Sidebar
-            {conversations}
-            {currentId}
-            {customs}
-            onNew={() => newChat()}
-            onNewIncognito={() => newChat(true)}
-            onSelect={selectChat}
-            onDelete={deleteChat}
-            onMergeIncognito={mergeIncognito}
-            onExportAll={exportAll}
-            onExportCurrent={exportCurrent}
-            onImport={(f) => void importFile(f)}
-          />
-          <div class="splitter" role="separator" aria-orientation="vertical"
-            onpointerdown={(e) => startSidebarResize(e)}
-            ondblclick={() => layout.setSidebarWidth(248)}
-          ></div>
-        </div>
-      {:else}
-        <button class="rail" onclick={() => layout.toggleSidebar()} title="Afficher le panneau latéral (⌘\)">»</button>
-      {/if}
-
-      <main class="main">
-        <TabBar
-          {conversations}
-          {currentId}
-          {streamingIds}
-          {customs}
-          onSelect={selectChat}
-          onClose={closeTab}
-          onNew={() => newChat()}
-          onReorder={reorderTabs}
-        />
-        {#if current}
-          <div class="messages" bind:this={scroller}>
-            {#if current.messages.length === 0}
-              <div class="hero">
-                <div class="logo">⚡</div>
-                <h1>ChatDeck</h1>
-                <p>Chat LLM léger — {providerOf(current.providerId, customs).label} · <code class="mono">{current.model}</code></p>
-                <div class="chips">
-                  {#each SUGGESTIONS as s}
-                    <button class="chip" onclick={() => send(s)}>{s}</button>
-                  {/each}
-                </div>
-              </div>
-            {:else}
-              {#each current.messages as m, i (i)}
-                <div class="msg" class:flash={flashTs === m.ts} data-ts={m.ts}>
-                  <ChatMessage msg={m} />
-                </div>
-              {/each}
-            {/if}
-          </div>
-          <Composer
-            streaming={streamingIds.has(current.id)}
-            providerId={current.providerId}
-            model={current.model}
-            {customs}
-            agents={current.agents ?? []}
-            onSend={send}
-            onStop={stop}
-            onProvider={setProvider}
-            onModel={setModel}
-            onAgents={setAgents}
-          />
-        {/if}
-      </main>
-
-      {#if !layout.layout.settingsCollapsed}
-        <div class="dock-right" style="width: {layout.layout.settingsWidth}px">
-          <SettingsPanel
-            {keys}
-            {settings}
-            {customs}
-            onKeys={(k) => (keys = k)}
-            onSettings={(s) => (settings = s)}
-            onAddCustom={() => {
-              const id = `custom:${Math.random().toString(36).slice(2, 7)}`
-              customs = [...customs, { id, name: 'Nouveau fournisseur', baseUrl: '', keyHeader: 'Authorization', models: [] }]
-            }}
-            onUpdateCustom={(p) => (customs = customs.map((x) => (x.id === p.id ? p : x)))}
-            onRemoveCustom={(id) => (customs = customs.filter((x) => x.id !== id))}
-            onClose={() => layout.toggleSettings()}
-            onPopout={() => void popout('settings')}
-          />
-          <div class="splitter" role="separator" aria-orientation="vertical"
-            onpointerdown={(e) => startSettingsResize(e)}
-            ondblclick={() => layout.setSettingsWidth(400)}
-          ></div>
-        </div>
-      {/if}
-    </div>
+    {@render ideShell()}
     </WindowFrame>
 
     <StatusBar conv={current} streaming={anyStreaming} {latencyMs} {customs} />

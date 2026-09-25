@@ -21,6 +21,7 @@
     onRemoveCustom,
     onClose,
     onPopout,
+    onSendNote,
   }: {
     keys: Keys
     settings: Settings
@@ -32,6 +33,8 @@
     onRemoveCustom: (id: string) => void
     onClose: () => void
     onPopout?: () => void
+    /** Cliquer une note Obsidian → envoyée dans le chat */
+    onSendNote?: (text: string) => void
   } = $props()
 
   // Édition directe : chaque modification remonte au store via onKeys/onSettings
@@ -107,6 +110,46 @@
     onUpdateCustom({ ...p, models })
   }
 
+  /* ---------- sections dépliables ---------- */
+
+  type SectionId = 'keys' | 'customs' | 'generation' | 'sandbox' | 'obsidian' | 'promptdeck' | 'appearance' | 'data'
+  let open = $state<Set<SectionId>>(new Set(['keys']))
+
+  function toggleSection(id: SectionId): void {
+    const next = new Set(open)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    open = next
+  }
+
+  /* ---------- instructions système : brouillon + Enregistrer ---------- */
+
+  // Capture initiale assumée : la resynchro est faite par le $effect ci-dessous
+  // svelte-ignore state_referenced_locally
+  let sysDraft = $state(settings.system)
+  let sysSaved = $state(false)
+  $effect(() => {
+    sysDraft = settings.system // resynchro si les réglages sont réinitialisés ailleurs
+  })
+  function saveSystem(): void {
+    setSetting('system', sysDraft)
+    sysSaved = true
+    setTimeout(() => (sysSaved = false), 1400)
+  }
+
+  /* ---------- typographies ---------- */
+
+  const FONTS: { id: string; label: string; stack: string }[] = [
+    { id: 'system', label: 'Système (SF Pro)', stack: '' },
+    { id: 'serif', label: 'Serif — lecture', stack: 'ui-serif, Georgia, Cambria, serif' },
+    { id: 'mono', label: 'Mono — terminal', stack: 'ui-monospace, SFMono-Regular, Menlo, monospace' },
+    { id: 'rounded', label: 'Rounded — doux', stack: 'ui-rounded, -apple-system, sans-serif' },
+    { id: 'georgia', label: 'Georgia', stack: 'Georgia, serif' },
+    { id: 'helvetica', label: 'Helvetica Neue', stack: '"Helvetica Neue", Helvetica, sans-serif' },
+    { id: 'avenir', label: 'Avenir Next', stack: '"Avenir Next", Avenir, sans-serif' },
+  ]
+  const fontOf = (id: string | undefined): string => FONTS.find((f) => f.id === id)?.id ?? 'system'
+
   /* ---------- santé de la sandbox ---------- */
 
   interface WsInfo {
@@ -145,6 +188,66 @@
     return `${(n / 1_048_576).toFixed(1)} Mo`
   }
 
+  /* ---------- connexions : Obsidian & PromptDeck ---------- */
+
+  interface Vault {
+    name: string
+    path: string
+    notes: { path: string; size: number }[]
+  }
+  let vaults = $state<Vault[] | null>(null)
+  let selVault = $state<string | null>(null)
+  let pd = $state<{ path: string; tree: { name: string; type: 'file' | 'dir'; children?: { name: string; type: 'file' | 'dir' }[] }[] } | string | null>(null)
+
+  async function loadVaults(): Promise<void> {
+    try {
+      const r = await fetch('/api/sandbox/obsidian-vaults')
+      const j = (await r.json()) as { vaults: { name: string; path: string }[] }
+      // Compte les notes de chaque coffret côté serveur
+      const withNotes = await Promise.all(
+        j.vaults.map(async (v) => {
+          try {
+            const r2 = await fetch(`/api/sandbox/obsidian-notes?vault=${encodeURIComponent(v.name)}`)
+            const j2 = (await r2.json()) as { notes?: { path: string; size: number }[] }
+            return { ...v, notes: j2.notes ?? [] }
+          } catch {
+            return { ...v, notes: [] }
+          }
+        }),
+      )
+      vaults = withNotes
+    } catch {
+      vaults = []
+    }
+  }
+
+  function openVault(name: string): void {
+    selVault = name
+  }
+
+  async function readNote(vault: string, note: string): Promise<void> {
+    try {
+      const r = await fetch(`/api/sandbox/obsidian-read?vault=${encodeURIComponent(vault)}&note=${encodeURIComponent(note)}`)
+      const j = (await r.json()) as { content?: string; error?: string }
+      if (j.error) alert(j.error)
+      else if (onSendNote) onSendNote(`## 📓 Obsidian — ${note}\n\n${j.content?.slice(0, 8000) ?? ''}`)
+    } catch (e) {
+      alert((e as Error).message)
+    }
+  }
+
+  async function loadPd(): Promise<void> {
+    try {
+      const r = await fetch('/api/sandbox/promptdeck')
+      if (!r.ok) {
+        const j = (await r.json()) as { error?: string }
+        pd = j.error ?? 'PromptDeck introuvable'
+      } else pd = await r.json()
+    } catch (e) {
+      pd = (e as Error).message
+    }
+  }
+
   $effect(() => {
     void refreshHealth()
   })
@@ -168,7 +271,15 @@
   </header>
 
   <div class="scroll">
-    <h3>Clés API — stockées localement, envoyées uniquement au fournisseur choisi</h3>
+    {#snippet head(id: SectionId, title: string)}
+      <button class="secthead" onclick={() => toggleSection(id)} aria-expanded={open.has(id)}>
+        <span class="chev">{open.has(id) ? '▾' : '▸'}</span>
+        <h3>{title}</h3>
+      </button>
+    {/snippet}
+
+    {@render head('keys', 'Clés API — stockées localement, envoyées uniquement au fournisseur choisi')}
+    {#if open.has('keys')}
     {#each PROVIDERS as p (p.id)}
       <div class="keyrow">
         <span class="dot" style="background: {p.color}"></span>
@@ -188,8 +299,10 @@
         <span class="result" class:ok={results[p.id]?.startsWith('✅')}>{results[p.id] ?? ''}</span>
       </div>
     {/each}
+    {/if}
 
-    <h3>Fournisseurs personnalisés (OpenAI-compatible)</h3>
+    {@render head('customs', 'Fournisseurs personnalisés (OpenAI-compatible)')}
+    {#if open.has('customs')}
     {#each customs as p (p.id)}
       {@const keyId = keyFor(p.id)}
       <div class="custom">
@@ -236,8 +349,10 @@
       </div>
     {/each}
     <button class="addcustom" onclick={onAddCustom}>＋ Ajouter un fournisseur</button>
+    {/if}
 
-    <h3>Génération</h3>
+    {@render head('generation', 'Génération & instructions système')}
+    {#if open.has('generation')}
     <div class="gen">
       <label>
         <span>Température : {settings.temperature.toFixed(1)}</span>
@@ -248,37 +363,21 @@
         <input type="number" min="128" max="32768" step="128" value={settings.maxTokens} oninput={(e) => setSetting('maxTokens', Number(e.currentTarget.value) || 2048)} />
       </label>
     </div>
-
-    <h3>Instructions système</h3>
+    <div class="syshead">
+      <span class="syslabel">Instructions système (utilisées par tous les fils)</span>
+      <button class="ghost save" class:saved={sysSaved} onclick={saveSystem} disabled={sysDraft === settings.system}>
+        {sysSaved ? '✓ enregistré' : 'Enregistrer'}</button>
+    </div>
     <textarea
       class="system"
       rows="3"
-      value={settings.system}
-      oninput={(e) => setSetting('system', e.currentTarget.value)}
+      bind:value={sysDraft}
       placeholder="ex : Réponds en français, sois concis."
     ></textarea>
+    {/if}
 
-    <h3>Apparence</h3>
-    <div class="gen">
-      <label>
-        <span>Thème</span>
-        <div class="seg">
-          {#each THEMES as t (t.id)}
-            <button class:active={settings.theme === t.id} onclick={() => setSetting('theme', t.id)}>{t.label}</button>
-          {/each}
-        </div>
-      </label>
-      <label>
-        <span>Police : {settings.fontSize}px</span>
-        <input type="range" min="12" max="18" step="1" value={settings.fontSize} oninput={(e) => setSetting('fontSize', Number(e.currentTarget.value))} />
-      </label>
-    </div>
-    <label class="check">
-      <input type="checkbox" checked={settings.reduceMotion} onchange={(e) => setSetting('reduceMotion', e.currentTarget.checked)} />
-      <span>Réduire les animations</span>
-    </label>
-
-    <h3>Sandbox — workspaces agents</h3>
+    {@render head('sandbox', 'Sandbox — workspaces agents')}
+    {#if open.has('sandbox')}
     {#if health}
       <p class="sb-root mono">{health.root}</p>
       <div class="sb-line">
@@ -300,12 +399,99 @@
     {:else}
       <button class="ghost" onclick={refreshHealth}>Vérifier la sandbox…</button>
     {/if}
+    {/if}
 
-    <h3>Données</h3>
+    {@render head('obsidian', 'Obsidian — coffrets connectés')}
+    {#if open.has('obsidian')}
+    {#if vaults === null}
+      <button class="ghost" onclick={() => void loadVaults()}>Charger les coffrets…</button>
+    {:else if !vaults.length}
+      <p class="sb-empty">Aucun coffret enregistré dans Obsidian (registre macOS introuvable).</p>
+    {:else}
+      {#each vaults as v (v.name)}
+        <div class="wsrow">
+          <code class="mono">📓 {v.name}</code>
+          <span class="ws-meta">{v.notes.length} notes</span>
+          {#if selVault === v.name}
+            <button class="ghost" onclick={() => (selVault = null)}>fermer</button>
+          {:else}
+            <button class="ghost" onclick={() => void openVault(v.name)}>voir</button>
+          {/if}
+        </div>
+        {#if selVault === v.name}
+          <div class="vault">
+            {#each v.notes.slice(0, 40) as n (n.path)}
+              <button class="note" onclick={() => void readNote(v.name, n.path)} title="Envoyer dans le chat">
+                📄 {n.path}</button>
+            {/each}
+            {#if v.notes.length > 40}<p class="sb-empty">+ {v.notes.length - 40} autres notes…</p>{/if}
+          </div>
+        {/if}
+      {/each}
+    {/if}
+    {/if}
+
+    {@render head('promptdeck', 'PromptDeck — MEGA PACK (agents & skills)')}
+    {#if open.has('promptdeck')}
+    {#if pd === null}
+      <button class="ghost" onclick={() => void loadPd()}>Charger le MEGA PACK…</button>
+    {:else if typeof pd === 'string'}
+      <p class="sb-empty">{pd}</p>
+    {:else}
+      <p class="sb-root mono">{pd.path}</p>
+      <div class="pd">
+        {#each pd.tree as n, i (i)}
+          {#if n.type === 'dir'}
+            <div class="pd-dir">📁 {n.name} {n.children?.length ? `(${n.children.length})` : ''}</div>
+            {#each n.children ?? [] as c, j (j)}
+              <div class="pd-child">{c.type === 'dir' ? '└ 📁' : '└ 📄'} {c.name}</div>
+            {/each}
+          {:else if i < 40}
+            <div class="pd-child">📄 {n.name}</div>
+          {/if}
+        {/each}
+      </div>
+      <p class="sb-empty">Agents & skills disponibles aux agents via l'outil promptdeck_browse (arborescence complète).</p>
+    {/if}
+    {/if}
+
+    {@render head('appearance', 'Apparence')}
+    {#if open.has('appearance')}
+    <div class="gen">
+      <label>
+        <span>Thème</span>
+        <div class="seg">
+          {#each THEMES as t (t.id)}
+            <button class:active={settings.theme === t.id} onclick={() => setSetting('theme', t.id)}>{t.label}</button>
+          {/each}
+        </div>
+      </label>
+      <label>
+        <span>Typographie</span>
+        <select value={fontOf(settings.fontFamily)} onchange={(e) => setSetting('fontFamily', FONTS.find((f) => f.id === e.currentTarget.value)?.stack ?? undefined)}>
+          {#each FONTS as f (f.id)}
+            <option value={f.id}>{f.label}</option>
+          {/each}
+        </select>
+      </label>
+      <label>
+        <span>Police : {settings.fontSize}px</span>
+        <input type="range" min="12" max="18" step="1" value={settings.fontSize} oninput={(e) => setSetting('fontSize', Number(e.currentTarget.value))} />
+      </label>
+    </div>
+    <label class="check">
+      <input type="checkbox" checked={settings.reduceMotion} onchange={(e) => setSetting('reduceMotion', e.currentTarget.checked)} />
+      <span>Réduire les animations</span>
+    </label>
+    {/if}
+
+    {@render head('data', 'Données')}
+    {#if open.has('data')}
     <div class="gen">
       <button class="ghost" onclick={reset}>Réinitialiser les réglages</button>
       <button class="ghost danger" onclick={clearData}>Effacer toutes les données…</button>
     </div>
+    {/if}
   </div>
 </div>
 
@@ -515,5 +701,81 @@
   .sb-empty {
     color: var(--muted);
     font-size: 12.5px;
+  }
+  .secthead {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    text-align: left;
+    padding: 0;
+    background: none;
+    border: none;
+  }
+  .secthead:hover h3 {
+    color: var(--text);
+  }
+  .chev {
+    color: var(--accent);
+    font-size: 12px;
+    width: 12px;
+  }
+  .syshead {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 10px;
+  }
+  .syslabel {
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .ghost.save {
+    color: var(--accent);
+    border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  }
+  .ghost.save.saved {
+    color: var(--ok);
+    border-color: var(--ok);
+  }
+  .vault {
+    display: grid;
+    gap: 2px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 6px;
+    max-height: 180px;
+    overflow-y: auto;
+  }
+  .note {
+    text-align: left;
+    font-size: 12px;
+    font-family: var(--mono);
+    color: var(--muted);
+    background: none;
+    border: none;
+    padding: 2px 4px;
+    border-radius: 5px;
+  }
+  .note:hover {
+    color: var(--accent);
+    background: var(--panel2);
+  }
+  .pd {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px;
+    max-height: 260px;
+    overflow-y: auto;
+    font-size: 12px;
+    font-family: var(--mono);
+  }
+  .pd-dir {
+    color: var(--text);
+    margin-top: 4px;
+  }
+  .pd-child {
+    color: var(--muted);
+    padding-left: 16px;
   }
 </style>

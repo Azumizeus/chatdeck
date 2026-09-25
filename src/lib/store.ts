@@ -51,6 +51,8 @@ export interface Settings {
   theme: Theme
   /** Taille de police de base en px (12–18) */
   fontSize: number
+  /** Famille de typographie (« system » par défaut, voir FONTS des réglages) */
+  fontFamily?: string
   /** Réduire les animations (aussi forcé si prefers-reduced-motion) */
   reduceMotion: boolean
 }
