@@ -22,7 +22,7 @@ describe('clés API', () => {
   })
 
   it('saveKeys puis loadKeys font un aller-retour fidèle', () => {
-    const k = { openrouter: 'sk-or-1', nvidia: 'nvapi-2', cohere: 'c-3', mistral: 'm-4' }
+    const k = { openrouter: 'sk-or-1', nvidia: 'nvapi-2', cohere: 'c-3', mistral: 'm-4', custom: {} }
     saveKeys(k)
     expect(loadKeys()).toEqual(k)
   })
@@ -74,9 +74,14 @@ describe('conversations', () => {
     createdAt: 1,
   }
 
-  it('saveConversations puis loadConversations font un aller-retour fidèle', () => {
+  it('saveConversations puis loadConversations font un aller-retour fidèle (avec normalisation)', () => {
     saveConversations([conv])
-    expect(loadConversations()).toEqual([conv])
+    expect(loadConversations()).toEqual([{ ...conv, open: false, incognito: false }])
+  })
+
+  it('les conversations incognito ne sont jamais écrites dans localStorage', () => {
+    saveConversations([{ ...conv, incognito: true }])
+    expect(loadConversations()).toEqual([])
   })
 
   it('newConversation génère un id unique et un titre par défaut', () => {

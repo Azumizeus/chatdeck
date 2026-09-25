@@ -1,65 +1,117 @@
 # ⚡ ChatDeck
 
-**Interface de chat LLM légère et fluide** — un onglet de navigateur, zéro process en fond, zéro Docker. Pensée pour une machine sous charge (le contraire d'OpenHands).
+**Client LLM « IDE premium » léger et fluide** — un onglet de navigateur, zéro process en fond, zéro Docker. Pensé pour une machine sous charge.
 
 ![stack](https://img.shields.io/badge/Svelte%205%20%2B%20TypeScript%20%2B%20Vite-ChatDeck-4f8cff)
 
 ## Pourquoi
 
-Après avoir coupé OpenHands (conteneur 3,8 GB / 200 % CPU), ChatDeck offre le chat multi-modèles le plus léger possible : un serveur de dev Vite, un onglet, c'est tout.
+Après avoir coupé OpenHands (conteneur 3,8 GB / 200 % CPU), ChatDeck offre le chat multi-modèles le plus léger possible : un serveur de dev Vite, un onglet, c'est tout. La refonte « IDE premium » ajoute un châssis macOS, des panneaux dockables/popout et un catalogue complet — toujours sans dépendance UI.
 
-## Fournisseurs branchés
+## Fournisseurs
 
-| Fournisseur | Modèles préconfigurés | Note |
+| Fournisseur | Modèles | Note |
 |---|---|---|
-| **OpenRouter** | GPT-4.1 mini / GPT-4.1, Claude Sonnet 4, Gemini 2.5 Flash, Llama 3.3 70B | 458 modèles disponibles, recommandé |
-| **NVIDIA NIM** | Nemotron 3 Super 120B, Nemotron 3.5 Lightning 30B | lightning parfois saturé (16/16) |
+| **OpenRouter** | **Catalogue complet (~460 modèles) avec recherche**, 5 favoris préconfigurés | recommandé |
+| **NVIDIA NIM** | Nemotron 3 Super 120B, Nemotron 3.5 Lightning 30B | lightning parfois saturé |
 | **Cohere** | Command A, Command R+ | rapide (< 2 s), validé |
 | **Mistral** | Mistral Large, Codestral | clé souvent rate-limitée (429) |
+| **⭑ Personnalisés** | n'importe quel endpoint OpenAI-compatible | ajoutés depuis les réglages, proxifiés génériquement |
 
 ## Démarrer
 
 ```bash
-cd ~/projects/chatdeck
 npm install
 
-# Clés optionnelles en dev (préchargées auto dans l'app) — gitignore :
+# Clés optionnelles en dev (préchargées auto) — gitignore :
 echo '{"openrouter":"sk-or-…","nvidia":"nvapi-…","cohere":"…","mistral":"…"}' > keys.local.json
 
 npm run dev          # http://localhost:5199
 ```
 
-Les clés peuvent aussi se saisir dans l'app : **⚙︎ Réglages (⌘K)** — test en direct par fournisseur, stockage `localStorage` (jamais envoyées ailleurs qu'au fournisseur choisi, via le proxy Vite).
+Les clés se saisissent aussi dans **⚙︎ Réglages** (⌘K → « Réglages ») : test en direct par fournisseur, stockage `localStorage`, jamais envoyées ailleurs qu'au fournisseur choisi (via le proxy Vite). Fournisseurs custom : `custom-providers.local.json` (gitignore) alimente le proxy générique.
+
+```bash
+npm test             # Vitest : store + parsing SSE (25 tests)
+npm run check        # svelte-check (0 erreur, 0 warning)
+npm run build        # bundle production (~57 kB gzip)
+```
 
 ## Fonctionnalités
 
+### Chat
 - **Streaming SSE** token par token avec curseur animé + **Stop** (abort)
-- **Markdown sûr** : marked + DOMPurify (blocs de code, tables, listes)
-- **Multi-conversations** persistées (`localStorage`), titre auto, suppression
-- **Sélecteurs fournisseur/modèle** par conversation, recharge à chaud
+- **Markdown sûr** : marked + DOMPurify (code, tables, listes)
 - Réglages : température, tokens max, instructions système
-- Copier une réponse en un clic
+- Titre auto, copie en un clic, erreurs lisibles (401/429/réseau)
+
+### Espace de travail « IDE premium »
+- **Châssis macOS** : 3 pastilles (fermer / réduire / plein écran), barre de titre glassmorphism
+- **Onglets de conversations** : ouvrir/fermer/réordonner par drag, pastille fournisseur couleur, indicateur de streaming animé
+- **Panneaux dockables** : sidebar et réglages repliables, redimensionnables au splitter (pointer events natifs, double-clic = reset), largeurs persistées
+- **Popouts** : conversation ou réglages sortis en vraie fenêtre (`window.open`), synchronisés via **BroadcastChannel** (état, géométrie mémorisée, envoi depuis le popout)
+- **Barre d'état** : fournisseur, modèle, latence, tokens estimés (↑/↓), état du stream
+- **Palette de commandes ⌘K** : toutes les actions au clavier
+
+### Modèles
+- **Catalogue OpenRouter complet** : combobox avec recherche (nom, id, contexte), navigation clavier, saisie libre de n'importe quel id, cache 10 min, repli sur la liste courte
+- **Fournisseurs personnalisés** : nom, base URL, en-tête d'auth, clé, models en CSV, bouton « tester »
+
+### Vie privée & données
+- **Mode incognito 👻** (⌘⇧N) : conversation éphémère jamais écrite dans `localStorage` (id en `sessionStorage`, fin de session = fin des 👻), badge visible, **fusion manuelle** dans l'historique
+- **Export** JSON (`{version, exportedAt, conversations[]}`) : conversation courante ou tout
+- **Import** validé (schéma + sanitize), dédouillonné par id
+- Thème **sombre / clair / auto**, taille de police, réduction des animations (respecte aussi `prefers-reduced-motion`)
+
+## Raccourcis
+
+| Raccourci | Action |
+|---|---|
+| `⌘K` | Palette de commandes |
+| `⌘N` / `⌘⇧N` | Nouvelle conversation / incognito 👻 |
+| `⌘W` | Fermer l'onglet courant |
+| `⌘E` | Exporter la conversation |
+| `⌘I` | Importer un JSON |
+| `⌘\` | Toggle panneau latéral |
+| `⌘⌥F` | Popout de la conversation |
+| `Échap` | Fermer palette / annuler |
 
 ## Architecture
 
 ```
 src/
-├── App.svelte              # état, streaming, layout
-├── lib/
-│   ├── llm.ts              # providers OpenAI-compatibles + streamChat()
-│   ├── store.ts            # conversations/clés/réglages persistés
-│   ├── markdown.ts         # marked + DOMPurify
-│   └── components/         # Sidebar, ChatMessage, Composer, SettingsModal
-vite.config.ts              # proxy par fournisseur (zéro CORS) + /keys.local (dev only)
+├── App.svelte                    # orchestrateur : état, streaming, layout, raccourcis
+├── main.ts                       # dispatch app principale / popout (#popout=…)
+└── lib/
+    ├── llm.ts                    # fournisseurs + streamChat SSE + catalogue OpenRouter
+    ├── store.ts                  # conversations/clés/réglages/layout/customs persistés
+    ├── layout.svelte.ts          # LayoutManager : panneaux, popouts, BroadcastChannel
+    └── components/
+        ├── WindowFrame.svelte    # châssis macOS (3 pastilles)
+        ├── TabBar.svelte         # onglets réordonnables
+        ├── Sidebar.svelte        # historique + import/export + incognito
+        ├── Composer.svelte       # saisie + sélecteurs fournisseur/modèle
+        ├── ModelPicker.svelte    # combobox catalogue (~460 modèles)
+        ├── SettingsPanel.svelte  # réglages dockable (clés, customs, apparence)
+        ├── StatusBar.svelte      # fournisseur, latence, tokens
+        ├── CommandPalette.svelte # palette ⌘K
+        ├── ChatMessage.svelte    # bulle markdown sûre
+        └── Popout.svelte         # fenêtre secondaire synchronisée
+vite.config.ts                    # proxies par fournisseur + /api/custom/:id + /keys.local (dev)
 ```
 
-Le navigateur ne parle **qu'à localhost** : les 4 fournisseurs sont proxifiés par Vite en dev (SSE inclus). En production, faire `npm run build` et servir derrière n'importe quel reverse-proxy équivalent.
+Le navigateur ne parle **qu'à localhost** : fournisseurs intégrés proxifiés par Vite (SSE inclus), fournisseurs custom relayés par le proxy générique vers leur base URL. En production : `npm run build` + reverse-proxy équivalent.
 
 ## Stack
 
-**Svelte 5** (runes `$state`/`$derived`/`$effect`) + **TypeScript** strict + **Vite 6** + marked/DOMPurify. Aucun framework CSS, aucun state manager externe — ~15 kB de deps au total.
+**Svelte 5** (runes `$state`/`$derived`/`$effect`, `$props()`), **TypeScript strict** (zéro `any`), **Vite 6**, marked/DOMPurify. Aucun framework CSS, aucun state manager externe, aucune lib de drag/resize (pointer events natifs). **56,9 kB gzip** au total.
+
+## Tests
+
+- `src/lib/store.test.ts` — persistance, migration défensive, incognito exclu du stockage, import/export
+- `src/lib/llm.test.ts` — parser SSE (deltas, `[DONE]`, fragments coupés, erreurs HTTP/SSE, abort), registre fournisseurs
 
 ## Onglets frères
 
 - Fiche hub : `~/projects/REPOS.md` → section « ChatDeck »
-- Inspirations UX : [abdulmominsakib/localmind](https://github.com/abdulmominsakib/localmind) (mobile) · [NakliTechie/LocalMind](https://github.com/NakliTechie/LocalMind) (web WebGPU)
+- Prompt de refonte d'origine : `PROMPT-IDEAL-UI.md`

@@ -5,3 +5,4 @@ keys.local.json
 .DS_Store
 .freebuff/
 custom-providers.local.json
+.commit-msg.txt

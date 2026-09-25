@@ -1,10 +1,13 @@
 <script lang="ts">
-  import { PROVIDERS, providerOf, type ProviderId } from '../llm'
+  import { allProviders, type ProviderId } from '../llm'
+  import type { CustomProvider } from '../store'
+  import ModelPicker from './ModelPicker.svelte'
 
   let {
     streaming,
     providerId,
     model,
+    customs = [],
     onSend,
     onStop,
     onProvider,
@@ -13,6 +16,7 @@
     streaming: boolean
     providerId: ProviderId
     model: string
+    customs?: CustomProvider[]
     onSend: (text: string) => void
     onStop: () => void
     onProvider: (pid: ProviderId) => void
@@ -21,6 +25,10 @@
 
   let text = $state('')
   let ta: HTMLTextAreaElement | undefined = $state()
+
+  const providers = $derived(allProviders(customs))
+  const hint = $derived(providers.find((p) => p.id === providerId)?.docs ?? '')
+  const isCatalog = $derived(providerId === 'openrouter')
 
   function autosize(): void {
     if (!ta) return
@@ -48,19 +56,25 @@
   <div class="pickers">
     <select
       value={providerId}
-      onchange={(e) => onProvider(e.currentTarget.value as ProviderId)}
+      onchange={(e) => onProvider(e.currentTarget.value)}
       title="Fournisseur"
     >
-      {#each PROVIDERS as p (p.id)}
-        <option value={p.id}>{p.label}</option>
+      {#each providers as p (p.id)}
+        <option value={p.id}>{p.custom ? '⭑ ' : ''}{p.label}</option>
       {/each}
     </select>
-    <select value={model} onchange={(e) => onModel(e.currentTarget.value)} title="Modèle">
-      {#each providerOf(providerId).models as m (m.id)}
-        <option value={m.id}>{m.label}</option>
-      {/each}
-    </select>
-    <span class="hint">{providerOf(providerId).docs}</span>
+    {#if isCatalog}
+      <div class="picker-model">
+        <ModelPicker value={model} onCommit={onModel} />
+      </div>
+    {:else}
+      <select value={model} onchange={(e) => onModel(e.currentTarget.value)} title="Modèle">
+        {#each providers.find((p) => p.id === providerId)?.models ?? [] as m (m.id)}
+          <option value={m.id}>{m.label}</option>
+        {/each}
+      </select>
+    {/if}
+    <span class="hint">{hint}</span>
   </div>
   <div class="inputrow">
     <textarea
@@ -92,9 +106,15 @@
     gap: 8px;
     margin-bottom: 8px;
   }
+  .picker-model {
+    flex: 1;
+    min-width: 0;
+    max-width: 340px;
+  }
   select {
     font-size: 13px;
     padding: 5px 8px;
+    max-width: 200px;
   }
   .hint {
     color: var(--muted);
