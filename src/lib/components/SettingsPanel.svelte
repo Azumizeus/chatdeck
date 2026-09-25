@@ -107,6 +107,48 @@
     onUpdateCustom({ ...p, models })
   }
 
+  /* ---------- santé de la sandbox ---------- */
+
+  interface WsInfo {
+    id: string
+    sizeBytes: number
+    files: number
+    mtime: number
+  }
+  let health = $state<{ root: string; count: number; totalBytes: number; workspaces: WsInfo[] } | null>(null)
+
+  async function refreshHealth(): Promise<void> {
+    try {
+      const r = await fetch('/api/sandbox/status')
+      if (r.ok) health = await r.json()
+    } catch {
+      /* serveur sandbox indisponible */
+    }
+  }
+
+  async function removeWs(id: string): Promise<void> {
+    if (!confirm(`Supprimer le workspace ${id.slice(0, 12)}… sur le disque ?`)) return
+    await fetch(`/api/sandbox/${id}`, { method: 'DELETE' }).catch(() => {})
+    void refreshHealth()
+  }
+
+  async function cleanupAll(): Promise<void> {
+    if (!health?.workspaces.length) return
+    if (!confirm(`Supprimer TOUS les ${health.workspaces.length} workspace(s) (~${fmtBytes(health.totalBytes)}) ?`)) return
+    for (const w of health.workspaces) await fetch(`/api/sandbox/${w.id}`, { method: 'DELETE' }).catch(() => {})
+    void refreshHealth()
+  }
+
+  function fmtBytes(n: number): string {
+    if (n < 1024) return `${n} o`
+    if (n < 1_048_576) return `${(n / 1024).toFixed(1)} ko`
+    return `${(n / 1_048_576).toFixed(1)} Mo`
+  }
+
+  $effect(() => {
+    void refreshHealth()
+  })
+
   const THEMES: { id: Theme; label: string }[] = [
     { id: 'dark', label: 'Sombre' },
     { id: 'light', label: 'Clair' },
@@ -235,6 +277,29 @@
       <input type="checkbox" checked={settings.reduceMotion} onchange={(e) => setSetting('reduceMotion', e.currentTarget.checked)} />
       <span>Réduire les animations</span>
     </label>
+
+    <h3>Sandbox — workspaces agents</h3>
+    {#if health}
+      <p class="sb-root mono">{health.root}</p>
+      <div class="sb-line">
+        <span>{health.count} workspace(s) · {fmtBytes(health.totalBytes)}</span>
+        <button class="ghost" onclick={refreshHealth} title="Rafraîchir">⟳</button>
+      </div>
+      {#each health.workspaces as w (w.id)}
+        <div class="wsrow">
+          <code class="mono">{w.id.slice(0, 14)}…</code>
+          <span class="ws-meta">{w.files} fichiers · {fmtBytes(w.sizeBytes)}</span>
+          <button class="ghost danger" onclick={() => removeWs(w.id)} title="Supprimer ce workspace">suppr.</button>
+        </div>
+      {/each}
+      {#if health.workspaces.length}
+        <button class="ghost danger" onclick={cleanupAll}>Tout supprimer…</button>
+      {:else}
+        <p class="sb-empty">Aucun workspace — il sera créé au premier message d'un fil agents.</p>
+      {/if}
+    {:else}
+      <button class="ghost" onclick={refreshHealth}>Vérifier la sandbox…</button>
+    {/if}
 
     <h3>Données</h3>
     <div class="gen">
@@ -416,5 +481,39 @@
   }
   .system {
     width: 100%;
+  }
+  .sb-root {
+    font-size: 11px;
+    color: var(--muted);
+    margin: 0 0 6px;
+    word-break: break-all;
+  }
+  .sb-line {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 13px;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+  .wsrow {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+    font-size: 12.5px;
+  }
+  .wsrow code {
+    flex: 1;
+    min-width: 0;
+  }
+  .ws-meta {
+    color: var(--muted);
+    font-size: 11.5px;
+    white-space: nowrap;
+  }
+  .sb-empty {
+    color: var(--muted);
+    font-size: 12.5px;
   }
 </style>

@@ -38,6 +38,8 @@
   import TaskbarPill from './lib/components/TaskbarPill.svelte'
   import CommandPalette from './lib/components/CommandPalette.svelte'
   import SearchPanel from './lib/components/SearchPanel.svelte'
+  import Toolbar from './lib/components/Toolbar.svelte'
+  import TerminalPanel from './lib/components/TerminalPanel.svelte'
   import type { Command } from './lib/components/CommandPalette.svelte'
   import { snapCycle, zoneRect } from './lib/float.svelte'
   import type { Edge } from './lib/float.svelte'
@@ -57,6 +59,9 @@
   let showPalette = $state(false)
   let showFiles = $state(false)
   let showSearch = $state(false)
+  let showTerminal = $state(false)
+  /** Conversation dont le terminal est affiché (épinglée à l'ouverture) */
+  let terminalConvId = $state<string | null>(null)
   /** ts du message à surligner (saut depuis la recherche) */
   let flashTs = $state<number | null>(null)
   let scroller: HTMLDivElement | undefined = $state()
@@ -564,6 +569,11 @@
     void sendTo(d.right, text)
   }
 
+  function toggleTerminal(): void {
+    if (!showTerminal) terminalConvId = currentId
+    showTerminal = !showTerminal
+  }
+
   /** Fait avancer le cycle de snap au clavier/palette : quarters → moitiés → plein écran → retour. */
   function cycleSnap(): void {
     const cycle = snapCycle('left')
@@ -735,6 +745,20 @@
       onMaximize={() => document.documentElement.requestFullscreen?.().catch(() => {})}
       onClose={() => layout.stopDuel()}
     >
+      <Toolbar
+        conv={current}
+        streaming={anyStreaming}
+        duelActive={Boolean(layout.duel)}
+        agentsActive={Boolean(current?.agents?.length)}
+        filesOpen={showFiles}
+        terminalOpen={showTerminal}
+        onToggleAgents={() => setAgents(current?.agents?.length ? [] : ['nexus', 'seeker'])}
+        onToggleDuel={toggleDuel}
+        onToggleFiles={() => (showFiles = !showFiles)}
+        onToggleTerminal={toggleTerminal}
+        onSearch={() => (showSearch = true)}
+        onSettings={() => layout.toggleSettings()}
+      />
       <div class="shell">
         <div class="duel-col" data-conv={layout.duel.left} style="width:{layout.duelSplit}%">
           {@render convPane(layout.duel.left)}
@@ -760,6 +784,20 @@
       onRestore={restoreDocked}
       onMinimize={togglePill}
     >
+    <Toolbar
+      conv={current}
+      streaming={anyStreaming}
+      duelActive={Boolean(layout.duel)}
+      agentsActive={Boolean(current?.agents?.length)}
+      filesOpen={showFiles}
+      terminalOpen={showTerminal}
+      onToggleAgents={() => setAgents(current?.agents?.length ? [] : ['nexus', 'seeker'])}
+      onToggleDuel={toggleDuel}
+      onToggleFiles={() => (showFiles = !showFiles)}
+      onToggleTerminal={toggleTerminal}
+      onSearch={() => (showSearch = true)}
+      onSettings={() => layout.toggleSettings()}
+    />
     <div class="shell">
       {#if !layout.layout.sidebarCollapsed}
         <div class="dock-left" style="width: {layout.layout.sidebarWidth}px">
@@ -866,6 +904,20 @@
       onMaximize={() => document.documentElement.requestFullscreen?.().catch(() => {})}
       onClose={restoreDocked}
     >
+    <Toolbar
+      conv={current}
+      streaming={anyStreaming}
+      duelActive={Boolean(layout.duel)}
+      agentsActive={Boolean(current?.agents?.length)}
+      filesOpen={showFiles}
+      terminalOpen={showTerminal}
+      onToggleAgents={() => setAgents(current?.agents?.length ? [] : ['nexus', 'seeker'])}
+      onToggleDuel={toggleDuel}
+      onToggleFiles={() => (showFiles = !showFiles)}
+      onToggleTerminal={toggleTerminal}
+      onSearch={() => (showSearch = true)}
+      onSettings={() => layout.toggleSettings()}
+    />
     <div class="shell">
       {#if !layout.layout.sidebarCollapsed}
         <div class="dock-left" style="width: {layout.layout.sidebarWidth}px">
@@ -974,6 +1026,10 @@
 
 {#if showFiles && current}
   <FilesPanel convId={current.id} enabled={Boolean(current.agents?.length)} onClose={() => (showFiles = false)} />
+{/if}
+
+{#if showTerminal && terminalConvId}
+  <TerminalPanel convId={terminalConvId} onClose={() => (showTerminal = false)} />
 {/if}
 
 {#if showPalette}

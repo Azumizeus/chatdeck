@@ -2,19 +2,26 @@
 //
 // Racine : ~/.chatdeck/workspaces/<conversation-id>/
 // Le navigateur n'y accède QUE via les endpoints /api/sandbox (plugin Vite, dev) :
-//   GET  /api/sandbox/status                  → racine + nombre de workspaces
-//   POST /api/sandbox/:convId/bootstrap       → crée le workspace + fichiers d'amorçage
-//   GET  /api/sandbox/:convId/tree            → arborescence JSON
-//   GET  /api/sandbox/:convId/file?path=…     → contenu d'un fichier (cap 1 Mo)
-//   PUT  /api/sandbox/:convId/file            → écrit {path, content}
-//   POST /api/sandbox/:convId/mkdir           → crée {path}
-//   DELETE /api/sandbox/:convId/file?path=…   → supprime fichier ou dossier vide
-//   GET  /api/sandbox/:convId/exec?cmd=…      → commandes en liste blanche (ls, cat, …)
+//   GET    /api/sandbox/status                  → racine, N workspaces, tailles
+//   POST   /api/sandbox/:convId/bootstrap       → crée le workspace + fichiers d'amorçage
+//   GET    /api/sandbox/:convId/tree            → arborescence JSON
+//   GET    /api/sandbox/:convId/file?path=…     → contenu d'un fichier (cap 1 Mo)
+//   PUT    /api/sandbox/:convId/file            → écrit {path, content}
+//   DELETE /api/sandbox/:convId/file?path=…     → supprime fichier ou dossier
+//   POST   /api/sandbox/:convId/mkdir           → crée {path}
+//   GET    /api/sandbox/:convId/exec?cmd=…      → commandes en liste blanche (lecture seule)
+//   POST   /api/sandbox/:convId/run             → terminal : process enfant borné, sortie streamée
+//   DELETE /api/sandbox/:convId                 → supprime tout le workspace
+//
+// Terminal : pas de shell (spawn direct du binaire), arguments sans '..' ni chemin
+// absolu, cwd = workspace, timeout 60 s, sortie plafonnée. Les scripts node/npm
+// s'exécutent avec les droits de l'utilisateur — c'est le PC de l'utilisateur.
 //
 // Sécurité : ids stricts ([a-z0-9_-]), chemins résolus et confinés au workspace,
-// taille de fichier plafonnée, commandes en liste blanche, rien en dehors de la racine.
+// taille de fichier plafonnée, rien en dehors de la racine.
 
 import type { Plugin } from 'vite'
+import { spawn } from 'node:child_process'
 import { mkdir, readdir, readFile, writeFile, rm, stat } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
@@ -23,6 +30,8 @@ import path from 'node:path'
 const WORKSPACES_ROOT = path.join(homedir(), '.chatdeck', 'workspaces')
 const MAX_FILE_BYTES = 1_000_000
 const MAX_TREE_ENTRIES = 500
+const MAX_RUN_OUTPUT = 200_000
+const RUN_TIMEOUT_MS = 60_000
 const CONV_ID_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/i
 
 /** Fichiers d'amorçage écrits au bootstrap (jamais écrasés s'ils existent). */
@@ -60,6 +69,9 @@ export function main() {
 `,
 }
 
+/** Binaires autorisés dans le terminal (spawn direct, sans shell). */
+const RUN_BINARIES = new Set(['node', 'npm', 'npx', 'ls', 'cat', 'pwd', 'echo', 'mkdir', 'touch', 'rm', 'cp', 'mv', 'git'])
+
 function json(res: import('node:http').ServerResponse, code: number, data: unknown): void {
   res.statusCode = code
   res.setHeader('Content-Type', 'application/json; charset=utf-8')
@@ -76,6 +88,23 @@ function safeResolve(convId: string, sub: string): { base: string; target: strin
   return { base, target }
 }
 
+/** Crée le workspace + fichiers d'amorçage (sans écraser l'existant). */
+async function seedWorkspace(convId: string): Promise<number> {
+  const g = safeResolve(convId, '')
+  if (!g) throw new Error('id de conversation invalide')
+  await mkdir(path.join(g.base, 'src'), { recursive: true })
+  let written = 0
+  for (const [p, content] of Object.entries(SEED_FILES)) {
+    const t = safeResolve(convId, p)
+    if (!t) continue
+    if (!existsSync(t.target)) {
+      await writeFile(t.target, content, 'utf8')
+      written++
+    }
+  }
+  return written
+}
+
 interface TreeNode {
   name: string
   type: 'file' | 'dir'
@@ -88,9 +117,7 @@ async function walk(dir: string, depth: number, budget: { n: number }): Promise<
   if (depth > 6 || budget.n <= 0) return null
   let entries: import('node:fs').Dirent[]
   try {
-    entries = (await readdir(dir, { withFileTypes: true })).sort((a, b) =>
-      a.name.localeCompare(b.name),
-    )
+    entries = (await readdir(dir, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name))
   } catch {
     return []
   }
@@ -113,6 +140,38 @@ async function walk(dir: string, depth: number, budget: { n: number }): Promise<
     }
   }
   return out
+}
+
+/** Taille et nombre de fichiers d'un workspace (borné). */
+async function measure(dir: string): Promise<{ sizeBytes: number; files: number }> {
+  let size = 0
+  let files = 0
+  const stack = [dir]
+  while (stack.length && files < 2000) {
+    const cur = stack.pop()!
+    let entries: import('node:fs').Dirent[]
+    try {
+      entries = await readdir(cur, { withFileTypes: true })
+    } catch {
+      continue
+    }
+    for (const e of entries) {
+      if (files >= 2000) break
+      const full = path.join(cur, e.name)
+      if (e.isDirectory()) {
+        if (e.name === 'node_modules' || e.name === '.git') continue
+        stack.push(full)
+      } else {
+        files++
+        try {
+          size += (await stat(full)).size
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+  }
+  return { sizeBytes: size, files }
 }
 
 function readBody(req: import('node:http').IncomingMessage): Promise<string> {
@@ -157,19 +216,65 @@ async function sandboxExec(convId: string, cmd: string): Promise<{ out: string }
 
   if (trimmed === 'pwd') return { out: base }
   if (trimmed === 'node -v' || trimmed === 'node --version') {
-    const { execFile } = await import('node:child_process')
-    const { promisify } = await import('node:util')
-    return { out: await promisify(execFile)('node', ['--version']).then((x) => x.stdout.trim()) }
-  }
-  if (trimmed === 'npm -v' || trimmed === 'npm --version') {
-    const { execFile } = await import('node:child_process')
-    const { promisify } = await import('node:util')
-    return { out: await promisify(execFile)('npm', ['--version']).then((x) => x.stdout.trim()) }
+    return { out: process.version }
   }
   if (/^(git (status|log|diff)|npm (test|run .+)|node src\/.+)\b/.test(trimmed)) {
-    throw new Error(`« ${trimmed} » est volontairement désactivé dans la sandbox (lecture seule).`)
+    throw new Error(`« ${trimmed} » : passe par le terminal du workspace (bouton ⌨︎) pour l'exécution réelle.`)
   }
-  throw new Error('Commande non autorisée. Autorisées : ls [chemin], cat <fichier>, pwd, node -v, npm -v')
+  throw new Error('Commande non autorisée. Autorisées : ls [chemin], cat <fichier>, pwd, node -v')
+}
+
+/**
+ * Terminal réel : spawn direct (sans shell), arguments confinés, cwd = workspace,
+ * timeout 60 s, sortie (stdout+stderr) streamée brute dans la réponse.
+ */
+function runCommand(res: import('node:http').ServerResponse, convId: string, cmd: string): void {
+  const parts = cmd.trim().split(/\s+/).filter(Boolean)
+  const bin = parts[0] ?? ''
+  if (!RUN_BINARIES.has(bin)) {
+    return json(res, 400, {
+      error: `« ${bin || '(vide)'} » n'est pas autorisé. Autorisés : ${[...RUN_BINARIES].join(', ')}`,
+    })
+  }
+  for (const a of parts.slice(1)) {
+    if (a.includes('..') || a.startsWith('/')) {
+      return json(res, 400, { error: `argument interdit : ${a} (chemins relatifs au workspace uniquement)` })
+    }
+  }
+  const g = safeResolve(convId, '')
+  if (!g) return json(res, 400, { error: 'id de conversation invalide' })
+
+  res.statusCode = 200
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8')
+  const child = spawn(bin, parts.slice(1), {
+    cwd: g.base,
+    env: { ...process.env, NO_COLOR: '1' },
+  })
+  let bytes = 0
+  let timedOut = false
+  const timer = setTimeout(() => {
+    timedOut = true
+    child.kill('SIGKILL')
+  }, RUN_TIMEOUT_MS)
+
+  const push = (c: Buffer): void => {
+    bytes += c.length
+    if (bytes <= MAX_RUN_OUTPUT) res.write(c)
+    else if (bytes - c.length < MAX_RUN_OUTPUT) res.write('\n… (sortie tronquée)')
+  }
+  child.stdout.on('data', push)
+  child.stderr.on('data', push)
+  child.on('error', (e) => {
+    clearTimeout(timer)
+    res.write(`\n[erreur] ${e.message}\n`)
+    res.end()
+  })
+  child.on('close', (code, signal) => {
+    clearTimeout(timer)
+    if (timedOut || signal === 'SIGKILL') res.write(`\n[timeout : process tué après ${RUN_TIMEOUT_MS / 1000} s]\n`)
+    else res.write(`\n[code de sortie ${code ?? '?'}]\n`)
+    res.end()
+  })
 }
 
 /** Plugin Vite : monte les endpoints /api/sandbox. */
@@ -185,13 +290,26 @@ export function sandboxServer(): Plugin {
           const [convId, action] = (pathPart ?? '').split('/')
 
           try {
-            if (!convId) {
-              // /api/sandbox/status
+            // /api/sandbox/status (ou racine) : racine, nombre, tailles, détail par workspace
+            if (!convId || convId === 'status') {
               if (req.method === 'GET') {
                 const dirs = existsSync(WORKSPACES_ROOT)
                   ? (await readdir(WORKSPACES_ROOT, { withFileTypes: true })).filter((d) => d.isDirectory())
                   : []
-                return json(res, 200, { root: WORKSPACES_ROOT, count: dirs.length })
+                const workspaces = await Promise.all(
+                  dirs.slice(0, 100).map(async (d) => {
+                    const m = await measure(path.join(WORKSPACES_ROOT, d.name))
+                    let mtime = 0
+                    try {
+                      mtime = (await stat(path.join(WORKSPACES_ROOT, d.name))).mtimeMs
+                    } catch {
+                      /* ignore */
+                    }
+                    return { id: d.name, ...m, mtime }
+                  }),
+                )
+                const totalBytes = workspaces.reduce((a, w) => a + w.sizeBytes, 0)
+                return json(res, 200, { root: WORKSPACES_ROOT, count: dirs.length, totalBytes, workspaces })
               }
               return json(res, 404, { error: 'route inconnue' })
             }
@@ -200,19 +318,16 @@ export function sandboxServer(): Plugin {
             if (!guard) return json(res, 400, { error: 'id de conversation invalide' })
             const { base } = guard
 
+            // suppression du workspace entier
+            if (!action && req.method === 'DELETE') {
+              if (existsSync(base)) await rm(base, { recursive: true })
+              return json(res, 200, { ok: true })
+            }
+
             // bootstrap : crée le workspace + fichiers d'amorçage (sans écraser)
             if (action === 'bootstrap' && req.method === 'POST') {
-              await mkdir(path.join(base, 'src'), { recursive: true })
-              let written = 0
-              for (const [p, content] of Object.entries(SEED_FILES)) {
-                const t = safeResolve(convId, p)
-                if (!t) continue
-                if (!existsSync(t.target)) {
-                  await writeFile(t.target, content, 'utf8')
-                  written++
-                }
-              }
-              return json(res, 200, { ok: true, created: written, root: base })
+              const created = await seedWorkspace(convId)
+              return json(res, 200, { ok: true, created, root: base })
             }
 
             // tree
@@ -259,7 +374,7 @@ export function sandboxServer(): Plugin {
               return json(res, 200, { ok: true })
             }
 
-            // exec : commandes en liste blanche
+            // exec : commandes en liste blanche (lecture seule, pour les agents)
             if (action === 'exec' && req.method === 'GET') {
               const cmd = query.get('cmd') ?? ''
               try {
@@ -267,6 +382,16 @@ export function sandboxServer(): Plugin {
               } catch (e) {
                 return json(res, 400, { error: (e as Error).message })
               }
+            }
+
+            // run : terminal réel (spawn borné, sortie streamée)
+            if (action === 'run' && req.method === 'POST') {
+              const body = JSON.parse(await readBody(req)) as { cmd?: string }
+              const cmd = (body.cmd ?? '').trim()
+              if (!cmd) return json(res, 400, { error: 'commande vide' })
+              if (!existsSync(base)) await seedWorkspace(convId)
+              runCommand(res, convId, cmd)
+              return
             }
 
             return json(res, 404, { error: 'route inconnue' })
