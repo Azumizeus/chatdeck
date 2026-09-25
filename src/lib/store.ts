@@ -62,6 +62,9 @@ export interface PaneGeometry {
   h: number
 }
 
+/** Mode d'affichage de la fenêtre principale. */
+export type AppMode = 'docked' | 'floating' | 'pill'
+
 /** Layout dockable persisté : largeurs, collapses, géométries des popouts. */
 export interface Layout {
   sidebarWidth: number
@@ -70,6 +73,10 @@ export interface Layout {
   settingsCollapsed: boolean
   /** Popouts persistés : panneau → géométrie de la fenêtre secondaire */
   popouts: Record<string, PaneGeometry>
+  /** Mode de la fenêtre principale (ancrée, flottante, réduite en pill) */
+  appMode?: AppMode
+  /** Géométrie de la fenêtre flottante */
+  appGeo?: PaneGeometry
 }
 
 export const MIN_SIDEBAR = 180

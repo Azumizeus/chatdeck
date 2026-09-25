@@ -94,6 +94,36 @@ export class LayoutManager {
     this.layout = resetLayout()
   }
 
+  /* ---------- fenêtre principale (dockée / flottante / pill) ---------- */
+
+  get appMode(): 'docked' | 'floating' | 'pill' {
+    const m = this.layout.appMode
+    return m === 'floating' || m === 'pill' ? m : 'docked'
+  }
+
+  setAppMode(m: 'docked' | 'floating' | 'pill'): void {
+    this.layout.appMode = m
+    saveLayout(this.layout)
+  }
+
+  /** Géométrie par défaut de la fenêtre flottante (centrée-haute, bornée au viewport). */
+  defaultAppGeo(): PaneGeometry {
+    const vw = typeof window !== 'undefined' ? window.innerWidth : 1280
+    const vh = typeof window !== 'undefined' ? window.innerHeight : 800
+    const w = Math.min(1120, vw - 96)
+    const h = Math.min(720, vh - 96)
+    return { x: Math.max(24, (vw - w) / 2), y: Math.max(24, (vh - h) / 3), w, h }
+  }
+
+  get appGeo(): PaneGeometry {
+    return this.layout.appGeo ?? this.defaultAppGeo()
+  }
+
+  setAppGeo(geo: PaneGeometry): void {
+    this.layout.appGeo = geo
+    saveLayout(this.layout)
+  }
+
   /* ---------- popouts ---------- */
 
   /** Ouvre un popout ; renvoie null si bloqué (popup blocker) → repli en dock. */

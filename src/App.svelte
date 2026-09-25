@@ -32,8 +32,13 @@
   import TabBar from './lib/components/TabBar.svelte'
   import StatusBar from './lib/components/StatusBar.svelte'
   import WindowFrame from './lib/components/WindowFrame.svelte'
+  import FloatingWindow from './lib/components/FloatingWindow.svelte'
+  import TaskbarPill from './lib/components/TaskbarPill.svelte'
   import CommandPalette from './lib/components/CommandPalette.svelte'
   import type { Command } from './lib/components/CommandPalette.svelte'
+  import { snapCycle, zoneRect } from './lib/float.svelte'
+  import type { Edge } from './lib/float.svelte'
+  import type { PaneGeometry } from './lib/store'
 
   /* ---------- état ---------- */
 
@@ -329,6 +334,46 @@
 
   let activeAbort: AbortController | null = null
 
+  /* ---------- fenêtre flottante / pill ---------- */
+
+  function floatWith(geo: PaneGeometry): void {
+    layout.setAppGeo(geo)
+    layout.setAppMode('floating')
+  }
+
+  function floatSnap(rect: PaneGeometry, _edge: Edge): void {
+    // Snap moitié/quarter/plein écran : applique le rect cible et reste flottant
+    layout.setAppGeo(rect)
+    layout.setAppMode('floating')
+  }
+
+  function restoreDocked(): void {
+    layout.setAppMode('docked')
+  }
+
+  function togglePill(): void {
+    layout.setAppMode(layout.appMode === 'pill' ? 'floating' : 'pill')
+  }
+
+  /** Fait avancer le cycle de snap au clavier/palette : quarters → moitiés → plein écran → retour. */
+  function cycleSnap(): void {
+    const cycle = snapCycle('left')
+    if (layout.appMode !== 'floating') {
+      floatWith(zoneRect(cycle[0], window.innerWidth, window.innerHeight))
+      return
+    }
+    const cur = layout.appGeo
+    const vw = window.innerWidth
+    const vh = window.innerHeight
+    const ix = cycle.findIndex((e) => {
+      const r = zoneRect(e, vw, vh)
+      return Math.abs(r.x - cur.x) < 12 && Math.abs(r.y - cur.y) < 12 && Math.abs(r.w - cur.w) < 12 && Math.abs(r.h - cur.h) < 12
+    })
+    const next = cycle[(ix + 1) % cycle.length]
+    layout.setAppGeo(zoneRect(next, vw, vh))
+    layout.setAppMode('floating')
+  }
+
   /* ---------- popouts ---------- */
 
   async function popout(panel: 'chat' | 'settings'): Promise<void> {
@@ -384,6 +429,9 @@
     } else if (mod && e.altKey && e.key.toLowerCase() === 'f') {
       e.preventDefault()
       void popout('chat')
+    } else if (mod && e.altKey && e.key.toLowerCase() === 's') {
+      e.preventDefault()
+      cycleSnap()
     } else if (mod && e.key === '\\') {
       e.preventDefault()
       layout.toggleSidebar()
@@ -407,6 +455,9 @@
     { id: 'import', label: 'Importer un JSON', hint: '⌘I', run: () => document.querySelector<HTMLInputElement>('input[type=file]')?.click() },
     { id: 'merge', label: 'Fusionner les conversations incognito', run: mergeIncognito },
     { id: 'reset-layout', label: 'Réinitialiser la disposition des panneaux', run: () => layout.reset() },
+    { id: 'float', label: 'Fenêtre flottante', run: () => floatWith(layout.appGeo) },
+    { id: 'snap', label: 'Snap : zone suivante (quarter → moitié → plein écran)', hint: '⌘⌥S', run: cycleSnap },
+    { id: 'pill', label: layout.appMode === 'pill' ? 'Restaurer depuis la barre de tâches' : 'Réduire en barre de tâches (pill)', run: togglePill },
   ])
 
   const SUGGESTIONS = [
@@ -418,12 +469,22 @@
 
 <svelte:window onkeydown={onKeydown} />
 
-<div class="app">
-  <WindowFrame
+{#if layout.appMode === 'pill'}
+  <TaskbarPill
+    conv={current}
+    {streaming}
+    tokens={current?.messages.filter((m) => m.role === 'assistant').at(-1)?.usage?.completion ?? 0}
+    {customs}
+    onRestore={() => layout.setAppMode('floating')}
+  />
+{:else if layout.appMode === 'floating'}
+  <FloatingWindow
+    geo={layout.appGeo}
     title="ChatDeck — IDE premium"
-    onMinimize={() => layout.toggleSidebar()}
-    onMaximize={() => document.documentElement.requestFullscreen?.().catch(() => {})}
-    onClose={() => window.close()}
+    onGeo={floatWith}
+    onSnap={floatSnap}
+    onRestore={restoreDocked}
+    onMinimize={togglePill}
   >
     <div class="shell">
       {#if !layout.layout.sidebarCollapsed}
@@ -517,10 +578,113 @@
         </div>
       {/if}
     </div>
-  </WindowFrame>
+    <StatusBar conv={current} {streaming} {latencyMs} {customs} />
+  </FloatingWindow>
+{:else}
+  <div class="app">
+    <WindowFrame
+      title="ChatDeck — IDE premium"
+      onMinimize={togglePill}
+      onMaximize={() => document.documentElement.requestFullscreen?.().catch(() => {})}
+      onClose={restoreDocked}
+    >
+    <div class="shell">
+      {#if !layout.layout.sidebarCollapsed}
+        <div class="dock-left" style="width: {layout.layout.sidebarWidth}px">
+          <Sidebar
+            {conversations}
+            {currentId}
+            {customs}
+            onNew={() => newChat()}
+            onNewIncognito={() => newChat(true)}
+            onSelect={selectChat}
+            onDelete={deleteChat}
+            onMergeIncognito={mergeIncognito}
+            onExportAll={exportAll}
+            onExportCurrent={exportCurrent}
+            onImport={(f) => void importFile(f)}
+          />
+          <div class="splitter" role="separator" aria-orientation="vertical"
+            onpointerdown={(e) => startSidebarResize(e)}
+            ondblclick={() => layout.setSidebarWidth(248)}
+          ></div>
+        </div>
+      {:else}
+        <button class="rail" onclick={() => layout.toggleSidebar()} title="Afficher le panneau latéral (⌘\)">»</button>
+      {/if}
 
-  <StatusBar conv={current} {streaming} {latencyMs} {customs} />
-</div>
+      <main class="main">
+        <TabBar
+          {conversations}
+          {currentId}
+          {streamingId}
+          {customs}
+          onSelect={selectChat}
+          onClose={closeTab}
+          onNew={() => newChat()}
+          onReorder={reorderTabs}
+        />
+        {#if current}
+          <div class="messages" bind:this={scroller}>
+            {#if current.messages.length === 0}
+              <div class="hero">
+                <div class="logo">⚡</div>
+                <h1>ChatDeck</h1>
+                <p>Chat LLM léger — {providerOf(current.providerId, customs).label} · <code class="mono">{current.model}</code></p>
+                <div class="chips">
+                  {#each SUGGESTIONS as s}
+                    <button class="chip" onclick={() => send(s)}>{s}</button>
+                  {/each}
+                </div>
+              </div>
+            {:else}
+              {#each current.messages as m, i (i)}
+                <ChatMessage msg={m} />
+              {/each}
+            {/if}
+          </div>
+          <Composer
+            {streaming}
+            providerId={current.providerId}
+            model={current.model}
+            {customs}
+            onSend={send}
+            onStop={stop}
+            onProvider={setProvider}
+            onModel={setModel}
+          />
+        {/if}
+      </main>
+
+      {#if !layout.layout.settingsCollapsed}
+        <div class="dock-right" style="width: {layout.layout.settingsWidth}px">
+          <SettingsPanel
+            {keys}
+            {settings}
+            {customs}
+            onKeys={(k) => (keys = k)}
+            onSettings={(s) => (settings = s)}
+            onAddCustom={() => {
+              const id = `custom:${Math.random().toString(36).slice(2, 7)}`
+              customs = [...customs, { id, name: 'Nouveau fournisseur', baseUrl: '', keyHeader: 'Authorization', models: [] }]
+            }}
+            onUpdateCustom={(p) => (customs = customs.map((x) => (x.id === p.id ? p : x)))}
+            onRemoveCustom={(id) => (customs = customs.filter((x) => x.id !== id))}
+            onClose={() => layout.toggleSettings()}
+            onPopout={() => void popout('settings')}
+          />
+          <div class="splitter" role="separator" aria-orientation="vertical"
+            onpointerdown={(e) => startSettingsResize(e)}
+            ondblclick={() => layout.setSettingsWidth(400)}
+          ></div>
+        </div>
+      {/if}
+    </div>
+    </WindowFrame>
+
+    <StatusBar conv={current} {streaming} {latencyMs} {customs} />
+  </div>
+{/if}
 
 {#if showPalette}
   <CommandPalette {commands} onClose={() => (showPalette = false)} />
