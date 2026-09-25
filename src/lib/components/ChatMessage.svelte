@@ -1,8 +1,11 @@
 <script lang="ts">
   import type { Msg } from '../store'
+  import { AGENTS, type AgentId } from '../agents'
   import { renderMarkdown } from '../markdown'
 
   let { msg }: { msg: Msg } = $props()
+
+  const who = $derived(msg.agent ? AGENTS[msg.agent as AgentId] : null)
 
   let copied = $state(false)
 
@@ -13,9 +16,12 @@
   }
 </script>
 
-<div class="row" class:user={msg.role === 'user'} class:error={msg.error}>
-  <div class="avatar">{msg.role === 'assistant' ? '⚡' : '🧑'}</div>
+<div class="row" class:user={msg.role === 'user'} class:error={msg.error} class:agent-seeker={msg.agent === 'seeker'}>
+  <div class="avatar">{who ? who.emoji : msg.role === 'assistant' ? '⚡' : '🧑'}</div>
   <div class="bubble">
+    {#if who}
+      <span class="who">{who.emoji} {who.name} · {who.role}</span>
+    {/if}
     {#if msg.role === 'assistant'}
       {#if msg.content}
         {@html renderMarkdown(msg.content)}
@@ -57,6 +63,16 @@
     overflow-wrap: break-word;
     line-height: 1.55;
     position: relative;
+  }
+  .agent-seeker .avatar {
+    background: color-mix(in srgb, #27c93f 22%, var(--panel2));
+  }
+  .who {
+    display: block;
+    font-size: 11px;
+    font-family: var(--mono);
+    color: var(--muted);
+    margin-bottom: 4px;
   }
   .user .bubble {
     background: var(--user-bubble);

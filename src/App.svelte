@@ -1,7 +1,9 @@
 <script lang="ts">
   // ChatDeck — orchestrateur « IDE premium » : châssis macOS, onglets, panneaux
   // dockables, popouts synchronisés, palette ⌘K, incognito, import/export.
-  import { streamChat, isCustom, providerOf, type ProviderId } from './lib/llm'
+  import { streamChat, isCustom, providerOf, type ProviderId, type WireMsg } from './lib/llm'
+  import { AGENTS, toolsFor, systemPromptFor, execTool, REPORT_TOOL, type AgentId, type ToolCall } from './lib/agents'
+  import FilesPanel from './lib/components/FilesPanel.svelte'
   import {
     loadConversations,
     saveConversations,
@@ -51,6 +53,7 @@
   let streamingId = $state<string | null>(null)
   let latencyMs = $state<number | null>(null)
   let showPalette = $state(false)
+  let showFiles = $state(false)
   let scroller: HTMLDivElement | undefined = $state()
 
   const current = $derived(conversations.find((c) => c.id === currentId) ?? null)
@@ -243,6 +246,31 @@
 
   /* ---------- streaming ---------- */
 
+  /** Rounds d'outils max par tour d'agent (garde-fou anti-boucle). */
+  const MAX_TOOL_ROUNDS = 6
+
+  /** Historique wire d'un fil multi-agents : préfixe agent + traces sandbox. */
+  function multiWires(conv: Conversation, text: string): WireMsg[] {
+    const wires: WireMsg[] = []
+    for (const m of conv.messages) {
+      if (m.error || !m.content) continue
+      if (m.role === 'assistant') {
+        let content = `**${AGENTS[m.agent ?? 'nexus'].name} —** ${m.content}`
+        for (const t of m.toolEvents ?? []) content += `\n_[sandbox:${t.tool}] ${t.detail}_`
+        wires.push({ role: 'assistant', content })
+      } else {
+        wires.push({ role: 'user', content: m.content })
+      }
+    }
+    wires.push({ role: 'user', content: text })
+    return wires
+  }
+
+  function setAgents(list: AgentId[]): void {
+    if (!current || streaming) return
+    conversations = conversations.map((c) => (c.id === current.id ? { ...c, agents: list } : c))
+  }
+
   async function sendTo(convId: string, text: string): Promise<void> {
     if (streaming) return
     const conv = conversations.find((c) => c.id === convId)
@@ -252,8 +280,20 @@
       layout.toggleSettings() // ouvre le panneau réglages si replié
       return
     }
+    const multi = Boolean(conv.agents?.length)
+
+    // Bootstrap de la sandbox au premier message d'un fil agents (~/.chatdeck/workspaces/<id>)
+    if (multi && !conv.sandboxReady) {
+      conversations = conversations.map((c) => (c.id === convId ? { ...c, sandboxReady: true } : c))
+      try {
+        await fetch(`/api/sandbox/${convId}/bootstrap`, { method: 'POST' })
+      } catch {
+        /* sandbox indisponible : les outils renverront une erreur lisible */
+      }
+    }
+
     const user: Msg = { role: 'user', content: text, ts: Date.now() }
-    const assistant: Msg = { role: 'assistant', content: '', ts: Date.now() }
+    const assistant: Msg = { role: 'assistant', content: '', ts: Date.now(), ...(multi ? { agent: 'nexus' as const } : {}) }
     conversations = conversations.map((c) =>
       c.id === convId ? { ...c, messages: [...c.messages, user, assistant], open: true } : c,
     )
@@ -269,36 +309,142 @@
     activeAbort = controller
     const started = performance.now()
 
-    const history: { role: 'user' | 'assistant' | 'system'; content: string }[] = conv.messages
-      .filter((m) => !m.error && m.content)
-      .map((mm) => ({ role: mm.role, content: mm.content }))
-    history.push({ role: 'user', content: text })
-    if (settings.system.trim()) history.unshift({ role: 'system', content: settings.system.trim() })
-
     const patchLive = (patch: (m: Msg) => Msg): void => {
       conversations = conversations.map((c) =>
         c.id === convId ? { ...c, messages: c.messages.map((m) => (m.ts === live.ts && m.role === live.role ? patch(m) : m)) } : c,
       )
     }
+    const convProvider = conv.providerId
+    const convModel = conv.model
+
+    // Historique wire : multi-agents (préfixes) ou chat simple
+    const wires: WireMsg[] = multi
+      ? multiWires(conv, text)
+      : [
+          ...conv.messages.filter((m) => !m.error && m.content).map((mm) => ({ role: mm.role, content: mm.content })),
+          { role: 'user' as const, content: text },
+        ]
+    const systemWire: WireMsg = {
+      role: 'system',
+      content: multi ? systemPromptFor('nexus', settings.system) : settings.system.trim(),
+    }
+    const baseMessages: WireMsg[] = systemWire.content ? [systemWire, ...wires] : wires
+
+    /** Un tour d'agent : stream + exécution des outils, jusqu'à réponse finale ou délégation. */
+    async function runTurns(agent: AgentId, delegationTask?: string): Promise<{ delegation?: string; report?: string }> {
+      patchLive((m) => ({ ...m, agent })) // le badge suit l'agent qui parle
+      const pending: { calls: ToolCall[] | null } = { calls: null }
+      for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+        let phaseContent = ''
+        // Rappel au dernier round : le modèle doit conclure en texte, plus d'appels d'outils
+        const nudge: WireMsg | null =
+          round === MAX_TOOL_ROUNDS - 1
+            ? { role: 'user', content: '(Système) Dernier round autorisé : ne fais plus aucun appel d’outil, donne ta réponse finale en texte.' }
+            : null
+        const extra: WireMsg[] = nudge ? [nudge] : []
+        await streamChat({
+          providerId: convProvider,
+          apiKey,
+          model: convModel,
+          messages:
+            agent === 'seeker'
+              ? [{ role: 'system', content: systemPromptFor('seeker', settings.system, delegationTask ? { task: delegationTask } : undefined) }, ...wires, ...extra]
+              : [...baseMessages, ...extra],
+          temperature: settings.temperature,
+          maxTokens: settings.maxTokens,
+          signal: controller.signal,
+          customs,
+          tools: agent === 'seeker' ? [...toolsFor('seeker'), REPORT_TOOL] : toolsFor('nexus'),
+          onDelta: (d) => {
+            phaseContent += d
+            patchLive((m) => ({ ...m, content: m.content + d }))
+            scrollDown()
+          },
+          onUsage: (u) => {
+            patchLive((m) => ({ ...m, usage: u }))
+          },
+          onToolCalls: (c) => {
+            pending.calls = c
+          },
+        })
+        const callList = pending.calls
+        pending.calls = null
+        if (!callList?.length) {
+          // Réponse finale en texte — pour Seeker, ce texte vaut rapport s'il n'a pas appelé l'outil
+          return agent === 'seeker' && phaseContent.trim() ? { report: phaseContent } : {}
+        }
+
+        wires.push({
+          role: 'assistant',
+          content: phaseContent || null,
+          tool_calls: callList.map((c) => ({
+            id: c.id,
+            type: 'function' as const,
+            function: { name: c.name, arguments: JSON.stringify(c.args) },
+          })),
+        })
+        let delegation: string | undefined
+        let report: string | undefined
+        for (const call of callList) {
+          let result: string
+          if (call.name === 'delegate_to_seeker') {
+            delegation = String(call.args.task ?? '')
+            result = 'Mission transmise à Seeker. Elle travaillera et te rendra un rapport.'
+          } else if (call.name === 'report_to_nexus') {
+            report = String(call.args.report ?? '')
+            result = 'Rapport reçu par Nexus.'
+          } else {
+            try {
+              result = await execTool(convId, call)
+            } catch (e) {
+              result = `Erreur outil : ${(e as Error).message}`
+            }
+            const detail = result.slice(0, 80)
+            patchLive((m) => ({ ...m, toolEvents: [...(m.toolEvents ?? []), { tool: call.name, detail }] }))
+          }
+          wires.push({ role: 'tool', tool_call_id: call.id, content: result })
+        }
+        if (delegation || report) return { delegation, report }
+      }
+      // Rounds épuisés sans texte final : récap honnête des actions sandbox
+      patchLive((m) =>
+        m.content.trim()
+          ? m
+          : {
+              ...m,
+              content: `*(${(m.toolEvents ?? []).length} actions effectuées dans la sandbox — redemande un résumé pour le détail.)*`,
+            },
+      )
+      return {}
+    }
 
     try {
-      await streamChat({
-        providerId: conv.providerId,
-        apiKey,
-        model: conv.model,
-        messages: history,
-        temperature: settings.temperature,
-        maxTokens: settings.maxTokens,
-        signal: controller.signal,
-        customs,
-        onDelta: (d) => {
-          patchLive((m) => ({ ...m, content: m.content + d }))
-          scrollDown()
-        },
-        onUsage: (u) => {
-          patchLive((m) => ({ ...m, usage: u }))
-        },
-      })
+      if (multi) {
+        // Nexus pilote ; s'il délègue, Seeker explore puis rend rapport, et Nexus conclut
+        const r1 = await runTurns('nexus')
+        if (r1.delegation) {
+          const r2 = await runTurns('seeker', r1.delegation)
+          if (r2.report) await runTurns('nexus')
+        }
+      } else {
+        await streamChat({
+          providerId: conv.providerId,
+          apiKey,
+          model: conv.model,
+          messages: baseMessages,
+          temperature: settings.temperature,
+          maxTokens: settings.maxTokens,
+          signal: controller.signal,
+          customs,
+          onDelta: (d) => {
+            patchLive((m) => ({ ...m, content: m.content + d }))
+            scrollDown()
+          },
+          onUsage: (u) => {
+            patchLive((m) => ({ ...m, usage: u }))
+          },
+        })
+      }
       latencyMs = Math.round(performance.now() - started)
     } catch (e) {
       const err = e as Error
@@ -312,7 +458,11 @@
           patchLive((m) => ({ ...m, content: m.content + '\n\n*_(arrêté)_*' }))
         }
       } else {
-        patchLive(() => ({ role: 'assistant', content: err.message || String(e), ts: Date.now(), error: true }))
+        patchLive((m) => ({
+          ...m,
+          error: true,
+          content: m.content ? m.content + `\n\n**Erreur :** ${err.message || String(e)}` : err.message || String(e),
+        }))
       }
     } finally {
       streaming = false
@@ -455,6 +605,8 @@
     { id: 'import', label: 'Importer un JSON', hint: '⌘I', run: () => document.querySelector<HTMLInputElement>('input[type=file]')?.click() },
     { id: 'merge', label: 'Fusionner les conversations incognito', run: mergeIncognito },
     { id: 'reset-layout', label: 'Réinitialiser la disposition des panneaux', run: () => layout.reset() },
+    { id: 'agents', label: current?.agents?.length ? 'Désactiver les agents Nexus & Seeker' : 'Activer les agents Nexus & Seeker (sandbox)', run: () => setAgents(current?.agents?.length ? [] : ['nexus', 'seeker']) },
+    { id: 'files', label: showFiles ? 'Fermer le panneau Fichiers (sandbox)' : 'Ouvrir le panneau Fichiers (sandbox)', run: () => (showFiles = !showFiles) },
     { id: 'float', label: 'Fenêtre flottante', run: () => floatWith(layout.appGeo) },
     { id: 'snap', label: 'Snap : zone suivante (quarter → moitié → plein écran)', hint: '⌘⌥S', run: cycleSnap },
     { id: 'pill', label: layout.appMode === 'pill' ? 'Restaurer depuis la barre de tâches' : 'Réduire en barre de tâches (pill)', run: togglePill },
@@ -546,10 +698,12 @@
             providerId={current.providerId}
             model={current.model}
             {customs}
+            agents={current.agents ?? []}
             onSend={send}
             onStop={stop}
             onProvider={setProvider}
             onModel={setModel}
+            onAgents={setAgents}
           />
         {/if}
       </main>
@@ -648,10 +802,12 @@
             providerId={current.providerId}
             model={current.model}
             {customs}
+            agents={current.agents ?? []}
             onSend={send}
             onStop={stop}
             onProvider={setProvider}
             onModel={setModel}
+            onAgents={setAgents}
           />
         {/if}
       </main>
@@ -684,6 +840,10 @@
 
     <StatusBar conv={current} {streaming} {latencyMs} {customs} />
   </div>
+{/if}
+
+{#if showFiles && current}
+  <FilesPanel convId={current.id} enabled={Boolean(current.agents?.length)} onClose={() => (showFiles = false)} />
 {/if}
 
 {#if showPalette}

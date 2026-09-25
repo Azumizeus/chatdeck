@@ -123,17 +123,36 @@ export interface ChatMsg {
   content: string
 }
 
+/** Appel d'outil au format wire OpenAI (accumulé pendant le stream). */
+export interface ToolCallOut {
+  id: string
+  type: 'function'
+  function: { name: string; arguments: string }
+}
+
+/** Message au format wire : texte, ou tool_calls / résultat d'outil. */
+export interface WireMsg {
+  role: 'user' | 'assistant' | 'system' | 'tool'
+  content: string | null
+  tool_calls?: ToolCallOut[]
+  tool_call_id?: string
+}
+
 export interface StreamOpts {
   providerId: ProviderId
   apiKey: string
   model: string
-  messages: ChatMsg[]
+  messages: WireMsg[]
   temperature: number
   maxTokens: number
   signal: AbortSignal
   onDelta: (text: string) => void
   /** Usage réel renvoyé par l'API (chunk final, si disponible) */
   onUsage?: (usage: { prompt: number; completion: number }) => void
+  /** Outils exposés au modèle (function calling) — déclenche onToolCalls au lieu de terminer */
+  tools?: { type: 'function'; function: { name: string; description: string; parameters: unknown } }[]
+  /** Appelé quand le modèle demande des outils (finish_reason = tool_calls) */
+  onToolCalls?: (calls: { id: string; name: string; args: Record<string, unknown> }[]) => void
   /** Fournisseurs personnalisés (pour résoudre base/path) */
   customs?: CustomProvider[]
 }
@@ -161,6 +180,7 @@ export async function streamChat(opts: StreamOpts): Promise<string> {
         max_tokens: opts.maxTokens,
         // OpenRouter inclut l'usage réel dans le chunk final quand on le demande
         ...(opts.providerId === 'openrouter' ? { stream_options: { include_usage: true } } : {}),
+        ...(opts.tools?.length ? { tools: opts.tools } : {}),
       }),
     })
   } catch (e) {
@@ -187,6 +207,9 @@ export async function streamChat(opts: StreamOpts): Promise<string> {
   const decoder = new TextDecoder()
   let buf = ''
   let full = ''
+  // Accumulation des tool_calls (les fragments arrivent indexés, arguments en morceaux)
+  const toolAcc = new Map<number, { id: string; name: string; args: string }>()
+  let finishReason: string | null = null
   for (;;) {
     const { done, value } = await reader.read()
     if (done) break
@@ -200,12 +223,27 @@ export async function streamChat(opts: StreamOpts): Promise<string> {
       if (data === '[DONE]') continue
       try {
         const j = JSON.parse(data)
-        const delta: string | undefined = j.choices?.[0]?.delta?.content
+        const choice = j.choices?.[0]
+        const delta: string | undefined = choice?.delta?.content
         if (delta) {
           full += delta
           opts.onDelta(delta)
         }
-        const u = (j.usage ?? j.choices?.[0]?.usage) as
+        const tcs = choice?.delta?.tool_calls as
+          | { index?: number; id?: string; function?: { name?: string; arguments?: string } }[]
+          | undefined
+        if (Array.isArray(tcs)) {
+          for (const tc of tcs) {
+            const ix = Number(tc.index ?? 0)
+            const cur = toolAcc.get(ix) ?? { id: '', name: '', args: '' }
+            if (tc.id) cur.id = tc.id
+            if (tc.function?.name) cur.name = tc.function.name
+            if (tc.function?.arguments) cur.args += tc.function.arguments
+            toolAcc.set(ix, cur)
+          }
+        }
+        if (choice?.finish_reason) finishReason = String(choice.finish_reason)
+        const u = (j.usage ?? choice?.usage) as
           | { prompt_tokens?: unknown; completion_tokens?: unknown }
           | undefined
         if (u && opts.onUsage) {
@@ -221,6 +259,20 @@ export async function streamChat(opts: StreamOpts): Promise<string> {
         throw e
       }
     }
+  }
+  // Le modèle demande des outils : on livre les appels assemblés au lieu de terminer
+  if (finishReason === 'tool_calls' && toolAcc.size && opts.onToolCalls) {
+    const calls = [...toolAcc.values()].map((c) => {
+      let args: Record<string, unknown> = {}
+      try {
+        args = c.args ? (JSON.parse(c.args) as Record<string, unknown>) : {}
+      } catch {
+        args = { _raw: c.args }
+      }
+      return { id: c.id, name: c.name, args }
+    })
+    opts.onToolCalls(calls)
+    return full
   }
   if (!full.trim() && !opts.signal.aborted) {
     throw new Error(`${p.label} : réponse vide (modèle saturé ou indisponible ?)`)

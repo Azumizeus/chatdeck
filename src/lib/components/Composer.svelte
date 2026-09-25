@@ -1,6 +1,7 @@
 <script lang="ts">
   import { allProviders, type ProviderId } from '../llm'
   import type { CustomProvider } from '../store'
+  import type { AgentId } from '../agents'
   import ModelPicker from './ModelPicker.svelte'
 
   let {
@@ -8,19 +9,24 @@
     providerId,
     model,
     customs = [],
+    agents = [],
     onSend,
     onStop,
     onProvider,
     onModel,
+    onAgents,
   }: {
     streaming: boolean
     providerId: ProviderId
     model: string
     customs?: CustomProvider[]
+    /** Agents actifs du fil (vide = chat simple) */
+    agents?: AgentId[]
     onSend: (text: string) => void
     onStop: () => void
     onProvider: (pid: ProviderId) => void
     onModel: (model: string) => void
+    onAgents: (list: AgentId[]) => void
   } = $props()
 
   let text = $state('')
@@ -50,10 +56,20 @@
       submit()
     }
   }
+
+  const agentsValue = $derived(agents.length ? agents.join(',') : '')
 </script>
 
 <div class="composer">
   <div class="pickers">
+    <select
+      value={agentsValue}
+      onchange={(e) => onAgents(e.currentTarget.value ? (e.currentTarget.value.split(',') as AgentId[]) : [])}
+      title="Mode agents"
+    >
+      <option value="">Chat simple</option>
+      <option value="nexus,seeker">🧠 Nexus + 🔎 Seeker</option>
+    </select>
     <select
       value={providerId}
       onchange={(e) => onProvider(e.currentTarget.value)}
@@ -83,7 +99,9 @@
       oninput={autosize}
       onkeydown={key}
       rows="1"
-      placeholder="Écris ton message…  (Entrée = envoyer · Maj+Entrée = nouvelle ligne)"
+      placeholder={agents.length
+        ? 'Écris à Nexus — il orchestre, écrit dans la sandbox et délègue à Seeker…'
+        : 'Écris ton message…  (Entrée = envoyer · Maj+Entrée = nouvelle ligne)'}
     ></textarea>
     {#if streaming}
       <button class="stop" onclick={onStop} title="Arrêter la génération">■</button>

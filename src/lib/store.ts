@@ -1,6 +1,7 @@
 // Types partagés de la refonte « IDE premium »
 
 import type { ProviderId } from './llm'
+import type { AgentId } from './agents'
 
 export interface Msg {
   role: 'user' | 'assistant'
@@ -9,6 +10,10 @@ export interface Msg {
   error?: boolean
   /** Usage réel renvoyé par l'API (chunk final SSE, si fourni) */
   usage?: { prompt: number; completion: number }
+  /** Agent émetteur (si la conversation est multi-agents) */
+  agent?: AgentId
+  /** Traces d'outils exécutés pendant le tour (sandbox) */
+  toolEvents?: { tool: string; detail: string }[]
 }
 
 export interface Conversation {
@@ -22,6 +27,10 @@ export interface Conversation {
   open?: boolean
   /** Conversation éphémère (jamais persistée) */
   incognito?: boolean
+  /** Agents activés dans ce fil (multi-agents Nexus/Seeker) */
+  agents?: AgentId[]
+  /** Sandbox workspace déjà bootstrappée sur le disque */
+  sandboxReady?: boolean
 }
 
 export interface Keys {
@@ -154,9 +163,20 @@ function sanitizeConversation(c: Conversation): Conversation | null {
           m.usage && Number.isFinite(m.usage?.prompt) && Number.isFinite(m.usage?.completion)
             ? { prompt: m.usage.prompt, completion: m.usage.completion }
             : undefined,
+        agent: m.agent === 'nexus' || m.agent === 'seeker' ? m.agent : undefined,
+        toolEvents: Array.isArray(m.toolEvents)
+          ? m.toolEvents
+              .filter((t) => t && typeof t.tool === 'string' && typeof t.detail === 'string')
+              .map((t) => ({ tool: t.tool, detail: t.detail }))
+              .slice(0, 20)
+          : undefined,
       })),
     open: false,
     incognito: Boolean(c.incognito),
+    agents: Array.isArray(c.agents)
+      ? c.agents.filter((a): a is AgentId => a === 'nexus' || a === 'seeker')
+      : undefined,
+    sandboxReady: c.sandboxReady ? true : undefined,
   }
 }
 
