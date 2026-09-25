@@ -6,8 +6,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-4f8cff.svg)](LICENSE)
 ![Svelte 5 + TypeScript + Vite 6](https://img.shields.io/badge/Svelte%205%20%2B%20TypeScript%20%2B%20Vite%206-ChatDeck-ff3e00)
 ![svelte-check](https://img.shields.io/badge/svelte--check-0%20erreur%2C%200%20warning-brightgreen)
-![tests](https://img.shields.io/badge/tests-35%20passants-brightgreen)
-![bundle](https://img.shields.io/badge/bundle-~62%20kB%20gzip-4f8cff)
+![tests](https://img.shields.io/badge/tests-64%20passants-brightgreen)
+![bundle](https://img.shields.io/badge/bundle-~72%20kB%20gzip-4f8cff)
 
 ## Pourquoi
 
@@ -37,9 +37,9 @@ npm run dev          # http://localhost:5199
 Les clés se saisissent aussi dans **⚙︎ Réglages** (⌘K → « Réglages ») : test en direct par fournisseur, stockage `localStorage`, jamais envoyées ailleurs qu'au fournisseur choisi (via le proxy Vite). Fournisseurs custom : `custom-providers.local.json` (gitignore) alimente le proxy générique.
 
 ```bash
-npm test             # Vitest : store + parsing SSE + coût (35 tests)
+npm test             # Vitest : store, SSE, coût, snap, recherche (64 tests)
 npm run check        # svelte-check (0 erreur, 0 warning)
-npm run build        # bundle production (~62 kB gzip)
+npm run build        # bundle production (~72 kB gzip)
 ```
 
 ## Fonctionnalités
@@ -59,6 +59,23 @@ npm run build        # bundle production (~62 kB gzip)
 - **Barre de tâches (pill)** : bouton jaune du châssis (ou ⌘K) réduit ChatDeck en pastille compacte avec état live du stream (point pulsant, tokens), restaurable en un clic
 - **Barre d'état** : fournisseur, modèle, latence, **tokens réels** (usage renvoyé par l'API quand disponible, estimation sinon) et **coût estimé par conversation** (tarifs du catalogue OpenRouter, repli indicatif)
 - **Palette de commandes ⌘K** : toutes les actions au clavier, dont snap zone suivante (⌘⌥S)
+- **Barre d'outils permanente** : Agents · Duel · Fichiers · Terminal · Chercher · Réglages, présente dans tous les modes (docké, duel, flottant), états actifs surlignés
+
+### Agents & sandbox (Nexus & Seeker)
+- **Nexus** 🧠, super agent orchestrateur multidisciplinaire : il écrit le brief dans `NOTES.md`, crée les fichiers, délègue à **Seeker** 🔎 (exploratrice : recherche, analyse) puis conclut d'après son rapport — délégation multi-agents dans le même fil
+- **Function calling réel** (OpenAI-compatible) : `list_tree`, `read_file`, `write_file`, `run_command`, `delegate_to_seeker`, `report_to_nexus` ; rounds d'outils plafonnés avec rappel de conclusion
+- **Sandbox disque par conversation** : `~/.chatdeck/workspaces/<conv-id>/` créée au premier message du fil (README, NOTES, src/, package.json) via les endpoints `/api/sandbox` du serveur Vite — chemins confinés (anti path-traversal), tailles plafonnées, commandes agents en liste blanche
+- **Terminal intégré** ⌨︎ : exécution réelle dans le workspace — `node`, `npm`, `npx`, `git`, `ls`, `cat`… — spawn sans shell, timeout 60 s, sortie streamée, historique ↑/↓
+- **Panneau Fichiers** 📁 : explorer la sandbox, éditer, créer, supprimer
+- **Santé sandbox** dans les réglages : racine, nombre de workspaces, tailles, suppression unitaire ou générale
+
+### Mode duel
+- **Deux conversations côte à côte** (⚔︎ dans la barre d'outils ou ⌘K) avec splitter redimensionnable (20–80 %, double-clic = 50)
+- **Streaming concurrent** : chaque conversation stream indépendamment (Stop par colonne) ; bouton **⇉** envoie le même message aux deux — idéal pour comparer deux modèles
+
+### Recherche globale ⌘⇧F
+- Cherche dans **tous les messages de toutes les conversations**, insensible à la casse
+- Extraits avec **surlignage** de la correspondance, badge agent/fournisseur ; clic = ouverture du fil, **saut au message** avec flash visuel
 
 ### Modèles
 - **Catalogue OpenRouter complet** : combobox avec recherche (nom, id, contexte), navigation clavier, saisie libre de n'importe quel id, cache 10 min, repli sur la liste courte
@@ -82,7 +99,8 @@ npm run build        # bundle production (~62 kB gzip)
 | `⌘\` | Toggle panneau latéral |
 | `⌘⌥F` | Popout de la conversation |
 | `⌘⌥S` | Snap : zone suivante (quarter → moitié → plein écran) |
-| `Échap` | Fermer palette / annuler |
+| `⌘⇧F` | Recherche globale dans toutes les conversations |
+| `Échap` | Fermer palette / recherche / annuler |
 
 ## Architecture
 
@@ -91,24 +109,31 @@ src/
 ├── App.svelte                    # orchestrateur : état, streaming, modes fenêtre, raccourcis
 ├── main.ts                       # dispatch app principale / popout (#popout=…)
 └── lib/
-    ├── llm.ts                    # fournisseurs + streamChat SSE + catalogue + tarifs OpenRouter
-    ├── store.ts                  # conversations/clés/réglages/layout/customs persistés
-    ├── layout.svelte.ts          # LayoutManager : panneaux, popouts, mode fenêtre, BroadcastChannel
-    ├── float.svelte.ts           # moteur flottant : zones de snap (quarters/moitiés/plein écran), resize 8 dirs
+    ├── llm.ts                    # fournisseurs + streamChat SSE (tool-calling inclus) + catalogue + tarifs
+    ├── agents.ts                 # personas Nexus/Seeker, outils function calling, exécution sandbox
+    ├── search.ts                 # recherche globale (extraits, plafonnement)
     ├── cost.ts                   # usage API + coût estimé par conversation (tarifs ou repli)
+    ├── float.svelte.ts           # moteur flottant : zones de snap (quarters/moitiés/plein écran), resize 8 dirs
+    ├── store.ts                  # conversations/clés/réglages/layout/customs persistés
+    ├── layout.svelte.ts          # LayoutManager : panneaux, popouts, mode fenêtre, duel, BroadcastChannel
     └── components/
         ├── WindowFrame.svelte    # châssis macOS (3 pastilles)
+        ├── Toolbar.svelte        # barre d'outils permanente (agents, duel, fichiers, terminal…)
         ├── FloatingWindow.svelte # fenêtre flottante : drag, resize 8 dirs, snap + ghost 150 ms
         ├── TaskbarPill.svelte    # pastille barre de tâches (état live, restaurable)
         ├── TabBar.svelte         # onglets réordonnables
         ├── Sidebar.svelte        # historique + import/export + incognito
-        ├── Composer.svelte       # saisie + sélecteurs fournisseur/modèle
+        ├── Composer.svelte       # saisie + sélecteurs fournisseur/modèle/agents + envoi duel ⇉
         ├── ModelPicker.svelte    # combobox catalogue (~460 modèles)
-        ├── SettingsPanel.svelte  # réglages dockable (clés, customs, apparence)
+        ├── SettingsPanel.svelte  # réglages dockable (clés, customs, apparence, santé sandbox)
+        ├── FilesPanel.svelte     # explorateur de la sandbox par conversation
+        ├── TerminalPanel.svelte  # terminal réel du workspace (spawn borné, sortie streamée)
+        ├── SearchPanel.svelte    # recherche globale ⌘⇧F
         ├── StatusBar.svelte      # fournisseur, latence, tokens réels, coût estimé
         ├── CommandPalette.svelte # palette ⌘K
-        ├── ChatMessage.svelte    # bulle markdown sûre
+        ├── ChatMessage.svelte    # bulle markdown sûre + badges agents
         └── Popout.svelte         # fenêtre secondaire synchronisée
+sandbox-server.ts                # sandbox disque : bootstrap/arbre/fichiers/exec/terminal (dev)
 vite.config.ts                    # proxies par fournisseur + /api/custom/:id + /keys.local (dev)
 ```
 
@@ -116,13 +141,15 @@ Le navigateur ne parle **qu'à localhost** : fournisseurs intégrés proxifiés 
 
 ## Stack
 
-**Svelte 5** (runes `$state`/`$derived`/`$effect`, `$props()`), **TypeScript strict** (zéro `any`), **Vite 6**, marked/DOMPurify. Aucun framework CSS, aucun state manager externe, aucune lib de drag/resize (pointer events natifs). **~62 kB gzip** au total.
+**Svelte 5** (runes `$state`/`$derived`/`$effect`, `$props()`), **TypeScript strict** (zéro `any`), **Vite 6**, marked/DOMPurify. Aucun framework CSS, aucun state manager externe, aucune lib de drag/resize (pointer events natifs). **~72 kB gzip** au total.
 
 ## Tests
 
 - `src/lib/store.test.ts` — persistance, migration défensive, incognito exclu du stockage, import/export
 - `src/lib/llm.test.ts` — parser SSE (deltas, `[DONE]`, fragments coupés, erreurs HTTP/SSE, abort), registre fournisseurs
 - `src/lib/cost.test.ts` — usage réel vs estimé, tarifs catalogue vs repli, formatage des coûts
+- `src/lib/float.test.ts` — resize 8 directions (minima, viewport), zones de snap, cycle, enfoncement
+- `src/lib/search.test.ts` — extraits, casse, plafonnement par conversation, agents
 
 ## Onglets frères
 
