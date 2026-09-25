@@ -30,15 +30,18 @@
 
   const current = $derived(conversations.find((c) => c.id === currentId) ?? null)
 
-  // Initialisation (une seule fois) : état persisté + préchargement des clés dev
-  {
-    conversations = loadConversations().map((c) => ({
+  // Initialisation (une seule fois) : état persisté + préchargement des clés dev.
+  // $effect.root = portée réactive explicite hors cycle de rendu : les lectures
+  // y sont volontaires (pas des captures d'init), et rien ne se déclenche après.
+  $effect.root(() => {
+    const loaded = loadConversations().map((c) => ({
       ...c,
       messages: c.messages.filter((m) => m.content.trim()), // purge les bulles vides
     }))
+    conversations = loaded
     keys = loadKeys()
     settings = loadSettings()
-    if (conversations.length) currentId = conversations[0].id
+    if (loaded.length) currentId = loaded[0].id
     else newChat()
     fetch('/keys.local')
       .then((r) => (r.ok ? r.json() : {}))
@@ -52,7 +55,7 @@
         }
       })
       .catch(() => {})
-  }
+  })
 
   // Persistance automatique
   $effect(() => {

@@ -17,7 +17,11 @@
   <div class="avatar">{msg.role === 'assistant' ? '⚡' : '🧑'}</div>
   <div class="bubble">
     {#if msg.role === 'assistant'}
-      {@html renderMarkdown(msg.content || '<span class="cursor">▍</span>')}
+      {#if msg.content}
+        {@html renderMarkdown(msg.content)}
+      {:else}
+        <span class="cursor">▍</span>
+      {/if}
       {#if msg.content && !msg.error}
         <button class="copy" onclick={copy}>{copied ? '✓ copié' : 'copier'}</button>
       {/if}
@@ -65,6 +69,7 @@
     white-space: pre-wrap;
   }
   .cursor {
+    display: inline-block;
     animation: blink 1s steps(2) infinite;
     color: var(--accent);
   }

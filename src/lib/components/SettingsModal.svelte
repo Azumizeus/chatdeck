@@ -1,6 +1,6 @@
 <script lang="ts">
   import { PROVIDERS, type ProviderId } from '../llm'
-  import type { Keys, Settings } from '../store'
+  import { defaultSettings, type Keys, type Settings } from '../store'
 
   let {
     keys,
@@ -14,7 +14,12 @@
     onClose: () => void
   } = $props()
 
+  // Copies locales : le dialogue édite un brouillon ; la propagation à l'app
+  // se fait uniquement via onSave(). Le composant est monté dans un {#if}
+  // (App.svelte) : il est recréé à chaque ouverture → copies toujours fraîches.
+  // svelte-ignore state_referenced_locally
   let k = $state<Keys>({ ...keys })
+  // svelte-ignore state_referenced_locally
   let s = $state<Settings>({ ...settings })
   let results = $state<Record<string, string>>({})
   let testing = $state<string | null>(null)
@@ -43,6 +48,14 @@
 
   function save(): void {
     onSave({ ...k }, { ...s })
+  }
+
+  /** Réinitialisation propre : réglages par défaut + clés telles que reçues à l'ouverture. */
+  function reset(): void {
+    s = defaultSettings()
+    // svelte-ignore state_referenced_locally
+    k = { ...keys }
+    results = {}
   }
 </script>
 
@@ -84,6 +97,8 @@
     <textarea class="system" rows="3" bind:value={s.system} placeholder="ex : Réponds en français, sois concis."></textarea>
 
     <div class="actions">
+      <button class="ghost danger" onclick={reset}>Réinitialiser</button>
+      <span class="spacer"></span>
       <button class="ghost" onclick={onClose}>Annuler</button>
       <button class="primary" onclick={save}>Enregistrer</button>
     </div>
@@ -149,6 +164,13 @@
   .ghost:hover:not(:disabled) {
     color: var(--text);
     border-color: var(--accent);
+  }
+  .ghost.danger:hover:not(:disabled) {
+    color: var(--danger);
+    border-color: var(--danger);
+  }
+  .spacer {
+    flex: 1;
   }
   .result {
     font-size: 12px;
