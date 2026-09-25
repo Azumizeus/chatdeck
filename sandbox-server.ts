@@ -33,6 +33,38 @@ const MAX_TREE_ENTRIES = 500
 const MAX_RUN_OUTPUT = 200_000
 const RUN_TIMEOUT_MS = 60_000
 const CONV_ID_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/i
+type OsProfile = 'mac' | 'windows' | 'linux'
+
+/** Fichiers d'amorçage spécifiques au profil OS « sécurisé » (Secure AI Multi-OS). */
+const OS_FILES: Record<OsProfile, Record<string, string>> = {
+  mac: {
+    'platform/Info.plist': `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>CFBundleName</key><string>ChatDeck Sandbox</string>
+  <key>CFBundleVersion</key><string>1.0</string>
+  <key>SandboxProfile</key><string>chroot+AES-256+reseau-isole</string>
+</dict></plist>
+`,
+  },
+  windows: {
+    'platform/app.config.json': `{
+  "framework": "net8.0",
+  "runtimeIdentifier": "win-x64",
+  "sandbox": { "chroot": true, "encryption": "AES-256", "network": "isolated" }
+}
+`,
+  },
+  linux: {
+    'platform/Dockerfile': `# Profil sandbox Linux — réseau isolé, système de fichiers borné
+FROM node:22-alpine
+WORKDIR /workspace
+COPY . .
+RUN npm install --omit=dev || true
+CMD ["node", "src/main.js"]
+`,
+  },
+}
 
 /** Fichiers d'amorçage écrits au bootstrap (jamais écrasés s'ils existent). */
 const SEED_FILES: Record<string, string> = {
@@ -88,21 +120,37 @@ function safeResolve(convId: string, sub: string): { base: string; target: strin
   return { base, target }
 }
 
-/** Crée le workspace + fichiers d'amorçage (sans écraser l'existant). */
-async function seedWorkspace(convId: string): Promise<number> {
+/** Crée le workspace + fichiers d'amorçage (sans écraser) + profil OS demandé. */
+async function seedWorkspace(convId: string, os?: OsProfile): Promise<number> {
   const g = safeResolve(convId, '')
   if (!g) throw new Error('id de conversation invalide')
   await mkdir(path.join(g.base, 'src'), { recursive: true })
   let written = 0
-  for (const [p, content] of Object.entries(SEED_FILES)) {
+  const seeds: Record<string, string> = { ...SEED_FILES, ...(os ? OS_FILES[os] : {}) }
+  for (const [p, content] of Object.entries(seeds)) {
     const t = safeResolve(convId, p)
     if (!t) continue
     if (!existsSync(t.target)) {
+      await mkdir(path.dirname(t.target), { recursive: true })
       await writeFile(t.target, content, 'utf8')
       written++
     }
   }
   return written
+}
+
+/** Profil OS courant d'un workspace (par défaut : celui de la machine hôte). */
+function osOf(convId: string): OsProfile {
+  const g = safeResolve(convId, '')
+  if (g) {
+    try {
+      const v = readFileSync(path.join(g.base, '.chatdeck', 'os.txt'), 'utf8').trim()
+      if (v === 'mac' || v === 'windows' || v === 'linux') return v
+    } catch {
+      /* pas encore fixé */
+    }
+  }
+  return process.platform === 'darwin' ? 'mac' : process.platform === 'win32' ? 'windows' : 'linux'
 }
 
 interface TreeNode {
@@ -381,12 +429,6 @@ export function sandboxServer(): Plugin {
               return json(res, 200, { ok: true })
             }
 
-            // bootstrap : crée le workspace + fichiers d'amorçage (sans écraser)
-            if (action === 'bootstrap' && req.method === 'POST') {
-              const created = await seedWorkspace(convId)
-              return json(res, 200, { ok: true, created, root: base })
-            }
-
             // tree
             if (action === 'tree' && req.method === 'GET') {
               if (!existsSync(base)) return json(res, 200, { exists: false, tree: [] })
@@ -493,6 +535,109 @@ export function sandboxServer(): Plugin {
               }
               const tree = await walk2(base, 0)
               return json(res, 200, { path: base, tree })
+            }
+
+            // bootstrap : crée le workspace + amorçage (+ profil OS optionnel ?os=mac|windows|linux)
+            if (action === 'bootstrap' && req.method === 'POST') {
+              const osParam = query.get('os')
+              const os = osParam === 'mac' || osParam === 'windows' || osParam === 'linux' ? osParam : undefined
+              const created = await seedWorkspace(convId, os)
+              if (os) {
+                await mkdir(path.join(base, '.chatdeck'), { recursive: true })
+                await writeFile(path.join(base, '.chatdeck', 'os.txt'), os, 'utf8')
+              }
+              return json(res, 200, { ok: true, created, root: base, os: osOf(convId) })
+            }
+
+            // os : lit (GET) ou choisit (POST) le profil OS sécurisé du workspace
+            if (action === 'os') {
+              if (req.method === 'GET') return json(res, 200, { os: osOf(convId) })
+              if (req.method === 'POST') {
+                const body = JSON.parse(await readBody(req)) as { os?: string }
+                const os = body.os
+                if (os !== 'mac' && os !== 'windows' && os !== 'linux') return json(res, 400, { error: 'os invalide (mac|windows|linux)' })
+                if (!existsSync(base)) await seedWorkspace(convId, os)
+                await mkdir(path.join(base, '.chatdeck'), { recursive: true })
+                await writeFile(path.join(base, '.chatdeck', 'os.txt'), os, 'utf8')
+                // écrit les fichiers du profil s'ils manquent
+                for (const [p, content] of Object.entries(OS_FILES[os])) {
+                  const t = safeResolve(convId, p)
+                  if (t && !existsSync(t.target)) {
+                    await mkdir(path.dirname(t.target), { recursive: true })
+                    await writeFile(t.target, content, 'utf8')
+                  }
+                }
+                return json(res, 200, { ok: true, os, note: 'chroot/AES-256 simulés dans le workspace (fichiers platform/), exécutions bornées par la liste blanche du terminal' })
+              }
+            }
+
+            // serve : sert un fichier du workspace pour la preview live (texte/html/css/js/json/svg/md)
+            if (action === 'serve' && req.method === 'GET') {
+              const rel = query.get('path') ?? 'index.html'
+              const t = safeResolve(convId, rel)
+              if (!t) return json(res, 400, { error: 'chemin invalide' })
+              const info = await stat(t.target).catch(() => null)
+              if (!info?.isFile()) return json(res, 404, { error: 'fichier introuvable' })
+              if (info.size > MAX_FILE_BYTES) return json(res, 413, { error: 'fichier trop volumineux' })
+              const ext = path.extname(t.target).toLowerCase()
+              const mime: Record<string, string> = {
+                '.html': 'text/html; charset=utf-8',
+                '.css': 'text/css; charset=utf-8',
+                '.js': 'text/javascript; charset=utf-8',
+                '.mjs': 'text/javascript; charset=utf-8',
+                '.json': 'application/json; charset=utf-8',
+                '.svg': 'image/svg+xml',
+                '.md': 'text/plain; charset=utf-8',
+                '.txt': 'text/plain; charset=utf-8',
+              }
+              res.setHeader('Content-Type', mime[ext] ?? 'text/plain; charset=utf-8')
+              res.setHeader('X-Content-Type-Options', 'nosniff')
+              res.end(await readFile(t.target, 'utf8'))
+              return
+            }
+
+            // git : arbre des commits + status (git log/status read-only, cwd = workspace)
+            if (action === 'git' && req.method === 'GET') {
+              const { execFile } = await import('node:child_process')
+              const { promisify } = await import('node:util')
+              const run = promisify(execFile)
+              if (!existsSync(path.join(base, '.git'))) {
+                return json(res, 200, { repo: false, log: [], status: null })
+                }
+              const opt = { cwd: base, maxBuffer: 1024 * 1024 }
+              const log = await run('git', ['log', '--oneline', '-30', '--date=short', '--pretty=%h|%ad|%s'], opt)
+                .then((x) => x.stdout.trim().split('\n').filter(Boolean).map((l) => {
+                  const [hash, date, ...rest] = l.split('|')
+                  return { hash, date, subject: rest.join('|') }
+                }))
+                .catch(() => [])
+              const status = await run('git', ['status', '--porcelain'], opt)
+                .then((x) => x.stdout.split('\n').filter(Boolean).slice(0, 50))
+                .catch(() => [])
+              return json(res, 200, { repo: true, log, status })
+            }
+
+            // webfetch : explorateur du modèle — récupère une page/texte (http(s), borné)
+            if (action === 'webfetch' && req.method === 'GET') {
+              const raw = query.get('url') ?? ''
+              let target: URL
+              try {
+                target = new URL(raw)
+              } catch {
+                return json(res, 400, { error: 'URL invalide' })
+              }
+              if (target.protocol !== 'http:' && target.protocol !== 'https:') return json(res, 400, { error: 'protocole interdit' })
+              if (['localhost', '127.0.0.1', '0.0.0.0', '::1'].includes(target.hostname)) {
+                return json(res, 400, { error: 'accès local interdit' })
+              }
+              try {
+                const r = await fetch(target, { redirect: 'follow', signal: AbortSignal.timeout(15_000) })
+                const ct = r.headers.get('content-type') ?? ''
+                const text = (await r.text()).slice(0, 200_000)
+                return json(res, 200, { status: r.status, contentType: ct, url: r.url, text })
+              } catch (e) {
+                return json(res, 502, { error: `téléchargement impossible : ${(e as Error).message}` })
+              }
             }
 
             // run : terminal réel (spawn borné, sortie streamée)

@@ -128,6 +128,19 @@ export function toolsFor(agent: AgentId): ToolDef[] {
     {
       type: 'function',
       function: {
+        name: 'web_fetch',
+        description:
+          'Explore le web : télécharge une page http(s) et renvoie son texte brut (200 ko max). Utilise-le pour documenter, vérifier une API ou citer une source.',
+        parameters: {
+          type: 'object',
+          properties: { url: P('url', 'string', 'URL http(s) complète à récupérer') },
+          required: ['url'],
+        },
+      },
+    },
+    {
+      type: 'function',
+      function: {
         name: 'promptdeck_browse',
         description:
           'Explore le MEGA PACK PromptDeck (190 agents spécialistes + 133 skills) : renvoie l\'arborescence du dossier pour découvrir agents, skills et cartes disponibles.',
@@ -200,6 +213,13 @@ export async function execTool(convId: string, call: ToolCall): Promise<string> 
       const cmd = String(call.args.cmd ?? '')
       const j = await api<{ out: string }>('GET', convId, 'exec', undefined, `?cmd=${encodeURIComponent(cmd)}`)
       return j.out
+    }
+    case 'web_fetch': {
+      const url = String(call.args.url ?? '')
+      const r = await fetch(`/api/sandbox/${convId}/webfetch?url=${encodeURIComponent(url)}`)
+      const j = (await r.json()) as { status?: number; text?: string; error?: string; contentType?: string }
+      if (j.error) return `Erreur web_fetch : ${j.error}`
+      return `HTTP ${j.status} (${j.contentType ?? '?'}) — ${url}\n\n${(j.text ?? '').slice(0, 12_000)}`
     }
     case 'promptdeck_browse': {
       const r = await fetch('/api/sandbox/promptdeck')

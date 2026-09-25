@@ -6,3 +6,6 @@ keys.local.json
 .freebuff/
 custom-providers.local.json
 .commit-msg.txt
+test-results/
+playwright-report/
+blob-report/

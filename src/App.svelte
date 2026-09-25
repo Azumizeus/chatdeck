@@ -40,6 +40,7 @@
   import SearchPanel from './lib/components/SearchPanel.svelte'
   import Toolbar from './lib/components/Toolbar.svelte'
   import TerminalPanel from './lib/components/TerminalPanel.svelte'
+  import PreviewPanel from './lib/components/PreviewPanel.svelte'
   import type { Command } from './lib/components/CommandPalette.svelte'
   import { snapCycle, zoneRect } from './lib/float.svelte'
   import type { Edge } from './lib/float.svelte'
@@ -60,8 +61,16 @@
   let showFiles = $state(false)
   let showSearch = $state(false)
   let showTerminal = $state(false)
-  /** Conversation dont le terminal est affiché (épinglée à l'ouverture) */
+  let showPreview = $state(false)
+  /** Conversations épinglées à l'ouverture des panneaux (duel inclus) */
   let terminalConvId = $state<string | null>(null)
+  let filesConvId = $state<string | null>(null)
+  let previewConvId = $state<string | null>(null)
+  /** Verdict du duel : synthèse par un 3ᵉ modèle */
+  let verdict = $state<{ text: string } | null>(null)
+  let arbitreBusy = $state(false)
+  let arbitreModel = $state('anthropic/claude-sonnet-4')
+  let arbitreAbort: AbortController | null = null
   /** ts du message à surligner (saut depuis la recherche) */
   let flashTs = $state<number | null>(null)
   let scroller: HTMLDivElement | undefined = $state()
@@ -576,6 +585,74 @@
     showTerminal = !showTerminal
   }
 
+  function toggleFiles(convId?: string): void {
+    filesConvId = convId ?? currentId
+    showFiles = !showFiles
+  }
+
+  function togglePreview(convId?: string): void {
+    if (!showPreview || convId) previewConvId = convId ?? currentId
+    showPreview = !showPreview
+  }
+
+  /** Synthèse du duel : un 3ᵉ modèle compare les deux réponses et tranche. */
+  async function arbitrate(): Promise<void> {
+    const d = layout.duel
+    if (!d || arbitreBusy) return
+    const l = conversations.find((c) => c.id === d.left)
+    const r = conversations.find((c) => c.id === d.right)
+    if (!l || !r) return
+    const apiKey = keys.openrouter
+    if (!apiKey) {
+      alert('Une clé OpenRouter est requise pour l’arbitre (⚙︎ Réglages).')
+      return
+    }
+    const lastUser = (c: Conversation): string => [...c.messages].reverse().find((m) => m.role === 'user')?.content ?? '(question partagée)'
+    const lastAnswer = (c: Conversation): string =>
+      [...c.messages].reverse().find((m) => m.role === 'assistant' && m.content)?.content ?? '(pas de réponse)'
+    verdict = { text: '' }
+    arbitreBusy = true
+    const controller = new AbortController()
+    arbitreAbort = controller
+    try {
+      await streamChat({
+        providerId: 'openrouter',
+        apiKey,
+        model: arbitreModel,
+        temperature: 0.2,
+        maxTokens: 1200,
+        signal: controller.signal,
+        messages: [
+          {
+            role: 'system',
+            content:
+              'Tu es l’arbitre neutre d’un duel de modèles. Compare objectivement les deux réponses à la même question : exactitude, complétude, clarté. Termine par une ligne « Verdict : A » ou « Verdict : B » ou « Verdict : égalité » suivie d’une courte justification. Réponds en français.',
+          },
+          {
+            role: 'user',
+            content: `Question :
+${lastUser(l)}
+
+— Réponse A (gauche, modèle ${l.model}) :
+${lastAnswer(l).slice(0, 4000)}
+
+— Réponse B (droite, modèle ${r.model}) :
+${lastAnswer(r).slice(0, 4000)}`,
+          },
+        ],
+        onDelta: (t) => (verdict = { text: (verdict?.text ?? '') + t }),
+      })
+    } catch (e) {
+      if ((e as Error).name !== 'AbortError') verdict = { text: `Erreur : ${(e as Error).message}` }
+    } finally {
+      arbitreBusy = false
+    }
+  }
+
+  function stopArbitre(): void {
+    arbitreAbort?.abort()
+  }
+
   /** Fait avancer le cycle de snap au clavier/palette : quarters → moitiés → plein écran → retour. */
   function cycleSnap(): void {
     const cycle = snapCycle('left')
@@ -706,10 +783,12 @@
     agentsActive={Boolean(current?.agents?.length)}
     filesOpen={showFiles}
     terminalOpen={showTerminal}
+    previewOpen={showPreview}
     onToggleAgents={() => setAgents(current?.agents?.length ? [] : ['nexus', 'seeker'])}
     onToggleDuel={toggleDuel}
-    onToggleFiles={() => (showFiles = !showFiles)}
+    onToggleFiles={() => toggleFiles()}
     onToggleTerminal={toggleTerminal}
+    onTogglePreview={() => togglePreview()}
     onSearch={() => (showSearch = true)}
     onSettings={() => layout.toggleSettings()}
   />
@@ -816,6 +895,21 @@
 {#snippet convPane(convId: string)}
   {@const c = conversations.find((x) => x.id === convId)}
   {#if c}
+    <Toolbar
+      variant="perConv"
+      conv={c}
+      streaming={streamingIds.has(convId)}
+      duelActive={false}
+      agentsActive={Boolean(c.agents?.length)}
+      filesOpen={showFiles && filesConvId === convId}
+      terminalOpen={showTerminal && terminalConvId === convId}
+      onToggleAgents={() => setAgentsFor(convId, c.agents?.length ? [] : ['nexus', 'seeker'])}
+      onToggleDuel={() => {}}
+      onToggleFiles={() => toggleFiles(convId)}
+      onToggleTerminal={() => { terminalConvId = convId; showTerminal = !showTerminal }}
+      onSearch={() => (showSearch = true)}
+      onSettings={() => layout.toggleSettings()}
+    />
     <div class="col-head">
       <span class="dot" style="background:{providerOf(c.providerId, customs).color}"></span>
       <span class="col-title">{c.incognito ? '👻 ' : ''}{c.title}</span>
@@ -851,7 +945,16 @@
     streaming={anyStreaming}
     tokens={current?.messages.filter((m) => m.role === 'assistant').at(-1)?.usage?.completion ?? 0}
     {customs}
+    agentsActive={Boolean(current?.agents?.length)}
+    filesOpen={showFiles}
+    terminalOpen={showTerminal}
+    previewOpen={showPreview}
     onRestore={() => layout.setAppMode('floating')}
+    onToggleAgents={() => setAgents(current?.agents?.length ? [] : ['nexus', 'seeker'])}
+    onToggleFiles={() => toggleFiles()}
+    onToggleTerminal={toggleTerminal}
+    onTogglePreview={() => togglePreview()}
+    onSettings={() => layout.toggleSettings()}
   />
 {:else if layout.duel}
   <div class="app">
@@ -887,6 +990,27 @@
           {@render convPane(layout.duel.right)}
         </div>
       </div>
+      <div class="verdictbar">
+        <select bind:value={arbitreModel} title="Modèle arbitre">
+          <option value="anthropic/claude-sonnet-4">Arbitre : Claude Sonnet 4</option>
+          <option value="openai/gpt-4.1">Arbitre : GPT-4.1</option>
+          <option value="google/gemini-2.5-flash">Arbitre : Gemini 2.5 Flash</option>
+        </select>
+        {#if arbitreBusy}
+          <button class="ghost" onclick={stopArbitre}>■ arrêter</button>
+        {:else}
+          <button class="ghost" onclick={() => void arbitrate()} disabled={!layout.duel.left || !layout.duel.right}>⚖︎ Synthèse</button>
+        {/if}
+      </div>
+      {#if verdict}
+        <div class="verdict">
+          <header class="vhead">
+            <strong>⚖︎ Arbitrage — {arbitreModel}</strong>
+            <button class="mini" onclick={() => (verdict = null)} title="Fermer">×</button>
+          </header>
+          <div class="vbody">{verdict.text}<span class="cursor">{arbitreBusy ? '▍' : ''}</span></div>
+        </div>
+      {/if}
     </WindowFrame>
 
     <StatusBar conv={current} streaming={anyStreaming} {latencyMs} {customs} />
@@ -922,12 +1046,20 @@
   <SearchPanel {conversations} onOpen={jumpTo} onClose={() => (showSearch = false)} />
 {/if}
 
-{#if showFiles && current}
-  <FilesPanel convId={current.id} enabled={Boolean(current.agents?.length)} onClose={() => (showFiles = false)} />
+{#if showFiles && (filesConvId ?? currentId)}
+  {@const fid = filesConvId ?? currentId!}
+  {@const fc = conversations.find((x) => x.id === fid)}
+  {#if fc}
+    <FilesPanel convId={fid} enabled={Boolean(fc.agents?.length)} onClose={() => (showFiles = false)} />
+  {/if}
 {/if}
 
 {#if showTerminal && terminalConvId}
   <TerminalPanel convId={terminalConvId} onClose={() => (showTerminal = false)} />
+{/if}
+
+{#if showPreview && (previewConvId ?? currentId)}
+  <PreviewPanel convId={previewConvId ?? currentId!} onClose={() => (showPreview = false)} />
 {/if}
 
 {#if showPalette}
@@ -1111,5 +1243,68 @@
   }
   .duel-split:hover {
     background: color-mix(in srgb, var(--accent) 35%, transparent);
+  }
+  .verdictbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .verdictbar select {
+    font-size: 12.5px;
+    flex: 1;
+    max-width: 260px;
+  }
+  .verdictbar .ghost {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 5px 12px;
+    font-size: 12.5px;
+    color: var(--muted);
+  }
+  .verdictbar .ghost:hover:not(:disabled) {
+    color: var(--text);
+    border-color: var(--accent);
+  }
+  .verdict {
+    height: 34%;
+    display: flex;
+    flex-direction: column;
+    border-top: 1px solid var(--border);
+    background: color-mix(in srgb, var(--accent) 6%, var(--bg));
+    flex-shrink: 0;
+  }
+  .vhead {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 12px;
+    font-size: 12.5px;
+  }
+  .vhead .mini {
+    font-size: 12px;
+    padding: 1px 8px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--muted);
+  }
+  .vbody {
+    flex: 1;
+    overflow-y: auto;
+    padding: 4px 14px 12px;
+    font-size: 13.5px;
+    line-height: 1.55;
+    white-space: pre-wrap;
+  }
+  .cursor {
+    color: var(--accent);
+    animation: vblink 1s steps(2) infinite;
+  }
+  @keyframes vblink {
+    50% {
+      opacity: 0;
+    }
   }
 </style>

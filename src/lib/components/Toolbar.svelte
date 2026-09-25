@@ -1,6 +1,8 @@
 <script lang="ts">
-  // Barre d'outils permanente : accès direct aux fonctions clés depuis n'importe
-  // quel mode (docké, flottant, duel) et n'importe quel fil.
+  // Barre d'outils : accès direct aux fonctions clés depuis n'importe quel mode.
+  // - standard  : avec libellés (modes docké / flottant)
+  // - compact   : icônes seules (pill)
+  // - perConv   : outils liés à UNE conversation (colonnes du duel)
   let {
     conv,
     streaming,
@@ -8,30 +10,38 @@
     agentsActive,
     filesOpen,
     terminalOpen,
+    previewOpen,
+    variant = 'standard',
     onToggleAgents,
     onToggleDuel,
     onToggleFiles,
     onToggleTerminal,
+    onTogglePreview,
     onSearch,
     onSettings,
   }: {
-    /** Conversation active (null → boutons liés au fil désactivés) */
     conv: { id: string; agents?: string[] } | null
     streaming: boolean
     duelActive: boolean
     agentsActive: boolean
     filesOpen: boolean
     terminalOpen: boolean
+    previewOpen?: boolean
+    variant?: 'standard' | 'compact' | 'perConv'
     onToggleAgents: () => void
     onToggleDuel: () => void
     onToggleFiles: () => void
     onToggleTerminal: () => void
+    onTogglePreview?: () => void
     onSearch: () => void
     onSettings: () => void
   } = $props()
+
+  const compact = $derived(variant === 'compact')
+  const perConv = $derived(variant === 'perConv')
 </script>
 
-<div class="toolbar" role="toolbar" aria-label="Outils">
+<div class="toolbar" class:compact role="toolbar" aria-label="Outils">
   <button
     class="tb"
     class:active={agentsActive}
@@ -39,41 +49,38 @@
     disabled={!conv || streaming}
     title={agentsActive ? 'Désactiver les agents Nexus & Seeker' : 'Activer les agents Nexus & Seeker (sandbox)'}
   >
-    🧠 <span>Agents</span>
+    🧠 {#if !compact}<span>Agents</span>{/if}
   </button>
-  <button
-    class="tb"
-    class:active={duelActive}
-    onclick={onToggleDuel}
-    title={duelActive ? 'Quitter le mode duel' : 'Mode duel : deux conversations côte à côte'}
-  >
-    ⚔︎ <span>Duel</span>
+  {#if !perConv}
+    <button
+      class="tb"
+      class:active={duelActive}
+      onclick={onToggleDuel}
+      title={duelActive ? 'Quitter le mode duel' : 'Mode duel : deux conversations côte à côte'}
+    >
+      ⚔︎ {#if !compact}<span>Duel</span>{/if}
+    </button>
+  {/if}
+  <button class="tb" class:active={filesOpen} onclick={onToggleFiles} disabled={!conv} title="Fichiers de la sandbox">
+    📁 {#if !compact}<span>Fichiers</span>{/if}
   </button>
-  <button
-    class="tb"
-    class:active={filesOpen}
-    onclick={onToggleFiles}
-    disabled={!conv}
-    title="Fichiers de la sandbox"
-  >
-    📁 <span>Fichiers</span>
+  <button class="tb" class:active={terminalOpen} onclick={onToggleTerminal} disabled={!conv} title="Terminal du workspace">
+    ⌨︎ {#if !compact}<span>Terminal</span>{/if}
   </button>
-  <button
-    class="tb"
-    class:active={terminalOpen}
-    onclick={onToggleTerminal}
-    disabled={!conv}
-    title="Terminal du workspace (node, npm, git…)"
-  >
-    ⌨︎ <span>Terminal</span>
-  </button>
-  <div class="spacer"></div>
-  <button class="tb" onclick={onSearch} title="Rechercher dans toutes les conversations (⌘⇧F)">
-    🔍 <span>Chercher</span>
-  </button>
-  <button class="tb" onclick={onSettings} title="Réglages (clés, sandbox, apparence)">
-    ⚙︎ <span>Réglages</span>
-  </button>
+  {#if onTogglePreview}
+    <button class="tb" class:active={previewOpen} onclick={onTogglePreview} disabled={!conv} title="Preview live du workspace">
+      👁 {#if !compact}<span>Preview</span>{/if}
+    </button>
+  {/if}
+  {#if !perConv}
+    <div class="spacer"></div>
+    <button class="tb" onclick={onSearch} title="Rechercher dans toutes les conversations (⌘⇧F)">
+      🔍 {#if !compact}<span>Chercher</span>{/if}
+    </button>
+    <button class="tb" onclick={onSettings} title="Réglages">
+      ⚙︎ {#if !compact}<span>Réglages</span>{/if}
+    </button>
+  {/if}
 </div>
 
 <style>
@@ -87,6 +94,10 @@
     flex-shrink: 0;
     overflow-x: auto;
   }
+  .toolbar.compact {
+    padding: 3px 8px;
+    gap: 2px;
+  }
   .tb {
     display: flex;
     align-items: center;
@@ -97,6 +108,10 @@
     color: var(--muted);
     font-size: 12px;
     white-space: nowrap;
+  }
+  .compact .tb {
+    padding: 4px 6px;
+    font-size: 13px;
   }
   .tb:hover:not(:disabled) {
     color: var(--text);
