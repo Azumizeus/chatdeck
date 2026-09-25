@@ -37,6 +37,7 @@
   import FloatingWindow from './lib/components/FloatingWindow.svelte'
   import TaskbarPill from './lib/components/TaskbarPill.svelte'
   import CommandPalette from './lib/components/CommandPalette.svelte'
+  import SearchPanel from './lib/components/SearchPanel.svelte'
   import type { Command } from './lib/components/CommandPalette.svelte'
   import { snapCycle, zoneRect } from './lib/float.svelte'
   import type { Edge } from './lib/float.svelte'
@@ -54,6 +55,9 @@
   let latencyMs = $state<number | null>(null)
   let showPalette = $state(false)
   let showFiles = $state(false)
+  let showSearch = $state(false)
+  /** ts du message à surligner (saut depuis la recherche) */
+  let flashTs = $state<number | null>(null)
   let scroller: HTMLDivElement | undefined = $state()
 
   const current = $derived(conversations.find((c) => c.id === currentId) ?? null)
@@ -478,6 +482,18 @@
     void sendTo(convId, text)
   }
 
+  /** Saut depuis la recherche : ouvre le fil, scrolle au message et le flashe. */
+  function jumpTo(convId: string, ts: number): void {
+    selectChat(convId)
+    flashTs = ts
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        document.querySelector(`[data-ts="${ts}"]`)?.scrollIntoView({ block: 'center', behavior: 'auto' })
+      }),
+    )
+    setTimeout(() => (flashTs = null), 1800)
+  }
+
   function stop(): void {
     activeAbort?.abort()
   }
@@ -579,6 +595,9 @@
     } else if (mod && e.altKey && e.key.toLowerCase() === 'f') {
       e.preventDefault()
       void popout('chat')
+    } else if (mod && e.shiftKey && e.key.toLowerCase() === 'f') {
+      e.preventDefault()
+      showSearch = !showSearch
     } else if (mod && e.altKey && e.key.toLowerCase() === 's') {
       e.preventDefault()
       cycleSnap()
@@ -587,6 +606,7 @@
       layout.toggleSidebar()
     } else if (e.key === 'Escape') {
       showPalette = false
+      showSearch = false
     }
   }
 
@@ -607,6 +627,7 @@
     { id: 'reset-layout', label: 'Réinitialiser la disposition des panneaux', run: () => layout.reset() },
     { id: 'agents', label: current?.agents?.length ? 'Désactiver les agents Nexus & Seeker' : 'Activer les agents Nexus & Seeker (sandbox)', run: () => setAgents(current?.agents?.length ? [] : ['nexus', 'seeker']) },
     { id: 'files', label: showFiles ? 'Fermer le panneau Fichiers (sandbox)' : 'Ouvrir le panneau Fichiers (sandbox)', run: () => (showFiles = !showFiles) },
+    { id: 'search', label: 'Rechercher dans toutes les conversations', hint: '⌘⇧F', run: () => (showSearch = true) },
     { id: 'float', label: 'Fenêtre flottante', run: () => floatWith(layout.appGeo) },
     { id: 'snap', label: 'Snap : zone suivante (quarter → moitié → plein écran)', hint: '⌘⌥S', run: cycleSnap },
     { id: 'pill', label: layout.appMode === 'pill' ? 'Restaurer depuis la barre de tâches' : 'Réduire en barre de tâches (pill)', run: togglePill },
@@ -689,7 +710,9 @@
               </div>
             {:else}
               {#each current.messages as m, i (i)}
-                <ChatMessage msg={m} />
+                <div class="msg" class:flash={flashTs === m.ts} data-ts={m.ts}>
+                  <ChatMessage msg={m} />
+                </div>
               {/each}
             {/if}
           </div>
@@ -793,7 +816,9 @@
               </div>
             {:else}
               {#each current.messages as m, i (i)}
-                <ChatMessage msg={m} />
+                <div class="msg" class:flash={flashTs === m.ts} data-ts={m.ts}>
+                  <ChatMessage msg={m} />
+                </div>
               {/each}
             {/if}
           </div>
@@ -840,6 +865,10 @@
 
     <StatusBar conv={current} {streaming} {latencyMs} {customs} />
   </div>
+{/if}
+
+{#if showSearch}
+  <SearchPanel {conversations} onOpen={jumpTo} onClose={() => (showSearch = false)} />
 {/if}
 
 {#if showFiles && current}
@@ -904,6 +933,19 @@
     flex: 1;
     overflow-y: auto;
     padding: 22px 26px 10px;
+  }
+  .msg.flash {
+    animation: flash-hl 1.6s ease;
+    border-radius: 10px;
+  }
+  @keyframes flash-hl {
+    0%,
+    30% {
+      background: color-mix(in srgb, var(--accent) 22%, transparent);
+    }
+    100% {
+      background: transparent;
+    }
   }
   .hero {
     height: 100%;
