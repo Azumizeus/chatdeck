@@ -44,4 +44,9 @@ export default defineConfig({
       '/api/mistral': apiProxy('https://api.mistral.ai'),
     },
   },
+  // Vitest : environnement DOM léger pour les tests du store (localStorage)
+  test: {
+    environment: 'happy-dom',
+    include: ['src/**/*.test.ts'],
+  },
 })
