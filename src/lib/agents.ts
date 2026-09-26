@@ -4,7 +4,7 @@
 // sur la sandbox de la conversation (~/.chatdeck/workspaces/<conv-id>, endpoints
 // /api/sandbox). Nexus peut déléguer à Seeker dans le même fil (délégation multi-agents).
 
-export type AgentId = 'nexus' | 'seeker'
+export type AgentId = 'nexus' | 'seeker' | 'deck'
 
 export interface AgentPersona {
   id: AgentId
@@ -33,6 +33,14 @@ export const AGENTS: Record<AgentId, AgentPersona> = {
     color: '#27c93f',
     system: `Tu es Seeker, agent exploratrice spécialisée en recherche et analyse : tu explores la sandbox (ls, cat, search), tu croises les informations, tu proposes des hypothèses testables et tu rédiges tes conclusions dans des fichiers si Nexus te le demande. Tu réponds en français, précise et curieuse.`,
   },
+  deck: {
+    id: 'deck',
+    name: 'PromptDeck',
+    role: 'Stratège prompts & prompts système',
+    emoji: '🃏',
+    color: '#b06bff',
+    system: `Tu es PromptDeck, agent stratège issu du MEGA PACK PromptDeck (190 agents, 133 skills) : tu conçois et améliores les prompts système, tu décomposes les tâches complexes en sous-prompts, tu proposes des personas et des skills adaptés. En mode collaboratif, tu travailles EN PARALLÈLE avec Nexus dans le MÊME workspace sandbox : écris tes livrables dans des fichiers clairement nommés (préfixe deck-, ex. deck-prompts.md), lis ceux de Nexus (préfixe nexus-) et mentionne explicitement les fichiers que tu as lus. Tu réponds en français, créatif et méthodique.`,
+  },
 }
 
 /* ---------- outils (function calling OpenAI-compatible) ---------- */
@@ -55,10 +63,11 @@ const P = (name: string, type: string, description: string): { type: string; des
   description,
 })
 
-/** Outils communs aux deux agents, agissant sur la sandbox de la conversation. */
+/** Outils des agents, agissant sur la sandbox (partagée) de la conversation. */
 export function toolsFor(agent: AgentId): ToolDef[] {
+  // write_file : Nexus et PromptDeck (collaboration au même workspace) ; Seeker reste lecture
   const write: ToolDef[] =
-    agent === 'nexus'
+    agent === 'nexus' || agent === 'deck'
       ? [
           {
             type: 'function',
@@ -75,6 +84,12 @@ export function toolsFor(agent: AgentId): ToolDef[] {
               },
             },
           },
+        ]
+      : []
+  // Délégations : Nexus → Seeker / PromptDeck ; PromptDeck → Nexus (bidirectionnel)
+  const delegate: ToolDef[] =
+    agent === 'nexus'
+      ? [
           {
             type: 'function',
             function: {
@@ -90,9 +105,58 @@ export function toolsFor(agent: AgentId): ToolDef[] {
               },
             },
           },
+          {
+            type: 'function',
+            function: {
+              name: 'delegate_to_deck',
+              description:
+                'Délègue une sous-tâche à PromptDeck (conception de prompts, personas, skills, décomposition en sous-prompts).',
+              parameters: {
+                type: 'object',
+                properties: {
+                  task: P('task', 'string', 'Consigne claire pour PromptDeck'),
+                },
+                required: ['task'],
+              },
+            },
+          },
+        ]
+      : agent === 'deck'
+        ? [
+            {
+              type: 'function',
+              function: {
+                name: 'delegate_to_nexus',
+                description:
+                  'Délègue une sous-tâche à Nexus (architecture, écriture de code, décisions produit). Rapport retour garanti.',
+                parameters: {
+                  type: 'object',
+                  properties: {
+                    task: P('task', 'string', 'Consigne claire pour Nexus'),
+                  },
+                  required: ['task'],
+                },
+              },
+            },
+          ]
+        : []
+  const extra: ToolDef[] =
+    agent === 'deck'
+      ? [
+          {
+            type: 'function',
+            function: {
+              name: 'promptdeck_browse',
+              description: 'Explore le MEGA PACK PromptDeck (agents + skills) pour choisir personas et skills adaptés à la tâche.',
+              parameters: { type: 'object', properties: {} },
+            },
+          },
         ]
       : []
   return [
+    ...extra,
+    ...delegate,
+    ...write,
     {
       type: 'function',
       function: {
@@ -141,17 +205,22 @@ export function toolsFor(agent: AgentId): ToolDef[] {
     {
       type: 'function',
       function: {
-        name: 'promptdeck_browse',
+        name: 'git_commit',
         description:
-          'Explore le MEGA PACK PromptDeck (190 agents spécialistes + 133 skills) : renvoie l\'arborescence du dossier pour découvrir agents, skills et cartes disponibles.',
-        parameters: { type: 'object', properties: {} },
+          'Commit auto : git add + commit de TOUS les fichiers du workspace via l\'endpoint sécurisé (message obligatoire, branche par défaut uniquement).',
+        parameters: {
+          type: 'object',
+          properties: {
+            message: P('message', 'string', 'Message de commit concis et descriptif'),
+          },
+          required: ['message'],
+        },
       },
     },
-    ...write,
   ]
 }
 
-/** Outil supplémentaire Seeker → rendre son rapport à Nexus (utilisé par la boucle de délégation). */
+/** Outils « rendre rapport » après délégation (Seeker et PromptDeck → Nexus, Nexus → PromptDeck). */
 export const REPORT_TOOL: ToolDef = {
   type: 'function',
   function: {
@@ -164,6 +233,28 @@ export const REPORT_TOOL: ToolDef = {
     },
   },
 }
+
+export const REPORT_TO_DECK_TOOL: ToolDef = {
+  type: 'function',
+  function: {
+    name: 'report_to_deck',
+    description: 'Rends ton rapport final à PromptDeck (livrables produits, décisions prises).',
+    parameters: {
+      type: 'object',
+      properties: { report: P('report', 'string', 'Rapport synthétique pour PromptDeck') },
+      required: ['report'],
+    },
+  },
+}
+
+/** Outil de rapport attendu quand un agent travaille pour un autre (délégation). */
+export function reportToolFor(worker: AgentId): ToolDef {
+  return worker === 'deck' ? REPORT_TO_DECK_TOOL : REPORT_TOOL
+}
+
+/** Nom de l'outil de rapport que cet agent doit appeler pour conclure une délégation. */
+export const reportToolNameFor = (worker: AgentId): string =>
+  worker === 'deck' ? 'report_to_deck' : 'report_to_nexus'
 
 /* ---------- exécution des outils contre la sandbox ---------- */
 
@@ -229,6 +320,21 @@ export async function execTool(convId: string, call: ToolCall): Promise<string> 
         (nodes ?? []).map((n) => `${'  '.repeat(d)}${n.type === 'dir' ? '📁' : '📄'} ${n.name}${n.type === 'dir' && 'children' in n && Array.isArray((n as { children?: unknown }).children) ? ` (${((n as { children: unknown[] }).children).length})` : ''}`).join('\n')
       return `PromptDeck : ${j.path}\n\n${fmt(j.tree)}`
     }
+    case 'delegate_to_deck':
+      throw new Error('DELEGATE:deck:' + String(call.args.task ?? ''))
+    case 'delegate_to_nexus':
+      throw new Error('DELEGATE:nexus:' + String(call.args.task ?? ''))
+    case 'git_commit': {
+      const message = String(call.args.message ?? '')
+      const r = await fetch(`/api/sandbox/${convId}/git-commit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message }),
+      })
+      const j = (await r.json()) as { ok?: boolean; hash?: string; subject?: string; files?: number; error?: string }
+      if (j.error) return `❌ commit refusé : ${j.error}`
+      return `✅ commit ${j.hash} — « ${j.subject} » (${j.files} fichiers)`
+    }
     default:
       throw new Error(`outil inconnu : ${call.name}`)
   }
@@ -236,12 +342,14 @@ export async function execTool(convId: string, call: ToolCall): Promise<string> 
 
 /* ---------- prompts système avec contexte sandbox ---------- */
 
-export function systemPromptFor(agent: AgentId, settingsSystem: string, delegation?: { task: string }): string {
+export function systemPromptFor(agent: AgentId, settingsSystem: string, delegation?: { task: string; from?: AgentId }): string {
   const persona = AGENTS[agent]
   const base = [persona.system, settingsSystem.trim()].filter(Boolean).join('\n\n')
-  const sandbox = `Tu disposes d'une sandbox disque par conversation. Outils : list_tree, read_file, run_command${agent === 'nexus' ? ', write_file, delegate_to_seeker' : ''}. Les chemins sont relatifs au workspace.`
-  if (agent === 'seeker' && delegation) {
-    return `${base}\n\n${sandbox}\n\nMission transmise par Nexus : « ${delegation.task} »\nExplore, puis appelle report_to_nexus avec ton rapport final.`
+  const sandbox = `Tu disposes d'une sandbox disque partagée par conversation. Outils : list_tree, read_file, run_command, web_fetch, git_commit${agent === 'nexus' ? ', write_file, delegate_to_seeker, delegate_to_deck' : agent === 'deck' ? ', write_file, delegate_to_nexus' : ', write_file'}. Les chemins sont relatifs au workspace. En mode collaboratif, l'autre agent écrit dans le MÊME workspace : liste l'arbre avant d'écrire pour éviter d'écraser ses fichiers.`
+  if (delegation) {
+    const from = delegation.from === 'nexus' ? 'Nexus' : delegation.from === 'deck' ? 'PromptDeck' : 'Nexus'
+    const reportTool = reportToolNameFor(agent)
+    return `${base}\n\n${sandbox}\n\nMission transmise par ${from} : « ${delegation.task} »\nTravaille, puis appelle ${reportTool} avec ton rapport final.`
   }
   return `${base}\n\n${sandbox}`
 }

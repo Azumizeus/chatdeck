@@ -80,6 +80,7 @@
     >
       <option value="">Chat simple</option>
       <option value="nexus,seeker">🧠 Nexus + 🔎 Seeker</option>
+      <option value="nexus,deck">🧠 Nexus + 🃏 PromptDeck (collab)</option>
     </select>
     <select
       value={providerId}

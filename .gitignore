@@ -9,3 +9,5 @@ custom-providers.local.json
 test-results/
 playwright-report/
 blob-report/
+
+.vite-dev.pid

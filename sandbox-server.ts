@@ -596,6 +596,42 @@ export function sandboxServer(): Plugin {
               return
             }
 
+            // git-commit : endpoint sécurisé pour les agents — git add -A + commit.
+            // Garde-fous : id de conversation valide, message non vide borné, pas de
+            // branche/répo externe (flags figés), exécution via spawn sans shell.
+            if (action === 'git-commit' && req.method === 'POST') {
+              const body = JSON.parse(await readBody(req)) as { message?: string }
+              const message = (body.message ?? '').trim().slice(0, 200)
+              if (!message) return json(res, 400, { error: 'message de commit vide' })
+              if (!existsSync(base)) return json(res, 400, { error: 'workspace inexistant (bootstrap d\'abord)' })
+              const { execFile } = await import('node:child_process')
+              const opt = { cwd: base, timeout: 15_000, env: { ...process.env, GIT_AUTHOR_NAME: 'Nexus (ChatDeck)', GIT_AUTHOR_EMAIL: 'nexus@chatdeck.local', GIT_COMMITTER_NAME: 'Nexus (ChatDeck)', GIT_COMMITTER_EMAIL: 'nexus@chatdeck.local' } }
+              const run = (args: string[]): Promise<string> =>
+                new Promise((resolve, reject) => {
+                  execFile('git', args, opt, (err, stdout, stderr) => {
+                    if (err) reject(new Error(String(stderr || err.message).slice(0, 300)))
+                    else resolve(String(stdout))
+                  })
+                })
+              try {
+                if (!existsSync(path.join(base, '.git'))) await run(['init'])
+                // Identité locale du workspace (une fois) — n'écrase pas le git global
+                await run(['config', 'user.name', 'Nexus (ChatDeck)']).catch(() => {})
+                await run(['config', 'user.email', 'nexus@chatdeck.local']).catch(() => {})
+                await run(['add', '-A'])
+                // Rien à committer ? On le dit proprement (pas une erreur)
+                const st = await run(['status', '--porcelain'])
+                if (!st.trim()) return json(res, 200, { ok: true, hash: null, subject: message, files: 0, note: 'rien à committer' })
+                const out = await run(['commit', '-m', message])
+                // Hash fiable même sur le root commit (« [main (root-commit) abc1234] »)
+                const hash = (await run(['rev-parse', '--short', 'HEAD'])).trim() || null
+                const files = Number((/\d+ files? changed/.exec(out) ?? ['0'])[0].split(' ')[0]) || 0
+                return json(res, 200, { ok: true, hash, subject: message, files })
+              } catch (e) {
+                return json(res, 400, { error: (e as Error).message })
+              }
+            }
+
             // git : arbre des commits + status (git log/status read-only, cwd = workspace)
             if (action === 'git' && req.method === 'GET') {
               const { execFile } = await import('node:child_process')
@@ -615,6 +651,38 @@ export function sandboxServer(): Plugin {
                 .then((x) => x.stdout.split('\n').filter(Boolean).slice(0, 50))
                 .catch(() => [])
               return json(res, 200, { repo: true, log, status })
+            }
+
+            // git-diff : diff borné d'un commit (?hash=abc1234, défaut HEAD) — lecture seule
+            if (action === 'git-diff' && req.method === 'GET') {
+              if (!existsSync(path.join(base, '.git'))) return json(res, 400, { error: 'pas de dépôt Git' })
+              const hash = (query.get('hash') ?? 'HEAD').replace(/[^\w.-]/g, '').slice(0, 40) || 'HEAD'
+              const { execFile } = await import('node:child_process')
+              const { promisify } = await import('node:util')
+              const run = promisify(execFile)
+              const opt = { cwd: base, maxBuffer: 1024 * 1024, timeout: 10_000 }
+              try {
+                // Fichiers touchés + stats par fichier
+                const numstat = await run('git', ['show', '--numstat', '--pretty=format:', hash], opt)
+                  .then((x) => x.stdout)
+                  .catch(() => '')
+                const files = numstat
+                  .split('\n')
+                  .map((l) => l.trim())
+                  .filter(Boolean)
+                  .slice(0, 50)
+                  .map((l) => {
+                    const [add, del, ...p] = l.split('\t')
+                    return { path: p.join('\t'), add: Number(add) || 0, del: Number(del) || 0 }
+                  })
+                // Diff brut plafonné (60 ko)
+                const diff = await run('git', ['show', '--format=', '--patch', hash], opt)
+                  .then((x) => (x.stdout.length > 60_000 ? x.stdout.slice(0, 60_000) + '\n… (diff tronqué)' : x.stdout))
+                  .catch((e) => `diff indisponible : ${(e as Error).message}`)
+                return json(res, 200, { hash, files, diff })
+              } catch (e) {
+                return json(res, 400, { error: (e as Error).message })
+              }
             }
 
             // webfetch : explorateur du modèle — récupère une page/texte (http(s), borné)

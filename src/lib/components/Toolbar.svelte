@@ -11,12 +11,14 @@
     filesOpen,
     terminalOpen,
     previewOpen,
+    graphOpen,
     variant = 'standard',
     onToggleAgents,
     onToggleDuel,
     onToggleFiles,
     onToggleTerminal,
     onTogglePreview,
+    onToggleGraph,
     onSearch,
     onSettings,
   }: {
@@ -27,12 +29,14 @@
     filesOpen: boolean
     terminalOpen: boolean
     previewOpen?: boolean
+    graphOpen?: boolean
     variant?: 'standard' | 'compact' | 'perConv'
     onToggleAgents: () => void
     onToggleDuel: () => void
     onToggleFiles: () => void
     onToggleTerminal: () => void
     onTogglePreview?: () => void
+    onToggleGraph?: () => void
     onSearch: () => void
     onSettings: () => void
   } = $props()
@@ -70,6 +74,11 @@
   {#if onTogglePreview}
     <button class="tb" class:active={previewOpen} onclick={onTogglePreview} disabled={!conv} title="Preview live du workspace">
       👁 {#if !compact}<span>Preview</span>{/if}
+    </button>
+  {/if}
+  {#if onToggleGraph}
+    <button class="tb" class:active={graphOpen} onclick={onToggleGraph} title="Graphify : graphe des conversations, workspaces et agents">
+      🕸 {#if !compact}<span>Graphify</span>{/if}
     </button>
   {/if}
   {#if !perConv}

@@ -2,6 +2,7 @@
   // Panneau de réglages dockable (remplace l'ancienne modale) : clés multi-providers,
   // fournisseurs personnalisés OpenAI-compatible, préférences IDE, effacement des données.
   import { PROVIDERS, isCustom } from '../llm'
+  import { groupNotes, vaultSummary } from '../organize'
   import {
     defaultSettings,
     type CustomProvider,
@@ -22,6 +23,7 @@
     onClose,
     onPopout,
     onSendNote,
+    onReplayTour,
   }: {
     keys: Keys
     settings: Settings
@@ -35,7 +37,11 @@
     onPopout?: () => void
     /** Cliquer une note Obsidian → envoyée dans le chat */
     onSendNote?: (text: string) => void
+    /** Rejouer la visite guidée */
+    onReplayTour?: () => void
   } = $props()
+
+  const tourOn = $derived(settings.showTour ?? true)
 
   // Édition directe : chaque modification remonte au store via onKeys/onSettings
   // (pas de brouillon local → le panneau reste synchronisé même ouvert à deux endroits)
@@ -196,6 +202,7 @@
     notes: { path: string; size: number }[]
   }
   let vaults = $state<Vault[] | null>(null)
+  let vaultFilter = $state('')
   let selVault = $state<string | null>(null)
   let pd = $state<{ path: string; tree: { name: string; type: 'file' | 'dir'; children?: { name: string; type: 'file' | 'dir' }[] }[] } | string | null>(null)
 
@@ -420,9 +427,15 @@
         </div>
         {#if selVault === v.name}
           <div class="vault">
-            {#each v.notes.slice(0, 40) as n (n.path)}
-              <button class="note" onclick={() => void readNote(v.name, n.path)} title="Envoyer dans le chat">
-                📄 {n.path}</button>
+            <input class="vault-filter" placeholder="filtrer les notes…" bind:value={vaultFilter} />
+            <span class="vault-summary">{vaultSummary(v.notes)}</span>
+            {#each groupNotes(v.notes, vaultFilter).slice(0, 12) as g (g.dir)}
+              <div class="vgroup">{g.label} <span class="vcount">({g.notes.length})</span></div>
+              {#each g.notes.slice(0, 30) as n (n.path)}
+                <button class="note" onclick={() => void readNote(v.name, n.path)} title="Envoyer dans le chat">
+                  📄 {n.path.split('/').pop()}<span class="note-dir">{g.dir ? ' — ' + g.dir : ''}</span></button>
+              {/each}
+              {#if g.notes.length > 30}<p class="sb-empty">+ {g.notes.length - 30} autres dans {g.label}…</p>{/if}
             {/each}
             {#if v.notes.length > 40}<p class="sb-empty">+ {v.notes.length - 40} autres notes…</p>{/if}
           </div>
@@ -483,6 +496,13 @@
       <input type="checkbox" checked={settings.reduceMotion} onchange={(e) => setSetting('reduceMotion', e.currentTarget.checked)} />
       <span>Réduire les animations</span>
     </label>
+    <label class="check">
+      <input type="checkbox" checked={settings.showTour ?? true} onchange={(e) => setSetting('showTour', e.currentTarget.checked)} />
+      <span>Mode d'emploi interactif au lancement</span>
+    </label>
+    {#if tourOn}
+      <button class="ghost" onclick={onReplayTour}>▶ Revoir la visite guidée maintenant</button>
+    {/if}
     {/if}
 
     {@render head('data', 'Données')}
@@ -744,8 +764,32 @@
     border: 1px solid var(--border);
     border-radius: 8px;
     padding: 6px;
-    max-height: 180px;
+    max-height: 240px;
     overflow-y: auto;
+  }
+  .vault-filter {
+    font-size: 12px;
+    padding: 3px 8px;
+    margin-bottom: 4px;
+  }
+  .vault-summary {
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+  .vgroup {
+    font-size: 11.5px;
+    color: var(--text);
+    font-weight: 600;
+    margin-top: 4px;
+  }
+  .vgroup .vcount {
+    color: var(--muted);
+    font-weight: 400;
+  }
+  .note .note-dir {
+    color: var(--muted);
+    font-size: 10.5px;
   }
   .note {
     text-align: left;

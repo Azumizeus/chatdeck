@@ -27,10 +27,12 @@ export interface Conversation {
   open?: boolean
   /** Conversation éphémère (jamais persistée) */
   incognito?: boolean
-  /** Agents activés dans ce fil (multi-agents Nexus/Seeker) */
+  /** Agents activés dans ce fil (multi-agents Nexus/Seeker/PromptDeck) */
   agents?: AgentId[]
   /** Sandbox workspace déjà bootstrappée sur le disque */
   sandboxReady?: boolean
+  /** Mode collaboratif duel : les 2 agents partagent le workspace de la colonne de gauche */
+  collabOf?: string
 }
 
 export interface Keys {
@@ -55,6 +57,10 @@ export interface Settings {
   fontFamily?: string
   /** Réduire les animations (aussi forcé si prefers-reduced-motion) */
   reduceMotion: boolean
+  /** Arbitre : mode débat en 2 tours (répliques A/B avant verdict) */
+  arbitreDebate?: boolean
+  /** Mode d'emploi interactif : afficher la visite guidée au lancement */
+  showTour?: boolean
 }
 
 /** Fournisseur personnalisé OpenAI-compatible (proxifié via /api/custom/:id). */
@@ -116,6 +122,56 @@ export interface ExportSchema {
   settings?: Settings
 }
 
+/** Construit une conversation collaborante liée au workspace d'un hôte (mode duel partagé). */
+export function newCollabConversation(
+  providerId: Conversation['providerId'],
+  model: string,
+  hostId: string,
+): Conversation {
+  const c = newConversation(providerId, model)
+  c.agents = ['deck']
+  c.collabOf = hostId
+  c.sandboxReady = true // workspace déjà bootstrappé par l'hôte
+  return c
+}
+
+/* ---------- graphe Graphify : positions persistées ---------- */
+const GRAPH_KEY = 'chatdeck.graph.v1'
+
+export interface GraphLayout {
+  /** Positions {x,y} par id de nœud (conversation / agent:xxx:conv / ws:conv) */
+  pos: Record<string, { x: number; y: number }>
+  /** Mode de rangement : auto (calculé) ou manual (positions libres) */
+  mode: 'auto' | 'manual'
+}
+
+export const defaultGraphLayout = (): GraphLayout => ({ pos: {}, mode: 'auto' })
+
+export function loadGraphLayout(): GraphLayout {
+  return readJson<GraphLayout>(GRAPH_KEY, defaultGraphLayout())
+}
+
+export function saveGraphLayout(g: GraphLayout): void {
+  writeJson(GRAPH_KEY, g)
+}
+
+/** Le tour n'a-t-il déjà été complété une fois ? (indépendant du réglage) */
+export function tourDone(): boolean {
+  try {
+    return localStorage.getItem('chatdeck.tour.done') === '1'
+  } catch {
+    return false
+  }
+}
+
+export function markTourDone(): void {
+  try {
+    localStorage.setItem('chatdeck.tour.done', '1')
+  } catch {
+    /* ignore */
+  }
+}
+
 const CONVS_KEY = 'chatdeck.conversations.v1'
 const KEYS_KEY = 'chatdeck.keys.v1'
 const SET_KEY = 'chatdeck.settings.v1'
@@ -131,6 +187,8 @@ export const defaultSettings = (): Settings => ({
   theme: 'dark',
   fontSize: 15,
   reduceMotion: false,
+  arbitreDebate: false,
+  showTour: true,
 })
 
 function readJson<T>(key: string, fallback: T): T {
@@ -180,9 +238,10 @@ function sanitizeConversation(c: Conversation): Conversation | null {
     open: false,
     incognito: Boolean(c.incognito),
     agents: Array.isArray(c.agents)
-      ? c.agents.filter((a): a is AgentId => a === 'nexus' || a === 'seeker')
+      ? c.agents.filter((a): a is AgentId => a === 'nexus' || a === 'seeker' || a === 'deck')
       : undefined,
     sandboxReady: c.sandboxReady ? true : undefined,
+    collabOf: typeof c.collabOf === 'string' ? c.collabOf : undefined,
   }
 }
 

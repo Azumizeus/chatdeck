@@ -5,6 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:bg": "node bin/dev-bg.mjs start",
+    "dev:bg:stop": "node bin/dev-bg.mjs stop",
+    "dev:bg:status": "node bin/dev-bg.mjs status",
+    "dev:bg:log": "node bin/dev-bg.mjs log",
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",

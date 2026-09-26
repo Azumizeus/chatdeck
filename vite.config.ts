@@ -33,6 +33,72 @@ const apiProxy = (target: string) => ({
   rewrite: (p: string) => p.replace(/^\/api\/[a-z]+/, ''),
 })
 
+const PROVIDER_TARGETS: Record<string, string> = {
+  openrouter: 'https://openrouter.ai',
+  nvidia: 'https://integrate.api.nvidia.com',
+  cohere: 'https://api.cohere.ai',
+  mistral: 'https://api.mistral.ai',
+}
+
+/**
+ * /api/health : état réseau de l'app + des 4 fournisseurs (HEAD/GET courts, 5 s max).
+ * Répond vite même si un fournisseur est hors ligne — chaque test a son propre timeout.
+ */
+function healthEndpoint(): Plugin {
+  type Health = { up: boolean; status?: number; ms: number; error?: string }
+  const cache = new Map<string, { at: number; data: Health }>()
+  const TTL = 10_000
+  const probe = async (url: string): Promise<Health> => {
+    const t0 = Date.now()
+    try {
+      const r = await fetch(url, {
+        method: 'GET',
+        signal: AbortSignal.timeout(5000),
+        headers: { 'user-agent': 'chatdeck-health' },
+      })
+      return { up: r.status < 500, status: r.status, ms: Date.now() - t0 }
+    } catch (e) {
+      return { up: false, ms: Date.now() - t0, error: (e as Error).name === 'TimeoutError' ? 'timeout' : (e as Error).message }
+    }
+  }
+  return {
+    name: 'chatdeck-health',
+    configureServer(server) {
+      server.middlewares.use('/api/health', (_req, res) => {
+        void (async () => {
+          const now = Date.now()
+          const entries = await Promise.all(
+            Object.entries(PROVIDER_TARGETS).map(async ([id, base]) => {
+              const hit = cache.get(id)
+              let data: Health
+              if (hit && now - hit.at < TTL) data = hit.data
+              else {
+                data = await probe(`${base}/api/v1/models`)
+                cache.set(id, { at: now, data })
+              }
+              return [id, data] as const
+            }),
+          )
+          const providers = Object.fromEntries(entries)
+          res.setHeader('Content-Type', 'application/json; charset=utf-8')
+          res.setHeader('Cache-Control', 'no-store')
+          res.end(
+            JSON.stringify({
+              ok: true,
+              server: true,
+              providers,
+              allUp: Object.values(providers).every((p) => p.up),
+            }),
+          )
+        })().catch((e) => {
+          res.statusCode = 500
+          res.end(JSON.stringify({ ok: false, error: (e as Error).message }))
+        })
+      })
+    },
+  }
+}
+
 /**
  * Proxy générique des fournisseurs personnalisés : /api/custom/<id>/<chemin> est
  * redirigé vers la base URL enregistrée par l'utilisateur (custom-providers.local.json
@@ -110,15 +176,15 @@ function customProxy(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [svelte(), localKeys(), customProxy(), sandboxServer()],
+  plugins: [svelte(), localKeys(), customProxy(), sandboxServer(), healthEndpoint()],
   server: {
     port: 5199,
     strictPort: true,
     proxy: {
-      '/api/openrouter': apiProxy('https://openrouter.ai'),
-      '/api/nvidia': apiProxy('https://integrate.api.nvidia.com'),
-      '/api/cohere': apiProxy('https://api.cohere.ai'),
-      '/api/mistral': apiProxy('https://api.mistral.ai'),
+      '/api/openrouter': apiProxy(PROVIDER_TARGETS.openrouter),
+      '/api/nvidia': apiProxy(PROVIDER_TARGETS.nvidia),
+      '/api/cohere': apiProxy(PROVIDER_TARGETS.cohere),
+      '/api/mistral': apiProxy(PROVIDER_TARGETS.mistral),
     },
   },
   // Vitest : environnement DOM léger pour les tests du store (localStorage)

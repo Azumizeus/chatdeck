@@ -6,7 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-4f8cff.svg)](LICENSE)
 ![Svelte 5 + TypeScript + Vite 6](https://img.shields.io/badge/Svelte%205%20%2B%20TypeScript%20%2B%20Vite%206-ChatDeck-ff3e00)
 ![svelte-check](https://img.shields.io/badge/svelte--check-0%20erreur%2C%200%20warning-brightgreen)
-![tests](https://img.shields.io/badge/tests-64%20passants-brightgreen)
+![tests](https://img.shields.io/badge/tests-64%20unitaires%20%C2%B7%2016%20e2e-brightgreen)
 ![bundle](https://img.shields.io/badge/bundle-~72%20kB%20gzip-4f8cff)
 
 ## Pourquoi
@@ -32,12 +32,16 @@ npm install
 echo '{"openrouter":"sk-or-…","nvidia":"nvapi-…","cohere":"…","mistral":"…"}' > keys.local.json
 
 npm run dev          # http://localhost:5199
+npm run dev:bg       # Vite en tâche de fond (port 5199) — arrêt : npm run dev:bg:stop
 ```
+
+`dev:bg` détache Vite du terminal : `dev:bg:status` vérifie, `dev:bg:log` suit le log (`vite-dev.log`), `dev:bg:stop` arrête proprement le pid enregistré.
 
 Les clés se saisissent aussi dans **⚙︎ Réglages** (⌘K → « Réglages ») : test en direct par fournisseur, stockage `localStorage`, jamais envoyées ailleurs qu'au fournisseur choisi (via le proxy Vite). Fournisseurs custom : `custom-providers.local.json` (gitignore) alimente le proxy générique.
 
 ```bash
 npm test             # Vitest : store, SSE, coût, snap, recherche (64 tests)
+npm run test:e2e     # Playwright : 16 parcours (webServer Vite démarré auto)
 npm run check        # svelte-check (0 erreur, 0 warning)
 npm run build        # bundle production (~72 kB gzip)
 ```
@@ -48,7 +52,10 @@ npm run build        # bundle production (~72 kB gzip)
 - **Streaming SSE** token par token avec curseur animé + **Stop** (abort)
 - **Markdown sûr** : marked + DOMPurify (code, tables, listes)
 - Réglages : température, tokens max, instructions système
-- Titre auto, copie en un clic, erreurs lisibles (401/429/réseau)
+- Titre auto, erreurs lisibles (401/429/réseau)
+- **Actions sous chaque message** : copier, régénérer, répondre, envoyer vers Obsidian, réutiliser comme brouillon, tronquer la conversation à partir d'un message
+- **Visite guidée interactive** au premier lancement (6 étapes, actions déclenchées), rejouable via ⌘K « Visite guidée », désactivable dans ⚙︎ Réglages → Apparence
+- **Santé réseau** : bannière « Réessayer » si le proxy dev est injoignable (sonde auto 60 s), pastilles vert/rouge par fournisseur dans la barre d'état — alimentées par `/api/health` (cache 10 s, timeout 5 s)
 
 ### Espace de travail « IDE premium »
 - **Châssis macOS** : 3 pastilles (fermer / réduire / plein écran), barre de titre glassmorphism
@@ -63,10 +70,11 @@ npm run build        # bundle production (~72 kB gzip)
 
 ### Agents & sandbox (Nexus & Seeker)
 - **Nexus** 🧠, super agent orchestrateur multidisciplinaire : il écrit le brief dans `NOTES.md`, crée les fichiers, délègue à **Seeker** 🔎 (exploratrice : recherche, analyse) puis conclut d'après son rapport — délégation multi-agents dans le même fil
-- **Function calling réel** (OpenAI-compatible) : `list_tree`, `read_file`, `write_file`, `run_command`, `delegate_to_seeker`, `report_to_nexus` ; rounds d'outils plafonnés avec rappel de conclusion
+- **Délégation bidirectionnelle** : Nexus⇄Seeker et Nexus⇄Deck — l'agent cible reçoit mission + émetteur, travaille avec ses propres outils, puis `report_to_deck` / `report_to_nexus` clôt la boucle ; le rapport est injecté dans la conversation d'origine (handoff plafonné à 6 sauts)
+- **Function calling réel** (OpenAI-compatible) : `list_tree`, `read_file`, `write_file`, `run_command`, `delegate_to_seeker` / `delegate_to_deck` / `delegate_to_nexus`, `report_to_*` ; rounds d'outils plafonnés avec rappel de conclusion
 - **Sandbox disque par conversation** : `~/.chatdeck/workspaces/<conv-id>/` créée au premier message du fil (README, NOTES, src/, package.json) via les endpoints `/api/sandbox` du serveur Vite — chemins confinés (anti path-traversal), tailles plafonnées, commandes agents en liste blanche
 - **Terminal intégré** ⌨︎ : exécution réelle dans le workspace — `node`, `npm`, `npx`, `git`, `ls`, `cat`… — spawn sans shell, timeout 60 s, sortie streamée, historique ↑/↓
-- **Panneau Fichiers** 📁 : explorer la sandbox, éditer, créer, supprimer
+- **Panneau Fichiers** 📁 (mode gestionnaire, élargissable ⤢) : arborescence complète filtrable, renommer/dupliquer/supprimer, import glisser-déposer (≤ 20 fichiers texte), téléchargement, preview live HTML/CSS/JS, **historique Git avec diff par commit** (+/−), commit auto annoté, **switcher d'OS sécurisé** (mac / windows / linux)
 - **Santé sandbox** dans les réglages : racine, nombre de workspaces, tailles, suppression unitaire ou générale
 
 ### Mode duel
@@ -77,6 +85,11 @@ npm run build        # bundle production (~72 kB gzip)
 - Cherche dans **tous les messages de toutes les conversations**, insensible à la casse
 - Extraits avec **surlignage** de la correspondance, badge agent/fournisseur ; clic = ouverture du fil, **saut au message** avec flash visuel
 
+### Graphify 🕸
+- Graphe SVG des conversations : nœuds colorés, stats en en-tête
+- **Drag & drop des nœuds** avec positions persistées (mode manuel), réorganisation auto par type / agent / récence
+- **Export PNG** haute résolution (rendu 2×) en un clic
+
 ### Modèles
 - **Catalogue OpenRouter complet** : combobox avec recherche (nom, id, contexte), navigation clavier, saisie libre de n'importe quel id, cache 10 min, repli sur la liste courte
 - **Fournisseurs personnalisés** : nom, base URL, en-tête d'auth, clé, models en CSV, bouton « tester »
@@ -85,6 +98,7 @@ npm run build        # bundle production (~72 kB gzip)
 - **Mode incognito 👻** (⌘⇧N) : conversation éphémère jamais écrite dans `localStorage` (id en `sessionStorage`, fin de session = fin des 👻), badge visible, **fusion manuelle** dans l'historique
 - **Export** JSON (`{version, exportedAt, conversations[]}`) : conversation courante ou tout
 - **Import** validé (schéma + sanitize), dédouillonné par id
+- **Rangement Obsidian** : filtre de notes, regroupement par dossier et résumé du coffre dans ⚙︎ Réglages
 - Thème **sombre / clair / auto**, taille de police, réduction des animations (respecte aussi `prefers-reduced-motion`)
 
 ## Raccourcis
@@ -116,6 +130,8 @@ src/
     ├── float.svelte.ts           # moteur flottant : zones de snap (quarters/moitiés/plein écran), resize 8 dirs
     ├── store.ts                  # conversations/clés/réglages/layout/customs persistés
     ├── layout.svelte.ts          # LayoutManager : panneaux, popouts, mode fenêtre, duel, BroadcastChannel
+    ├── net.svelte.ts             # santé réseau : sonde proxy, /api/health (cache 10 s), statut up/down/checking
+    ├── organize.ts               # rangement Graphify (bandes anti-collision) + groupement notes Obsidian
     └── components/
         ├── WindowFrame.svelte    # châssis macOS (3 pastilles)
         ├── Toolbar.svelte        # barre d'outils permanente (agents, duel, fichiers, terminal…)
@@ -126,15 +142,19 @@ src/
         ├── Composer.svelte       # saisie + sélecteurs fournisseur/modèle/agents + envoi duel ⇉
         ├── ModelPicker.svelte    # combobox catalogue (~460 modèles)
         ├── SettingsPanel.svelte  # réglages dockable (clés, customs, apparence, santé sandbox)
-        ├── FilesPanel.svelte     # explorateur de la sandbox par conversation
+        ├── FilesPanel.svelte     # gestionnaire sandbox : arbre filtrable, import/export, diff Git par commit, switcher OS
         ├── TerminalPanel.svelte  # terminal réel du workspace (spawn borné, sortie streamée)
         ├── SearchPanel.svelte    # recherche globale ⌘⇧F
-        ├── StatusBar.svelte      # fournisseur, latence, tokens réels, coût estimé
+        ├── StatusBar.svelte      # fournisseur, latence, tokens réels, coût estimé, santé providers
+        ├── NetworkBanner.svelte  # bannière « Réessayer » quand le proxy dev est injoignable
+        ├── MessageActions.svelte # actions sous chaque message (copier, régénérer, Obsidian, tronquer…)
+        ├── GraphPanel.svelte     # Graphify : graphe interactif, drag persisté, export PNG
+        ├── WelcomeTour.svelte    # visite guidée interactive du premier lancement
         ├── CommandPalette.svelte # palette ⌘K
         ├── ChatMessage.svelte    # bulle markdown sûre + badges agents
         └── Popout.svelte         # fenêtre secondaire synchronisée
 sandbox-server.ts                # sandbox disque : bootstrap/arbre/fichiers/exec/terminal (dev)
-vite.config.ts                    # proxies par fournisseur + /api/custom/:id + /keys.local (dev)
+vite.config.ts                    # proxies par fournisseur + /api/health (santé providers) + /keys.local (dev)
 ```
 
 Le navigateur ne parle **qu'à localhost** : fournisseurs intégrés proxifiés par Vite (SSE inclus), fournisseurs custom relayés par le proxy générique vers leur base URL. En production : `npm run build` + reverse-proxy équivalent.

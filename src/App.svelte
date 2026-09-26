@@ -2,8 +2,13 @@
   // ChatDeck — orchestrateur « IDE premium » : châssis macOS, onglets, panneaux
   // dockables, popouts synchronisés, palette ⌘K, incognito, import/export.
   import { streamChat, isCustom, providerOf, type ProviderId, type WireMsg } from './lib/llm'
-  import { AGENTS, toolsFor, systemPromptFor, execTool, REPORT_TOOL, type AgentId, type ToolCall } from './lib/agents'
+  import { AGENTS, toolsFor, systemPromptFor, execTool, reportToolFor, type AgentId, type ToolCall } from './lib/agents'
   import FilesPanel from './lib/components/FilesPanel.svelte'
+  import GraphPanel from './lib/components/GraphPanel.svelte'
+  import NetworkBanner from './lib/components/NetworkBanner.svelte'
+  import MessageActions from './lib/components/MessageActions.svelte'
+  import WelcomeTour from './lib/components/WelcomeTour.svelte'
+  import { net } from './lib/net.svelte'
   import {
     loadConversations,
     saveConversations,
@@ -17,6 +22,9 @@
     saveIncognitoId,
     newConversation,
     newIncognitoConversation,
+    newCollabConversation,
+    tourDone,
+    markTourDone,
     validateImport,
     buildExport,
     downloadJson,
@@ -59,20 +67,60 @@
   let latencyMs = $state<number | null>(null)
   let showPalette = $state(false)
   let showFiles = $state(false)
+  let showGraph = $state(false)
   let showSearch = $state(false)
+  /** Mode d'emploi interactif : 1ʳᵉ visite (réglage showTour actif et jamais complété) */
+  let showTour = $state(false)
+  $effect(() => {
+    if (settings.showTour && !tourDone()) showTour = true
+  })
+
+  /** Actions de la visite guidée : ouvre le panneau correspondant. */
+  function tourAction(cmd: string): void {
+    if (cmd === 'agents') setAgents(current?.agents?.length ? [] : ['nexus', 'seeker'])
+    else if (cmd === 'duel') toggleDuel()
+    else if (cmd === 'files') showFiles = true
+    else if (cmd === 'graph') showGraph = true
+    else if (cmd === 'net') void net.probe()
+  }
   let showTerminal = $state(false)
   let showPreview = $state(false)
   /** Conversations épinglées à l'ouverture des panneaux (duel inclus) */
   let terminalConvId = $state<string | null>(null)
   let filesConvId = $state<string | null>(null)
   let previewConvId = $state<string | null>(null)
-  /** Verdict du duel : synthèse par un 3ᵉ modèle */
+  /** Verdict du duel : synthèse par un 3ᵉ modèle (ou débat en 2 tours avant verdict) */
   let verdict = $state<{ text: string } | null>(null)
+  /** Commit auto en cours (sandbox courante) */
+  let commitBusy = $state(false)
   let arbitreBusy = $state(false)
   let arbitreModel = $state('anthropic/claude-sonnet-4')
   let arbitreAbort: AbortController | null = null
   /** ts du message à surligner (saut depuis la recherche) */
   let flashTs = $state<number | null>(null)
+  /** Réinitialise le fil jusqu'au message donné (régénération / suppression) */
+  function truncateAfter(convId: string, ts: number): void {
+    conversations = conversations.map((c) =>
+      c.id === convId ? { ...c, messages: c.messages.filter((m) => m.ts < ts) } : c,
+    )
+  }
+
+  /** Régénère la dernière réponse : supprime la bulle assistant et renvoie le prompt. */
+  function regenerate(convId: string, ts: number): void {
+    if (streamingIds.has(convId)) return
+    const conv = conversations.find((c) => c.id === convId)
+    if (!conv) return
+    const lastUser = [...conv.messages].reverse().find((m) => m.role === 'user')
+    if (!lastUser) return
+    truncateAfter(convId, lastUser.ts + 1)
+    void sendTo(convId, lastUser.content)
+  }
+
+  /** Supprime un message (et les suivants du même tour) — simple et explicite. */
+  function deleteFrom(convId: string, ts: number): void {
+    if (streamingIds.has(convId)) return
+    truncateAfter(convId, ts)
+  }
   let scroller: HTMLDivElement | undefined = $state()
   const current = $derived(conversations.find((c) => c.id === currentId) ?? null)
 
@@ -94,6 +142,9 @@
       })
       .catch(() => {})
   })
+
+  // Sondes réseau : /api/health + proxy OpenRouter, 1×/min (bannière + StatusBar)
+  $effect(() => net.start())
 
   /* ---------- effets : persistance, thème ---------- */
 
@@ -278,7 +329,7 @@
     for (const m of conv.messages) {
       if (m.error || !m.content) continue
       if (m.role === 'assistant') {
-        let content = `**${AGENTS[m.agent ?? 'nexus'].name} —** ${m.content}`
+        let content = `**${AGENTS[m.agent ?? 'nexus']?.name ?? 'Nexus'} —** ${m.content}`
         for (const t of m.toolEvents ?? []) content += `\n_[sandbox:${t.tool}] ${t.detail}_`
         wires.push({ role: 'assistant', content })
       } else {
@@ -357,7 +408,12 @@
     const baseMessages: WireMsg[] = systemWire.content ? [systemWire, ...wires] : wires
 
     /** Un tour d'agent : stream + exécution des outils, jusqu'à réponse finale ou délégation. */
-    async function runTurns(agent: AgentId, delegationTask?: string): Promise<{ delegation?: string; report?: string }> {
+    async function runTurns(
+      agent: AgentId,
+      delegationTask?: string,
+      delegationFrom?: AgentId,
+    ): Promise<{ delegation?: string; delegationTo?: AgentId; report?: string }> {
+      if (!AGENTS[agent]) return {}
       patchLive((m) => ({ ...m, agent })) // le badge suit l'agent qui parle
       const pending: { calls: ToolCall[] | null } = { calls: null }
       for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
@@ -373,14 +429,19 @@
           apiKey,
           model: convModel,
           messages:
-            agent === 'seeker'
-              ? [{ role: 'system', content: systemPromptFor('seeker', settings.system, delegationTask ? { task: delegationTask } : undefined) }, ...wires, ...extra]
+            agent !== 'nexus'
+              ? [
+                  { role: 'system', content: systemPromptFor(agent, settings.system, delegationTask ? { task: delegationTask, from: delegationFrom } : undefined) },
+                  ...wires,
+                  ...extra,
+                ]
               : [...baseMessages, ...extra],
           temperature: settings.temperature,
           maxTokens: settings.maxTokens,
           signal: controller.signal,
           customs,
-          tools: agent === 'seeker' ? [...toolsFor('seeker'), REPORT_TOOL] : toolsFor('nexus'),
+          // En délégation, l'agent de travail reçoit aussi son outil de rapport
+          tools: delegationTask ? [...toolsFor(agent), reportToolFor(agent)] : toolsFor(agent),
           onDelta: (d) => {
             phaseContent += d
             patchLive((m) => ({ ...m, content: m.content + d }))
@@ -396,29 +457,32 @@
         const callList = pending.calls
         pending.calls = null
         if (!callList?.length) {
-          // Réponse finale en texte — pour Seeker, ce texte vaut rapport s'il n'a pas appelé l'outil
-          return agent === 'seeker' && phaseContent.trim() ? { report: phaseContent } : {}
+          // Réponse finale en texte — en délégation, ce texte vaut rapport si l'outil n'a pas été appelé
+          return delegationTask && phaseContent.trim() ? { report: phaseContent } : {}
         }
+        if (agent !== 'nexus' && agent !== 'seeker' && agent !== 'deck') return {}
 
         wires.push({
           role: 'assistant',
           content: phaseContent || null,
           tool_calls: callList.map((c) => ({
-            id: c.id,
+            id: `${c.id}`, // id stringifié : sûr pour tout provider
             type: 'function' as const,
             function: { name: c.name, arguments: JSON.stringify(c.args) },
           })),
         })
         let delegation: string | undefined
+        let delegationTo: AgentId | undefined
         let report: string | undefined
         for (const call of callList) {
           let result: string
-          if (call.name === 'delegate_to_seeker') {
+          if (call.name === 'delegate_to_seeker' || call.name === 'delegate_to_deck' || call.name === 'delegate_to_nexus') {
             delegation = String(call.args.task ?? '')
-            result = 'Mission transmise à Seeker. Elle travaillera et te rendra un rapport.'
-          } else if (call.name === 'report_to_nexus') {
+            delegationTo = call.name === 'delegate_to_seeker' ? 'seeker' : call.name === 'delegate_to_deck' ? 'deck' : 'nexus'
+            result = `Mission transmise à ${AGENTS[delegationTo].name}. Il/elle travaillera et rendra un rapport.`
+          } else if (call.name === 'report_to_nexus' || call.name === 'report_to_deck') {
             report = String(call.args.report ?? '')
-            result = 'Rapport reçu par Nexus.'
+            result = 'Rapport reçu.'
           } else {
             try {
               result = await execTool(convId, call)
@@ -430,7 +494,7 @@
           }
           wires.push({ role: 'tool', tool_call_id: call.id, content: result })
         }
-        if (delegation || report) return { delegation, report }
+        if (delegation || report) return { delegation, delegationTo, report }
       }
       // Rounds épuisés sans texte final : récap honnête des actions sandbox
       patchLive((m) =>
@@ -446,11 +510,42 @@
 
     try {
       if (multi) {
-        // Nexus pilote ; s'il délègue, Seeker explore puis rend rapport, et Nexus conclut
+        /**
+         * Orchestration délégation bidirectionnelle : Nexus ⇄ Seeker, Nexus ⇄ PromptDeck.
+         * Boucle générique : l'agent courant travaille → s'il délègue à un agent ACTIF,
+         * l'agent délégué prend le relais (avec mission + émetteur) → rapport retour →
+         * l'émetteur conclut. Garde-fou : 6 délégations max par tour utilisateur.
+         */
+        const active = new Set(conv.agents ?? [])
         const r1 = await runTurns('nexus')
-        if (r1.delegation) {
-          const r2 = await runTurns('seeker', r1.delegation)
-          if (r2.report) await runTurns('nexus')
+        // Mode collaboratif : PromptDeck bosse en parallèle de la 1ʳᵉ réponse de Nexus
+        if (active.has('deck')) await runTurns('deck')
+
+        let handoff = r1.delegation ? { to: r1.delegationTo ?? 'seeker', task: r1.delegation, from: 'nexus' as AgentId } : null
+        let hops = 0
+        while (handoff && hops < 6) {
+          hops++
+          if (!active.has(handoff.to)) {
+            wires.push({ role: 'user', content: `(Système) ${AGENTS[handoff.to].name} n'est pas activé dans ce fil — traite la mission toi-même : « ${handoff.task} »` })
+            await runTurns(handoff.from)
+            break
+          }
+          const r = await runTurns(handoff.to, handoff.task, handoff.from)
+          if (r.report) {
+            // Rapport retour → l'émetteur conclut
+            wires.push({ role: 'user', content: `(${AGENTS[handoff.to].name} a rendu son rapport à ${AGENTS[handoff.from].name})\n${r.report.slice(0, 4000)}` })
+            await runTurns(handoff.from)
+            handoff = null
+          } else if (r.delegation) {
+            // L'agent délégué re-délègue (ex. deck → nexus)
+            handoff = { to: r.delegationTo ?? 'nexus', task: r.delegation, from: handoff.to }
+          } else {
+            handoff = null
+          }
+        }
+        if (handoff && hops >= 6) {
+          wires.push({ role: 'user', content: '(Système) Trop de délégations enchaînées — conclus directement.' })
+          await runTurns('nexus')
         }
       } else {
         await streamChat({
@@ -560,6 +655,29 @@
     }
   }
 
+  /**
+   * Mode collaboratif : PromptDeck rejoint le duel en parallèle de Nexus et partage
+   * le workspace de la conversation hôte (colonne gauche). Les fichiers des deux
+   * agents fusionnent dans la même sandbox (préfixes nexus-/deck-).
+   */
+  function startCollab(): void {
+    if (!current || streamingIds.has(current.id)) return
+    const hostId = current.id
+    // Le duo existe déjà ? On ne duplique pas
+    if (conversations.some((c) => c.collabOf === hostId)) {
+      const partner = conversations.find((c) => c.collabOf === hostId)!
+      if (!layout.duel) layout.startDuel(hostId, partner.id)
+      currentId = partner.id
+      return
+    }
+    // Bootstrap garanti du workspace hôte avant le démarrage du partenaire
+    void fetch(`/api/sandbox/${hostId}/bootstrap`, { method: 'POST' }).catch(() => {})
+    const partner = newCollabConversation(current.providerId, current.model, hostId)
+    conversations = [partner, ...conversations]
+    if (!layout.duel) layout.startDuel(hostId, partner.id)
+    currentId = partner.id
+  }
+
   function startDuelResize(e: PointerEvent): void {
     e.preventDefault()
     const move = (ev: PointerEvent): void =>
@@ -595,7 +713,31 @@
     showPreview = !showPreview
   }
 
-  /** Synthèse du duel : un 3ᵉ modèle compare les deux réponses et tranche. */
+  /** Commit auto : git add -A + commit de la sandbox via l'endpoint sécurisé. */
+  async function autoCommit(convId: string): Promise<void> {
+    if (commitBusy) return
+    commitBusy = true
+    try {
+      const r = await fetch(`/api/sandbox/${convId}/git-commit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: `Travail agents — ${new Date().toLocaleString('fr-FR')}` }),
+      })
+      const j = (await r.json()) as { ok?: boolean; hash?: string | null; error?: string; note?: string }
+      if (j.error) alert(`Commit refusé : ${j.error}`)
+      else if (j.hash === null) alert('Rien à committer — le workspace est déjà à jour.')
+      else alert(`✅ Commit ${j.hash} créé dans la sandbox (visible dans l'arbre ⑂).`)
+    } catch (e) {
+      alert(`Commit impossible : ${(e as Error).message}`)
+    } finally {
+      commitBusy = false
+    }
+  }
+
+  /**
+   * Synthèse du duel : un 3ᵉ modèle compare et tranche.
+   * Mode « débat en 2 tours » : A et B répliquent au verdict, puis l'arbitre re-juge.
+   */
   async function arbitrate(): Promise<void> {
     const d = layout.duel
     if (!d || arbitreBusy) return
@@ -610,11 +752,17 @@
     const lastUser = (c: Conversation): string => [...c.messages].reverse().find((m) => m.role === 'user')?.content ?? '(question partagée)'
     const lastAnswer = (c: Conversation): string =>
       [...c.messages].reverse().find((m) => m.role === 'assistant' && m.content)?.content ?? '(pas de réponse)'
+    const SYS =
+      'Tu es l’arbitre neutre d’un duel de modèles. Compare objectivement les deux réponses à la même question : exactitude, complétude, clarté. Termine par une ligne « Verdict : A » ou « Verdict : B » ou « Verdict : égalité » suivie d’une courte justification. Réponds en français.'
     verdict = { text: '' }
     arbitreBusy = true
     const controller = new AbortController()
     arbitreAbort = controller
-    try {
+    const question = lastUser(l)
+    const answerL = lastAnswer(l)
+    const answerR = lastAnswer(r)
+    const callArbitre = async (userContent: string): Promise<string> => {
+      let out = ''
       await streamChat({
         providerId: 'openrouter',
         apiKey,
@@ -623,25 +771,86 @@
         maxTokens: 1200,
         signal: controller.signal,
         messages: [
-          {
-            role: 'system',
-            content:
-              'Tu es l’arbitre neutre d’un duel de modèles. Compare objectivement les deux réponses à la même question : exactitude, complétude, clarté. Termine par une ligne « Verdict : A » ou « Verdict : B » ou « Verdict : égalité » suivie d’une courte justification. Réponds en français.',
-          },
-          {
-            role: 'user',
-            content: `Question :
-${lastUser(l)}
+          { role: 'system', content: SYS },
+          { role: 'user', content: userContent },
+        ],
+        onDelta: (t) => {
+          out += t
+          verdict = { text: (verdict?.text ?? '') + t }
+        },
+      })
+      return out
+    }
+    try {
+      // Tour 1 : verdict initial A vs B
+      const round1 = await callArbitre(`Question :
+${question}
 
 — Réponse A (gauche, modèle ${l.model}) :
-${lastAnswer(l).slice(0, 4000)}
+${answerL.slice(0, 4000)}
 
 — Réponse B (droite, modèle ${r.model}) :
-${lastAnswer(r).slice(0, 4000)}`,
+${answerR.slice(0, 4000)}`)
+      if (!settings.arbitreDebate) return
+
+      // Débat : tour 2 — chaque modèle réplique au verdict, puis re-verdict final
+      verdict = { text: (verdict?.text ?? '') + '\n\n——— Débat — tour 2 ———\n' }
+      const rebuttal = async (side: 'A' | 'B', conv: Conversation, own: string, other: string): Promise<string> => {
+        let text = ''
+        await streamChat({
+          providerId: conv.providerId,
+          apiKey: keyOf(conv.providerId),
+          model: conv.model,
+          temperature: settings.temperature,
+          maxTokens: settings.maxTokens,
+          signal: controller.signal,
+          customs,
+          messages: [
+            {
+              role: 'system',
+              content: `Tu défends ta réponse dans un débat. L'arbitre a rendu ce verdict provisoire :\n« ${round1.slice(0, 2500)} »\nRéponds en UNE seule réplique concise (max ~150 mots) : corrige les erreurs qu'il t'attribue, renforce tes points solides, reste factuel. Réponds en français.`,
+            },
+            {
+              role: 'user',
+              content: `Question :
+${question}
+
+— Ta réponse ${side} :
+${own.slice(0, 3000)}
+
+— Réponse adverse :
+${other.slice(0, 3000)}`,
+            },
+          ],
+          onDelta: (t) => {
+            text += t
+            verdict = { text: (verdict?.text ?? '') + t }
           },
-        ],
-        onDelta: (t) => (verdict = { text: (verdict?.text ?? '') + t }),
-      })
+        })
+        return text
+      }
+      const repA = await rebuttal('A', l, answerL, answerR)
+      verdict = { text: (verdict?.text ?? '') + '\n\n——— Réplique de B ———\n' }
+      const repB = await rebuttal('B', r, answerR, answerL)
+
+      // Verdict final définitif
+      verdict = { text: (verdict?.text ?? '') + '\n\n——— Verdict final ———\n' }
+      await callArbitre(`Question :
+${question}
+
+— Réponse A :
+${answerL.slice(0, 2500)}
+
+— Réponse B :
+${answerR.slice(0, 2500)}
+
+— Réplique de A au verdict provisoire :
+${repA.slice(0, 2500)}
+
+— Réplique de B au verdict provisoire :
+${repB.slice(0, 2500)}
+
+Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A », « Verdict : B » ou « Verdict : égalité » + justification courte.`)
     } catch (e) {
       if ((e as Error).name !== 'AbortError') verdict = { text: `Erreur : ${(e as Error).message}` }
     } finally {
@@ -758,9 +967,14 @@ ${lastAnswer(r).slice(0, 4000)}`,
     { id: 'merge', label: 'Fusionner les conversations incognito', run: mergeIncognito },
     { id: 'reset-layout', label: 'Réinitialiser la disposition des panneaux', run: () => layout.reset() },
     { id: 'agents', label: current?.agents?.length ? 'Désactiver les agents Nexus & Seeker' : 'Activer les agents Nexus & Seeker (sandbox)', run: () => setAgents(current?.agents?.length ? [] : ['nexus', 'seeker']) },
+    { id: 'collab', label: 'Collaboration : Nexus + PromptDeck en parallèle (workspace partagé)', run: startCollab },
     { id: 'files', label: showFiles ? 'Fermer le panneau Fichiers (sandbox)' : 'Ouvrir le panneau Fichiers (sandbox)', run: () => (showFiles = !showFiles) },
+    { id: 'graph', label: showGraph ? 'Fermer le panneau Graphify' : 'Ouvrir le graphe Graphify', run: () => (showGraph = !showGraph) },
+    { id: 'commit', label: 'Commit auto de la sandbox (git add + commit)', run: () => currentId && void autoCommit(currentId) },
     { id: 'search', label: 'Rechercher dans toutes les conversations', hint: '⌘⇧F', run: () => (showSearch = true) },
+    { id: 'tour', label: "Mode d'emploi interactif (visite guidée)", run: () => (showTour = true) },
     { id: 'duel', label: layout.duel ? 'Quitter le mode duel' : 'Mode duel : deux conversations côte à côte', run: toggleDuel },
+    { id: 'debate', label: `Arbitre : débat en 2 tours ${settings.arbitreDebate ? '✓ (désactiver)' : '(activer)'}`, run: () => (settings = { ...settings, arbitreDebate: !settings.arbitreDebate }) },
     { id: 'float', label: 'Fenêtre flottante', run: () => floatWith(layout.appGeo) },
     { id: 'snap', label: 'Snap : zone suivante (quarter → moitié → plein écran)', hint: '⌘⌥S', run: cycleSnap },
     { id: 'pill', label: layout.appMode === 'pill' ? 'Restaurer depuis la barre de tâches' : 'Réduire en barre de tâches (pill)', run: togglePill },
@@ -784,11 +998,13 @@ ${lastAnswer(r).slice(0, 4000)}`,
     filesOpen={showFiles}
     terminalOpen={showTerminal}
     previewOpen={showPreview}
+    graphOpen={showGraph}
     onToggleAgents={() => setAgents(current?.agents?.length ? [] : ['nexus', 'seeker'])}
     onToggleDuel={toggleDuel}
     onToggleFiles={() => toggleFiles()}
     onToggleTerminal={toggleTerminal}
     onTogglePreview={() => togglePreview()}
+    onToggleGraph={() => (showGraph = !showGraph)}
     onSearch={() => (showSearch = true)}
     onSettings={() => layout.toggleSettings()}
   />
@@ -829,6 +1045,7 @@ ${lastAnswer(r).slice(0, 4000)}`,
         onReorder={reorderTabs}
       />
       {#if current}
+        <NetworkBanner />
         <div class="messages" bind:this={scroller}>
           {#if current.messages.length === 0}
             <div class="hero">
@@ -845,6 +1062,16 @@ ${lastAnswer(r).slice(0, 4000)}`,
             {#each current.messages as m, i (i)}
               <div class="msg" class:flash={flashTs === m.ts} data-ts={m.ts}>
                 <ChatMessage msg={m} />
+                {#if !m.error}
+                  <MessageActions
+                    msg={m}
+                    isLast={i === current.messages.length - 1}
+                    streaming={streamingIds.has(current.id)}
+                    onRegenerate={() => regenerate(current.id, m.ts)}
+                    onUseAsPrompt={(t) => send(t)}
+                    onDelete={() => deleteFrom(current.id, m.ts)}
+                  />
+                {/if}
               </div>
             {/each}
           {/if}
@@ -881,6 +1108,7 @@ ${lastAnswer(r).slice(0, 4000)}`,
           onClose={() => layout.toggleSettings()}
           onPopout={() => void popout('settings')}
           onSendNote={send}
+          onReplayTour={() => (showTour = true)}
         />
         <div class="splitter" role="separator" aria-orientation="vertical"
           onpointerdown={(e) => startSettingsResize(e)}
@@ -920,6 +1148,16 @@ ${lastAnswer(r).slice(0, 4000)}`,
       {#each c.messages as m, i (i)}
         <div class="msg" class:flash={flashTs === m.ts} data-ts={m.ts}>
           <ChatMessage msg={m} />
+          {#if !m.error}
+            <MessageActions
+              msg={m}
+              isLast={i === c.messages.length - 1}
+              streaming={streamingIds.has(convId)}
+              onRegenerate={() => regenerate(convId, m.ts)}
+              onUseAsPrompt={(t) => void sendTo(convId, t)}
+              onDelete={() => deleteFrom(convId, m.ts)}
+            />
+          {/if}
         </div>
       {/each}
     </div>
@@ -971,10 +1209,12 @@ ${lastAnswer(r).slice(0, 4000)}`,
         agentsActive={Boolean(current?.agents?.length)}
         filesOpen={showFiles}
         terminalOpen={showTerminal}
+        graphOpen={showGraph}
         onToggleAgents={() => setAgents(current?.agents?.length ? [] : ['nexus', 'seeker'])}
         onToggleDuel={toggleDuel}
         onToggleFiles={() => (showFiles = !showFiles)}
         onToggleTerminal={toggleTerminal}
+        onToggleGraph={() => (showGraph = !showGraph)}
         onSearch={() => (showSearch = true)}
         onSettings={() => layout.toggleSettings()}
       />
@@ -996,16 +1236,26 @@ ${lastAnswer(r).slice(0, 4000)}`,
           <option value="openai/gpt-4.1">Arbitre : GPT-4.1</option>
           <option value="google/gemini-2.5-flash">Arbitre : Gemini 2.5 Flash</option>
         </select>
+        <label class="debate" title="A et B répliquent au verdict, puis l'arbitre tranche définitivement">
+          <input type="checkbox" bind:checked={settings.arbitreDebate} /> débat 2 tours
+        </label>
         {#if arbitreBusy}
           <button class="ghost" onclick={stopArbitre}>■ arrêter</button>
         {:else}
-          <button class="ghost" onclick={() => void arbitrate()} disabled={!layout.duel.left || !layout.duel.right}>⚖︎ Synthèse</button>
+          <button class="ghost" onclick={() => void arbitrate()} disabled={!layout.duel.left || !layout.duel.right}>
+            ⚖︎ {settings.arbitreDebate ? 'Débat' : 'Synthèse'}
+          </button>
         {/if}
+        <button class="ghost" onclick={startCollab} title="Collaboratif : Nexus + PromptDeck en parallèle, workspace partagé">🃏 Collab</button>
+        <button class="ghost" onclick={() => void autoCommit(layout.duel!.left)} disabled={commitBusy} title="git add + commit de la sandbox via l'endpoint sécurisé">
+          {commitBusy ? '…' : '⑂ commit auto'}
+        </button>
+        <button class="ghost" class:active={showGraph} onclick={() => (showGraph = !showGraph)} title="Graphe des conversations et workspaces">🕸</button>
       </div>
       {#if verdict}
         <div class="verdict">
           <header class="vhead">
-            <strong>⚖︎ Arbitrage — {arbitreModel}</strong>
+            <strong>⚖︎ Arbitrage — {arbitreModel}{settings.arbitreDebate ? ' · débat 2 tours' : ''}</strong>
             <button class="mini" onclick={() => (verdict = null)} title="Fermer">×</button>
           </header>
           <div class="vbody">{verdict.text}<span class="cursor">{arbitreBusy ? '▍' : ''}</span></div>
@@ -1046,6 +1296,14 @@ ${lastAnswer(r).slice(0, 4000)}`,
   <SearchPanel {conversations} onOpen={jumpTo} onClose={() => (showSearch = false)} />
 {/if}
 
+{#if showGraph}
+  <GraphPanel
+    {conversations}
+    onOpen={(id) => selectChat(id)}
+    onClose={() => (showGraph = false)}
+  />
+{/if}
+
 {#if showFiles && (filesConvId ?? currentId)}
   {@const fid = filesConvId ?? currentId!}
   {@const fc = conversations.find((x) => x.id === fid)}
@@ -1064,6 +1322,16 @@ ${lastAnswer(r).slice(0, 4000)}`,
 
 {#if showPalette}
   <CommandPalette {commands} onClose={() => (showPalette = false)} />
+{/if}
+
+{#if showTour}
+  <WelcomeTour
+    onClose={() => {
+      showTour = false
+      markTourDone()
+    }}
+    onAction={tourAction}
+  />
 {/if}
 
 <style>
@@ -1264,9 +1532,22 @@ ${lastAnswer(r).slice(0, 4000)}`,
     font-size: 12.5px;
     color: var(--muted);
   }
-  .verdictbar .ghost:hover:not(:disabled) {
+  .verdictbar .ghost:hover:not(:disabled),
+  .verdictbar .ghost.active {
     color: var(--text);
     border-color: var(--accent);
+  }
+  .verdictbar .debate {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 12px;
+    color: var(--muted);
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .verdictbar .debate input {
+    accent-color: var(--accent);
   }
   .verdict {
     height: 34%;
