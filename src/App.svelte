@@ -470,7 +470,15 @@
     const multi = Boolean(conv.agents?.length)
     const appliedCards = conversations.find((c) => c.id === convId)?.cardsActive ?? loadDeckState().active
     const user: Msg = { role: 'user', content: text, ts: Date.now(), ...(appliedCards.length ? { cards: [...appliedCards] } : {}) }
-    const assistant: Msg = { role: 'assistant', content: '', ts: Date.now(), ...(multi ? { agent: 'nexus' as const } : {}) }
+    const assistant: Msg = {
+      role: 'assistant',
+      content: '',
+      ts: Date.now(),
+      ...(multi ? { agent: 'nexus' as const } : {}),
+      // Le modèle qui répond, affiché au-dessus de sa bulle
+      model: conv.model,
+      providerLabel: providerOf(conv.providerId, customs).label,
+    }
     conversations = conversations.map((c) =>
       c.id === convId ? { ...c, messages: [...c.messages, user, assistant], open: true } : c,
     )
@@ -1560,19 +1568,17 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
             {#each current.messages as m, i (i)}
               <div class="msg" class:flash={flashTs === m.ts} data-ts={m.ts}>
                 <ChatMessage msg={m} />
-                {#if !m.error}
-                  <MessageActions
-                    msg={m}
-                    isLast={i === current.messages.length - 1}
-                    streaming={streamingIds.has(current.id)}
-                    cardsApplied={m.cards ?? []}
-                    canUndo={Boolean(current.agents?.length) && !(current.planMode ?? false)}
-                    onUndo={() => void undoSandbox(current.id)}
-                    onRegenerate={() => regenerate(current.id, m.ts)}
-                    onUseAsPrompt={(t) => send(t)}
-                    onDelete={() => deleteFrom(current.id, m.ts)}
-                  />
-                {/if}
+                <MessageActions
+                  msg={m}
+                  isLast={i === current.messages.length - 1}
+                  streaming={streamingIds.has(current.id)}
+                  cardsApplied={m.cards ?? []}
+                  canUndo={Boolean(current.agents?.length) && !(current.planMode ?? false)}
+                  onUndo={() => void undoSandbox(current.id)}
+                  onRegenerate={() => regenerate(current.id, m.ts)}
+                  onUseAsPrompt={(t) => send(t)}
+                  onDelete={() => deleteFrom(current.id, m.ts)}
+                />
               </div>
             {/each}
           {/if}
@@ -2008,6 +2014,16 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
     display: flex;
     min-height: 0;
     position: relative;
+  }
+  /* Les panneaux invités du dock outils sont fixed chez eux → on les ancre
+     en absolute DANS le dock (même mécanique que .hubbed du hub). */
+  .dock-tools :global(.hubbed),
+  .dock-tools :global(aside) {
+    position: absolute !important;
+    inset: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    border-radius: 0 !important;
   }
   .splitter {
     width: 5px;

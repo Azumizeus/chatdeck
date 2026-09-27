@@ -189,6 +189,42 @@
     void refreshHealth()
   }
 
+  /** Nettoyage anti-accumulation : conversations supprimées (orphelins, depuis
+   *  localStorage) + workspaces de plus de 30 jours sans activité. Un seul
+   *  appel serveur — finies les 158 workspaces orphelins. */
+  let cleanupNote = $state('')
+  let cleaning = $state(false)
+  async function cleanupWorkspaces(): Promise<void> {
+    cleaning = true
+    cleanupNote = ''
+    try {
+      const liveIds = new Set<string>()
+      try {
+        const convs = JSON.parse(localStorage.getItem('chatdeck.conversations.v1') || '[]') as { id?: string }[]
+        for (const c of convs) if (typeof c.id === 'string') liveIds.add(c.id.toLowerCase())
+      } catch {
+        /* conversations illisibles : aucun orphelin déclaré */
+      }
+      const orphans = (health?.workspaces ?? [])
+        .map((w) => w.id.split('@@')[0].replace(/^p-/, ''))
+        .filter((id) => /^[a-z0-9][a-z0-9_-]{0,63}$/i.test(id) && !liveIds.has(id.toLowerCase()))
+      const r = await fetch('/api/sandbox/cleanup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orphans: [...new Set(orphans)], maxAgeDays: 30 }),
+      })
+      const j = (await r.json()) as { removed?: number; bytesFreed?: number; error?: string }
+      cleanupNote = j.error
+        ? `✗ ${j.error}`
+        : `✓ ${j.removed ?? 0} workspace(s) supprimé(s) · ${fmtBytes(j.bytesFreed ?? 0)} libérés`
+      await refreshHealth()
+    } catch (e) {
+      cleanupNote = `✗ ${(e as Error).message}`
+    } finally {
+      cleaning = false
+    }
+  }
+
   function fmtBytes(n: number): string {
     if (n < 1024) return `${n} o`
     if (n < 1_048_576) return `${(n / 1024).toFixed(1)} ko`
@@ -414,16 +450,24 @@
         <span>{health.count} workspace(s) · {fmtBytes(health.totalBytes)}</span>
         <button class="ghost" onclick={refreshHealth} title="Rafraîchir">⟳</button>
       </div>
-      {#each health.workspaces as w (w.id)}
+      {#if health.count > 12}
+        <div class="sb-line">
+          <button class="ghost" disabled={cleaning} onclick={() => void cleanupWorkspaces()} title="Supprime les orphelins (conversations disparues) + les workspaces inactifs > 30 jours">
+            {cleaning ? '… nettoyage' : '🧹 nettoyer (orphelins + > 30 j)'}</button>
+          <button class="ghost danger" onclick={cleanupAll} title="Tout supprimer, sans exception">tout supprimer…</button>
+        </div>
+        {#if cleanupNote}<p class="sb-empty">{cleanupNote}</p>{/if}
+      {/if}
+      {#each health.workspaces.slice(0, 40) as w (w.id)}
         <div class="wsrow">
-          <code class="mono">{w.id.slice(0, 14)}…</code>
+          <code class="mono">{w.id.slice(0, 14)}{w.id.length > 14 ? '…' : ''}</code>
           <span class="ws-meta">{w.files} fichiers · {fmtBytes(w.sizeBytes)}</span>
-          <button class="ghost danger" onclick={() => removeWs(w.id)} title="Supprimer ce workspace">suppr.</button>
+          <button class="ghost danger" onclick={() => removeWs(w.id)} title="Supprimer ce workspace (base + espaces OS)">suppr.</button>
         </div>
       {/each}
-      {#if health.workspaces.length}
-        <button class="ghost danger" onclick={cleanupAll}>Tout supprimer…</button>
-      {:else}
+      {#if health.workspaces.length > 40}
+        <p class="sb-empty">+ {health.workspaces.length - 40} autres — utilise 🧹 nettoyer ou tout supprimer.</p>
+      {:else if !health.workspaces.length}
         <p class="sb-empty">Aucun workspace — il sera créé au premier message d'un fil agents.</p>
       {/if}
     {:else}

@@ -14,6 +14,9 @@
     {#if who}
       <span class="who">{who.emoji} {who.name} · {who.role}</span>
     {/if}
+    {#if msg.role === 'assistant' && (msg.model || msg.providerLabel)}
+      <span class="model-line" title="Modèle qui a généré cette réponse">{msg.providerLabel ? `${msg.providerLabel} · ` : ''}<code class="model-name">{msg.model ?? ''}</code></span>
+    {/if}
     {#if msg.condensed}
       <span class="condensed-pill" title="L'historique ancien de ce fil a été remplacé par un résumé (condenseur de contexte) pour garder le prompt léger.">🗜 historique résumé</span>
     {/if}
@@ -65,6 +68,20 @@
     font-family: var(--mono);
     color: var(--muted);
     margin-bottom: 4px;
+  }
+  .model-line {
+    display: block;
+    font-size: 10.5px;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+  .model-name {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 0 5px;
+    font-family: var(--mono);
+    font-size: 10.5px;
   }
   .condensed-pill {
     display: inline-block;

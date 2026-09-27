@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.4.3
+
+### Corrigé
+- **« loadToolLog is not iterable »** : readJson étalait le tableau stocké en
+  objet — chaque tour d'agent affichait l'erreur dans le fil. Lecture tableau
+  stricte (toollog + projets).
+- **Double encadrement en app de bureau** : WindowFrame dessinait sa barre
+  titre à 3 pastilles SOUS la barre native Electron (hiddenInset) — supprimée
+  dans Electron (détection userAgent), simple espace de drag à la place.
+- **Preview en fenêtre volante** : le panneau n'est plus un overlay fixed au
+  milieu du chat ; il remplit le hub ou le dock outils (ancrage absolute).
+- **Suppression workspace** : DELETE d'une conversation retire maintenant la
+  base + les espaces @@mac/windows/linux — plus de dossiers orphelins.
+
+### Ajouté
+- **Modèle affiché au-dessus de chaque réponse** (fournisseur + id du modèle).
+- **Boutons de message toujours visibles** (opacité 0.45 → 1 au survol) et
+  présents aussi sur les messages d'erreur (copier/supprimer utiles).
+- **🧹 Nettoyage sandbox** dans Réglages : orphelins (conversations supprimées)
+  + workspaces inactifs > 30 jours en un clic — la racine de 158 workspaces
+  est retombée à 1 (projet conservé).
+- Nouvel endpoint POST /api/sandbox/cleanup {orphans, maxAgeDays}.
+
 ## 0.4.2
 
 ### Corrigé

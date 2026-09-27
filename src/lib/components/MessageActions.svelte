@@ -91,7 +91,9 @@
     align-items: center;
     gap: 4px;
     margin-top: 4px;
-    opacity: 0;
+    /* Toujours perceptibles (0.45), plein au survol : invisible au survol seul
+       = introuvable au trackpad (bug signalé : « les boutons n'apparaissent pas »). */
+    opacity: 0.45;
     transition: opacity 0.15s;
   }
   .msg-acts:hover,

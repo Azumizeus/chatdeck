@@ -18,6 +18,10 @@ export interface Msg {
   cards?: string[]
   /** Le prompt de ce message a été condensé (résumé de l'historique ancien) */
   condensed?: boolean
+  /** Modèle qui a produit la réponse (affiché au-dessus de la bulle) */
+  model?: string
+  /** Libellé du fournisseur (affiché avec le modèle) */
+  providerLabel?: string
 }
 
 export interface Conversation {
@@ -144,7 +148,13 @@ export interface Project {
 const PROJECTS_KEY = 'chatdeck.projects.v1'
 
 export function loadProjects(): Project[] {
-  return readJson<Project[]>(PROJECTS_KEY, [])
+  // (pas readJson : tableau → même piège d'itération que le toollog)
+  try {
+    const v = JSON.parse(localStorage.getItem(PROJECTS_KEY) ?? '[]') as unknown
+    return Array.isArray(v) ? (v as Project[]) : []
+  } catch {
+    return []
+  }
 }
 
 export function saveProjects(list: Project[]): void {
@@ -359,7 +369,14 @@ const TOOLLOG_KEY = 'chatdeck.toollog.v1'
 const TOOLLOG_MAX = 300
 
 export function loadToolLog(): ToolLogEntry[] {
-  return readJson<ToolLogEntry[]>(TOOLLOG_KEY, [])
+  // ⚠ pas de readJson ici : son spread objet({...fallback,...json}) transforme
+  // un tableau stocké en objet {0:…,1:…} → « not iterable » à chaque tour agent.
+  try {
+    const v = JSON.parse(localStorage.getItem(TOOLLOG_KEY) ?? '[]') as unknown
+    return Array.isArray(v) ? (v as ToolLogEntry[]) : []
+  } catch {
+    return []
+  }
 }
 
 export function appendToolLog(entry: ToolLogEntry): void {

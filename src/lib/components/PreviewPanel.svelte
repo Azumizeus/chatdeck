@@ -65,22 +65,21 @@
 </aside>
 
 <style>
+  /* DANS le hub/dock : remplit son conteneur (inset 0 via .hubbed).
+     HORS hub (dock outils n'existe pas pour preview → jamais en overlay flottant
+     devant le chat : le bug « fenêtre preview » signalé venait de ce fixed au
+     milieu de l'écran qui chevauchait tout). Ici : toujours flux/hub. */
   .preview {
-    position: fixed;
-    left: 50%;
-    transform: translateX(-50%);
-    bottom: 42px;
-    width: min(560px, calc(100vw - 340px));
-    height: 320px;
+    inset: 0;
+    width: 100%;
+    height: 100%;
     display: flex;
     flex-direction: column;
     gap: 6px;
     padding: 10px;
-    background: color-mix(in srgb, var(--panel) 97%, transparent);
+    background: var(--panel);
     border: 1px solid var(--border);
     border-radius: 12px;
-    box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
-    z-index: 70;
   }
   header {
     display: flex;

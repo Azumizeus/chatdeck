@@ -1,6 +1,9 @@
 <script lang="ts">
   // Châssis « IDE premium » : barre de titre macOS à 3 pastilles + slot de contenu.
   // Le drag éventuel est délégué au parent via onDragPointerDown.
+  // ⚠ Dans l'APP ELECTRON, la fenêtre a déjà son titleBarStyle hiddenInset natif :
+  // dessiner la nôtre faisait un DOUBLE encadrement (2 barres, 2 jeux de boutons).
+  // On la supprime donc quand on tourne dans Electron (userAgent contient Electron).
   import type { Snippet } from 'svelte'
 
   let {
@@ -21,28 +24,44 @@
     children?: Snippet
   } = $props()
 
+  /** Vrai dans l'app de bureau Electron (le navigateur ne contient jamais 'Electron'). */
+  const inElectron = typeof navigator !== 'undefined' && /Electron/i.test(navigator.userAgent)
+
   function handlePointerDown(e: PointerEvent): void {
     if ((e.target as HTMLElement).closest('.traffic')) return
     onDragPointerDown?.(e)
   }
+
+  // Dans Electron la titlebar native gère fermer/réduire/plein écran :
+  // le bouton fantôme n'existe plus (see template), closeWin reste pour le web.
+  function closeWin(): void {
+    if (inElectron) window.close()
+    else onClose()
+  }
+  void closeWin
 </script>
 
 <div class="frame">
-  <div
-    class="titlebar"
-    class:draggable
-    onpointerdown={handlePointerDown}
-    ondblclick={onMaximize}
-    role="banner"
-  >
-    <div class="traffic">
-      <button class="light close" onclick={onClose} title="Fermer" aria-label="Fermer"></button>
-      <button class="light minimize" onclick={onMinimize} title="Réduire" aria-label="Réduire"></button>
-      <button class="light maximize" onclick={onMaximize} title="Plein écran" aria-label="Plein écran"></button>
+  {#if !inElectron}
+    <div
+      class="titlebar"
+      class:draggable
+      onpointerdown={handlePointerDown}
+      ondblclick={onMaximize}
+      role="banner"
+    >
+      <div class="traffic">
+        <button class="light close" onclick={onClose} title="Fermer" aria-label="Fermer"></button>
+        <button class="light minimize" onclick={onMinimize} title="Réduire" aria-label="Réduire"></button>
+        <button class="light maximize" onclick={onMaximize} title="Plein écran" aria-label="Plein écran"></button>
+      </div>
+      <div class="title">{title}</div>
+      <div class="right"></div>
     </div>
-    <div class="title">{title}</div>
-    <div class="right"></div>
-  </div>
+  {:else}
+    <!-- Electron : espace pour les pastilles natives (hiddenInset), pas de doublon -->
+    <div class="native-gap" aria-hidden="true"></div>
+  {/if}
   <div class="body">
     {@render children?.()}
   </div>
@@ -68,6 +87,13 @@
     border-bottom: 1px solid var(--border);
     backdrop-filter: blur(8px);
     user-select: none;
+  }
+  /* Electron : la barre native hiddenInset occupe ~28 px au-dessus du contenu.
+     On laisse juste l'espace pour que la toolbar ne soit pas mangée. */
+  .native-gap {
+    height: 14px;
+    flex-shrink: 0;
+    -webkit-app-region: drag;
   }
   .titlebar.draggable {
     cursor: grab;

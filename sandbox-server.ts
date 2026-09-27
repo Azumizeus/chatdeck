@@ -182,6 +182,7 @@ const MAX_RUN_OUTPUT = 200_000
 const RUN_TIMEOUT_MS = 60_000
 const CONV_ID_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/i
 type OsProfile = 'mac' | 'windows' | 'linux'
+const OSES: OsProfile[] = ['mac', 'windows', 'linux']
 
 /**
  * Un espace réel PAR OS : workspaces/<conv>@@<os> (mac, windows, linux côte à
@@ -587,14 +588,72 @@ const sandboxHandler: RequestHandler = (req, res) => {
               return json(res, 404, { error: 'route inconnue' })
             }
 
+            /* ── Hygiène de la racine (anti-accumulation) ── */
+            // POST /api/sandbox/cleanup  {maxAgeDays?:number}
+            //  · supprime les espaces dont la conversation n'existe plus/plus ouverte
+            //    (id introuvable dans le corps de la requête : orphelins détectés côté client)
+            //  · supprime les workspaces vides (0 fichier utile) et <id>@@os sans base
+            //  · borné : jamais les p-* de projets (manuels), jamais > 500 dossiers
+            if (convId === 'cleanup' && req.method === 'POST') {
+              const body = JSON.parse(await readBody(req) || '{}') as { orphans?: string[]; maxAgeDays?: number }
+              const maxAge = Math.max(1, Math.min(365, Math.floor(body.maxAgeDays ?? 30)))
+              const cutoff = Date.now() - maxAge * 86_400_000
+              let removed = 0
+              let bytes = 0
+              const dirs = existsSync(WORKSPACES_ROOT)
+                ? (await readdir(WORKSPACES_ROOT, { withFileTypes: true })).filter((d) => d.isDirectory()).slice(0, 500)
+                : []
+              const orphanSet = new Set((body.orphans ?? []).filter((s) => CONV_ID_RE.test(s)))
+              for (const d of dirs) {
+                // orphelins explicites (conversations supprimées) : base + @@os
+                const baseId = d.name.split('@@')[0]
+                const isOrphan = orphanSet.has(baseId)
+                let old = false
+                try {
+                  old = (await stat(path.join(WORKSPACES_ROOT, d.name))).mtimeMs < cutoff
+                } catch {
+                  continue
+                }
+                if (!isOrphan && !old) continue
+                try {
+                  const m = await measure(path.join(WORKSPACES_ROOT, d.name))
+                  await rm(path.join(WORKSPACES_ROOT, d.name), { recursive: true })
+                  removed++
+                  bytes += m.sizeBytes
+                } catch {
+                  /* suppression ratée : on continue */
+                }
+              }
+              return json(res, 200, { ok: true, removed, bytesFreed: bytes, maxAgeDays: maxAge })
+            }
+
             const guard = safeResolve(convId, '')
             if (!guard) return json(res, 400, { error: 'id de conversation invalide' })
             const { base } = guard
 
-            // suppression du workspace entier
+            // suppression du workspace entier : base + espaces @@os + projets
+            // p-* rattachés — une suppression laisse DERRIÈRE elle une racine
+            // propre (sinon accumulation invisible : 158 workspaces orphelins).
             if (!action && req.method === 'DELETE') {
-              if (existsSync(base)) await rm(base, { recursive: true })
-              return json(res, 200, { ok: true })
+              let removed = 0
+              const targets = [
+                path.join(WORKSPACES_ROOT, convId),
+                ...OSES.map((o) => osWorkspace(convId, o)),
+              ]
+              // espaces projet rattachés à cette conversation ( projectId ≠ convId )
+              const all = existsSync(WORKSPACES_ROOT)
+                ? (await readdir(WORKSPACES_ROOT, { withFileTypes: true })).map((d) => d.name)
+                : []
+              for (const name of all) {
+                if (name === convId || name.startsWith(`${convId}@@`)) targets.push(path.join(WORKSPACES_ROOT, name))
+              }
+              for (const t of targets) {
+                if (existsSync(t)) {
+                  await rm(t, { recursive: true })
+                  removed++
+                }
+              }
+              return json(res, 200, { ok: true, removed })
             }
 
             // tree
