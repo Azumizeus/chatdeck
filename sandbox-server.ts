@@ -609,6 +609,52 @@ export function sandboxServer(): Plugin {
             // git-commit : endpoint sécurisé pour les agents — git add -A + commit.
             // Garde-fous : id de conversation valide, message non vide borné, pas de
             // branche/répo externe (flags figés), exécution via spawn sans shell.
+            // git-undo : checkpoint avant tour d'agent + revert (inspiré de /undo OpenCode).
+            //   POST {op:'checkpoint'} → commit auto (comme git-commit, silencieux si rien à committer)
+            //   POST {op:'revert', steps?:N} → git reset --hard HEAD~N (défaut 1) + clean untracked
+            if (action === 'git-undo' && req.method === 'POST') {
+              const body = JSON.parse(await readBody(req) || '{}') as { op?: string; steps?: number }
+              if (!existsSync(base)) return json(res, 400, { error: 'workspace inexistant (bootstrap d\'abord)' })
+              const { execFile } = await import('node:child_process')
+              const opt = { cwd: base, timeout: 15_000, env: { ...process.env, GIT_AUTHOR_NAME: 'Nexus (ChatDeck)', GIT_AUTHOR_EMAIL: 'nexus@chatdeck.local', GIT_COMMITTER_NAME: 'Nexus (ChatDeck)', GIT_COMMITTER_EMAIL: 'nexus@chatdeck.local' } }
+              const run = (args: string[]): Promise<string> =>
+                new Promise((resolve, reject) => {
+                  execFile('git', args, opt, (err, stdout, stderr) => (err ? reject(new Error(String(stderr || err.message))) : resolve(stdout)))
+                })
+              try {
+                if (!existsSync(path.join(base, '.git'))) await run(['init', '-q'])
+                const op = body.op ?? 'checkpoint'
+                if (op === 'checkpoint') {
+                  await run(['add', '-A'])
+                  const empty = await run(['diff', '--cached', '--quiet']).then(
+                    () => true,
+                    () => false,
+                  )
+                  if (empty) return json(res, 200, { ok: true, hash: null, note: 'rien à committer' })
+                  const hash = await run(['commit', '-q', '-m', (body as { message?: string }).message?.slice(0, 200) || 'checkpoint (avant tour agent)']).then(
+                    () => run(['rev-parse', '--short', 'HEAD']),
+                  )
+                  return json(res, 200, { ok: true, hash: hash.trim() })
+                }
+                if (op === 'revert') {
+                  const steps = Math.max(1, Math.min(10, Math.floor(body.steps ?? 1)))
+                  // On ne revert que les checkpoints « checkpoint (avant tour agent) » —
+                  // jamais les commits de l'utilisateur. Reset vers le commit checkpoint
+                  // lui-même (l'état AVANT le travail de l'agent) : marche même en racine.
+                  const lines = (await run(['log', '--pretty=%h|%s', '-30'])).split('\n').filter(Boolean)
+                  const cks = lines.filter((l) => /checkpoint \(avant tour agent\)/.test(l)).map((l) => l.split('|')[0])
+                  const n = Math.min(steps, cks.length)
+                  if (!n) return json(res, 200, { ok: false, note: 'aucun checkpoint agent à annuler' })
+                  await run(['reset', '--hard', cks[n - 1]])
+                  await run(['clean', '-fd'])
+                  return json(res, 200, { ok: true, reverted: n })
+                }
+                return json(res, 400, { error: 'op invalide (checkpoint|revert)' })
+              } catch (e) {
+                return json(res, 500, { error: (e as Error).message })
+              }
+            }
+
             if (action === 'git-commit' && req.method === 'POST') {
               const body = JSON.parse(await readBody(req)) as { message?: string }
               const message = (body.message ?? '').trim().slice(0, 200)

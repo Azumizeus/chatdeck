@@ -78,6 +78,17 @@ arrêt via `npm run dev:bg:stop` — indispensable après un redémarrage de mac
   `cards-pop`) ; le `Msg.cards` de l'envoi alimente le badge 🃏 de
   MessageActions. Édition des fiches projet : PUT `/api/deck/card`
   (frontmatter requis, pack en lecture seule).
+- **Mode Plan** : `Conversation.planMode` → `toolsFor(agent, readOnly)` filtre
+  write_file/git_commit/délégations + prompt « lecture seule » ; toggle Tab ou
+  bouton 📋 Plan dans Composer. **/undo** : endpoint sandbox `git-undo`
+  (checkpoint avant chaque runTurns, revert = reset vers le commit checkpoint,
+  jamais les commits utilisateur) ; bouton ↩ dans MessageActions quand agents
+  actifs et pas en Plan. **@fichier** : regex `@[\w./-]+` dans send() → extraits
+  (4 ko) via /file dans le system. **Microagents** : champ `triggers:` (CSV) du
+  frontmatter matché dans `activeCardsSystem()`.
+- **Géométries** : hub par défaut amarré à DROITE du chat
+  (`defaultHubGeometry`) — ne pas recentrer ; appGeo flottante re-clampée au
+  viewport au montage (sinon zone noire dans les navigateurs plus larges).
 - **CLI `deck`** (travail d'un autre agent, non commité à ce jour) : lit les
   fiches `.CD` dans `promptdeck/library/`, `./.cd/` et `~/.chatdeck/`.
   Première fiche projet : `.cd/skills/verification-lot.cd`.

@@ -64,7 +64,12 @@ const P = (name: string, type: string, description: string): { type: string; des
 })
 
 /** Outils des agents, agissant sur la sandbox (partagée) de la conversation. */
-export function toolsFor(agent: AgentId): ToolDef[] {
+/**
+ * Outils disponibles pour un agent. `readOnly` (Mode Plan, inspiré d'OpenCode)
+ * retire TOUT outil d'écriture : write_file, délégations et git_commit —
+ * l'agent analyse et propose, il ne modifie jamais la sandbox.
+ */
+export function toolsFor(agent: AgentId, readOnly = false): ToolDef[] {
   // write_file : Nexus et PromptDeck (collaboration au même workspace) ; Seeker reste lecture
   const write: ToolDef[] =
     agent === 'nexus' || agent === 'deck'
@@ -153,7 +158,7 @@ export function toolsFor(agent: AgentId): ToolDef[] {
           },
         ]
       : []
-  return [
+  const tools: ToolDef[] = [
     ...extra,
     ...delegate,
     ...write,
@@ -218,6 +223,10 @@ export function toolsFor(agent: AgentId): ToolDef[] {
       },
     },
   ]
+  if (!readOnly) return tools
+  // Mode Plan : lecture seule — les noms d'outils d'écriture sont filtrés
+  const deny = new Set(['write_file', 'git_commit', 'delegate_to_seeker', 'delegate_to_deck', 'delegate_to_nexus'])
+  return tools.filter((t) => !deny.has(t.function.name))
 }
 
 /** Outils « rendre rapport » après délégation (Seeker et PromptDeck → Nexus, Nexus → PromptDeck). */
@@ -342,10 +351,12 @@ export async function execTool(convId: string, call: ToolCall): Promise<string> 
 
 /* ---------- prompts système avec contexte sandbox ---------- */
 
-export function systemPromptFor(agent: AgentId, settingsSystem: string, delegation?: { task: string; from?: AgentId }): string {
+export function systemPromptFor(agent: AgentId, settingsSystem: string, delegation?: { task: string; from?: AgentId }, readOnly = false): string {
   const persona = AGENTS[agent]
   const base = [persona.system, settingsSystem.trim()].filter(Boolean).join('\n\n')
-  const sandbox = `Tu disposes d'une sandbox disque partagée par conversation. Outils : list_tree, read_file, run_command, web_fetch, git_commit${agent === 'nexus' ? ', write_file, delegate_to_seeker, delegate_to_deck' : agent === 'deck' ? ', write_file, delegate_to_nexus' : ', write_file'}. Les chemins sont relatifs au workspace. En mode collaboratif, l'autre agent écrit dans le MÊME workspace : liste l'arbre avant d'écrire pour éviter d'écraser ses fichiers.`
+  const sandbox = readOnly
+    ? `Tu disposes d'une sandbox disque partagée par conversation, en MODE PLAN (lecture seule) : tu peux lister et lire les fichiers, exécuter des commandes d'inspection et consulter le web, mais tu ne dois PAS modifier la sandbox. Analyse, propose un plan d'implémentation en étapes concrètes, indique les fichiers à créer/modifier et les risques — sans rien écrire. Les chemins sont relatifs au workspace.`
+    : `Tu disposes d'une sandbox disque partagée par conversation. Outils : list_tree, read_file, run_command, web_fetch, git_commit${agent === 'nexus' ? ', write_file, delegate_to_seeker, delegate_to_deck' : agent === 'deck' ? ', write_file, delegate_to_nexus' : ', write_file'}. Les chemins sont relatifs au workspace. En mode collaboratif, l'autre agent écrit dans le MÊME workspace : liste l'arbre avant d'écrire pour éviter d'écraser ses fichiers.`
   if (delegation) {
     const from = delegation.from === 'nexus' ? 'Nexus' : delegation.from === 'deck' ? 'PromptDeck' : 'Nexus'
     const reportTool = reportToolNameFor(agent)

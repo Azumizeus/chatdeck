@@ -452,10 +452,33 @@
           ...conv.messages.filter((m) => !m.error && m.content).map((mm) => ({ role: mm.role, content: mm.content })),
           { role: 'user' as const, content: text },
         ]
-    const cardsBlock = activeCardsSystem(convId)
+    // @fichier (inspiré d'OpenCode) : chaque @chemin mentionné attache un extrait
+    // du fichier de la sandbox au prompt (lecture asynchrone bornée).
+    const atRefs = [...new Set([...text.matchAll(/@([\w./-]+)/g)].map((m) => m[1]).filter((p) => /\.[\w]+$/.test(p)))].slice(0, 5)
+    let atBlock = ''
+    if (atRefs.length) {
+      const excerpts = await Promise.all(
+        atRefs.map(async (p) => {
+          try {
+            const r = await fetch(`/api/sandbox/${convId}/file?path=${encodeURIComponent(p)}`)
+            if (!r.ok) return null
+            const j = (await r.json()) as { content?: string }
+            const body = (j.content ?? '').slice(0, 4000)
+            return body ? `@${p} :\n\n\`\`\`\n${body}${(j.content ?? '').length > 4000 ? '\n…' : ''}\n\`\`\`` : null
+          } catch {
+            return null
+          }
+        }),
+      )
+      const found = excerpts.filter(Boolean) as string[]
+      if (found.length) atBlock = `Fichiers sandbox référencés (@) :\n\n${found.join('\n\n')}`
+    }
+    // Mode Plan (inspiré d'OpenCode) : lecture seule, l'agent propose sans modifier
+    const readOnly = conv.planMode ?? false
+    const cardsBlock = activeCardsSystem(convId, text)
     const systemWire: WireMsg = {
       role: 'system',
-      content: multi ? systemPromptFor('nexus', [settings.system, cardsBlock].filter(Boolean).join('\n\n')) : [settings.system.trim(), cardsBlock].filter(Boolean).join('\n\n'),
+      content: multi ? systemPromptFor('nexus', [settings.system, cardsBlock, atBlock].filter(Boolean).join('\n\n'), undefined, readOnly) : [settings.system.trim(), cardsBlock, atBlock].filter(Boolean).join('\n\n'),
     }
     const baseMessages: WireMsg[] = systemWire.content ? [systemWire, ...wires] : wires
 
@@ -466,6 +489,15 @@
       delegationFrom?: AgentId,
     ): Promise<{ delegation?: string; delegationTo?: AgentId; report?: string }> {
       if (!AGENTS[agent]) return {}
+      // Checkpoint sandbox avant que l'agent n'agisse (/undo inspiré d'OpenCode) :
+      // uniquement en mode agents (sandbox disque) et pas en Mode Plan (n'écrit pas).
+      if (!readOnly && (conv?.agents?.length ?? multi)) {
+        void fetch(`/api/sandbox/${convId}/git-undo`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ op: 'checkpoint' }),
+        }).catch(() => {})
+      }
       patchLive((m) => ({ ...m, agent })) // le badge suit l'agent qui parle
       const pending: { calls: ToolCall[] | null } = { calls: null }
       for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
@@ -483,7 +515,7 @@
           messages:
             agent !== 'nexus'
               ? [
-                  { role: 'system', content: systemPromptFor(agent, [settings.system, cardsBlock].filter(Boolean).join('\n\n'), delegationTask ? { task: delegationTask, from: delegationFrom } : undefined) },
+                  { role: 'system', content: systemPromptFor(agent, [settings.system, cardsBlock].filter(Boolean).join('\n\n'), delegationTask ? { task: delegationTask, from: delegationFrom } : undefined, readOnly) },
                   ...wires,
                   ...extra,
                 ]
@@ -493,7 +525,7 @@
           signal: controller.signal,
           customs,
           // En délégation, l'agent de travail reçoit aussi son outil de rapport
-          tools: delegationTask ? [...toolsFor(agent), reportToolFor(agent)] : toolsFor(agent),
+          tools: delegationTask ? [...toolsFor(agent, readOnly), reportToolFor(agent)] : toolsFor(agent, readOnly),
           onDelta: (d) => {
             phaseContent += d
             patchLive((m) => ({ ...m, content: m.content + d }))
@@ -651,19 +683,42 @@
   }
 
   /**
-   * Fiches .CD activées pour UN fil (priorité) ou globalement (repli) :
-   * injectées dans le prompt système, comme `deck run`.
+   * Fiches .CD activées pour UN fil (priorité) ou globalement (repli), plus
+   * les MICROAGENTS (inspirés d'OpenHands) : fiches à `triggers:` (mots-clés
+   * frontmatter) activées automatiquement quand le message les contient.
    */
-  function activeCardsSystem(convId: string | null): string {
+  function activeCardsSystem(convId: string | null, userText = ''): string {
     const st = loadDeckState()
     const ids = (convId ? conversations.find((x) => x.id === convId)?.cardsActive : undefined) ?? st.active
-    if (!ids.length) return ''
-    const loaded = ids
+    // Microagents : scan des fiches en cache pour un champ triggers: (liste CSV)
+    const lower = userText.toLowerCase()
+    const micro: string[] = []
+    if (userText.trim().length >= 3) {
+      for (const [id, raw] of Object.entries(st.cache)) {
+        if (ids.includes(id)) continue // déjà active explicitement
+        const m = /^---\r?\n[\s\S]*?\r?\n---/.exec(raw)
+        const tr = m?.[0].match(/^triggers:(.*)$/m)
+        if (!tr) continue
+        const words = tr[1].split(/[,;]/).map((w) => w.trim().toLowerCase()).filter((w) => w.length >= 3)
+        if (words.some((w) => lower.includes(w))) micro.push(id)
+      }
+      if (micro.length) {
+        const uniq = [...new Set([...ids, ...micro])]
+        // En mode par-fil : on mémorise l'activation pour ce fil (l'utilisateur la voit)
+        if (convId && conversations.find((x) => x.id === convId)?.cardsActive) {
+          conversations = conversations.map((c) => (c.id === convId ? { ...c, cardsActive: uniq } : c))
+        }
+      }
+    }
+    const all = [...new Set([...ids, ...micro])]
+    if (!all.length) return ''
+    const loaded = all
       .map((id) => st.cache[id])
       .filter(Boolean)
       .map((raw) => raw!.slice(0, 6000))
     if (!loaded.length) return ''
-    return `Fiches de méthode activées par l'utilisateur — suis leurs instructions :\n\n${loaded.join('\n\n---\n\n')}`
+    const autoNote = micro.length ? `\n\n(fiches déclenchées automatiquement par mots-clés : ${micro.join(', ')})` : ''
+    return `Fiches de méthode activées par l'utilisateur — suis leurs instructions :\n\n${loaded.join('\n\n---\n\n')}${autoNote}`
   }
 
   /** Toggle d'une fiche activée pour le fil courant (pastille 🃏 du composer). */
@@ -674,6 +729,35 @@
       const next = cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]
       return { ...c, cardsActive: next }
     })
+  }
+
+  /** Toggle Mode Plan (lecture seule) pour le fil courant. */
+  function togglePlanMode(convId: string): void {
+    conversations = conversations.map((c) => (c.id === convId ? { ...c, planMode: !(c.planMode ?? false) } : c))
+  }
+
+  /** /undo : revert des checkpoints agent dans la sandbox du fil. */
+  async function undoSandbox(convId: string): Promise<void> {
+    try {
+      const r = await fetch(`/api/sandbox/${convId}/git-undo`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ op: 'revert', steps: 1 }),
+      })
+      const j = (await r.json()) as { ok?: boolean; reverted?: number; note?: string; error?: string }
+      const note = j.error ? `❌ ${j.error}` : j.ok ? `↩ ${j.reverted} checkpoint(s) annulé(s)` : j.note ?? 'rien à annuler'
+      conversations = conversations.map((c) =>
+        c.id === convId
+          ? { ...c, messages: [...c.messages, { role: 'assistant', content: `_(sandbox)_ ${note}`, ts: Date.now() } as Msg] }
+          : c,
+      )
+    } catch (e) {
+      conversations = conversations.map((c) =>
+        c.id === convId
+          ? { ...c, messages: [...c.messages, { role: 'assistant', content: `_(sandbox)_ erreur : ${(e as Error).message}`, ts: Date.now() } as Msg] }
+          : c,
+      )
+    }
   }
 
   /** Fiches proposées dans la pastille 🃏 : actives globalement + cache (accès instantané). */
@@ -703,6 +787,24 @@
   const aborts = new Map<string, AbortController>()
 
   /* ---------- fenêtre flottante / pill ---------- */
+
+  // appGeo héritée d'un écran plus grand (autre navigateur, écran débranché) :
+  // on la ramène dans le viewport au montage, sinon la fenêtre déborde et le
+  // reste de la page apparaît noir à droite/en bas.
+  $effect(() => {
+    if (layout.appMode !== 'floating') return
+    const g = layout.appGeo
+    const vw = window.innerWidth
+    const vh = window.innerHeight
+    if (g.x + g.w > vw - 4 || g.y + g.h > vh - 4 || g.x < 0 || g.y < 0) {
+      layout.setAppGeo({
+        w: Math.min(g.w, Math.max(640, vw - 16)),
+        h: Math.min(g.h, Math.max(480, vh - 16)),
+        x: Math.max(0, Math.min(g.x, Math.max(0, vw - Math.min(g.w, vw - 16)) - 4)),
+        y: Math.max(0, Math.min(g.y, Math.max(0, vh - Math.min(g.h, vh - 16)) - 4)),
+      })
+    }
+  })
 
   function floatWith(geo: PaneGeometry): void {
     layout.setAppGeo(geo)
@@ -1161,6 +1263,8 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
                     isLast={i === current.messages.length - 1}
                     streaming={streamingIds.has(current.id)}
                     cardsApplied={m.cards ?? []}
+                    canUndo={Boolean(current.agents?.length) && !(current.planMode ?? false)}
+                    onUndo={() => void undoSandbox(current.id)}
                     onRegenerate={() => regenerate(current.id, m.ts)}
                     onUseAsPrompt={(t) => send(t)}
                     onDelete={() => deleteFrom(current.id, m.ts)}
@@ -1179,6 +1283,8 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
           cards={cardsOffer}
           cardsActive={current.cardsActive ?? []}
           onToggleCard={(id) => toggleCardForConv(current.id, id)}
+          planMode={current.planMode ?? false}
+          onTogglePlan={() => togglePlanMode(current.id)}
           onSend={send}
           onStop={stop}
           onProvider={setProvider}
@@ -1273,6 +1379,8 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
       cards={cardsOffer}
       cardsActive={c.cardsActive ?? []}
       onToggleCard={(id) => toggleCardForConv(convId, id)}
+      planMode={c.planMode ?? false}
+      onTogglePlan={() => togglePlanMode(convId)}
       onSend={(t) => void sendTo(convId, t)}
       onStop={() => stop(convId)}
       onProvider={setProvider}

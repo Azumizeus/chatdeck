@@ -52,6 +52,10 @@ npm run build        # bundle production (~72 kB gzip)
 - **Streaming SSE** token par token avec curseur animé + **Stop** (abort)
 - **Markdown sûr** : marked + DOMPurify (code, tables, listes)
 - Réglages : température, tokens max, instructions système
+- **Mode Plan** 📋 (inspiré d'OpenCode) : bouton Plan ou touche Tab dans le composer — les agents lisent et proposent sans jamais modifier la sandbox
+- **/undo sandbox** ↩ : checkpoint git avant chaque tour d'agent, bouton Undo dans la barre d'actions pour annuler ses modifications
+- **@fichier** : tape @ dans le message pour attacher un extrait d'un fichier de la sandbox au prompt
+- **Microagents** : champ `triggers:` dans les fiches .CD — activation automatique par mots-clés du message
 - Titre auto, erreurs lisibles (401/429/réseau)
 - **Actions sous chaque message** : copier, régénérer, répondre, envoyer vers Obsidian, réutiliser comme brouillon, tronquer la conversation à partir d'un message
 - **Visite guidée interactive** au premier lancement (6 étapes, actions déclenchées), rejouable via ⌘K « Visite guidée », désactivable dans ⚙︎ Réglages → Apparence

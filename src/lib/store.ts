@@ -37,6 +37,8 @@ export interface Conversation {
   collabOf?: string
   /** Fiches .CD activées POUR CE FIL (ids) ; absent = fallback sur la sélection globale */
   cardsActive?: string[]
+  /** Mode Plan (inspiré d'OpenCode) : agents en lecture seule pour ce fil */
+  planMode?: boolean
 }
 
 export interface Keys {
@@ -187,9 +189,13 @@ export interface HubGeometry {
 export function defaultHubGeometry(): HubGeometry {
   const vw = typeof window === 'undefined' ? 1280 : window.innerWidth
   const vh = typeof window === 'undefined' ? 800 : window.innerHeight
-  const w = Math.min(980, Math.max(420, vw - 260))
-  const h = Math.min(640, Math.max(360, Math.round(vh * 0.68)))
-  return { x: Math.max(12, Math.round((vw - w) / 2)), y: Math.max(12, Math.round((vh - h) * 0.16)), w, h }
+  // Défaut : amarré À DROITE de la zone de chat (sidebar 260 + marge), jamais
+  // centré devant le fil — c'est une fenêtre « outils », pas une modale.
+  const w = Math.min(560, Math.max(400, Math.round(vw * 0.36)))
+  const h = Math.min(680, Math.max(380, Math.round(vh * 0.7)))
+  const x = Math.max(vw - w - 20, 24)
+  const y = Math.max(64, Math.round((vh - h) * 0.18))
+  return { x, y, w, h }
 }
 
 const HUB_KEY = 'chatdeck.hub.v1'

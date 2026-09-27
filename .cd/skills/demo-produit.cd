@@ -3,6 +3,7 @@ name: demo-produit
 description: Démonstration de ChatDeck — présenter les 3 fenêtres (hub outils, terminal docké, deck Skills & Agents) lors d'une démo ou de la visite guidée.
 kind: skill
 tools: [read, list]
+triggers: démo, démonstration, presente chatdeck, visite guidée
 ---
 
 # demo-produit — les 3 fenêtres de ChatDeck

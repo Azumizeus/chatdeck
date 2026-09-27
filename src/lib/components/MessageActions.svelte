@@ -9,6 +9,8 @@
     isLast,
     streaming,
     cardsApplied = [],
+    canUndo = false,
+    onUndo,
     onRegenerate,
     onUseAsPrompt,
     onDelete,
@@ -19,6 +21,9 @@
     streaming: boolean
     /** Fiches .CD actives au moment de l'envoi (badge 🃏 « fiche appliquée ») */
     cardsApplied?: string[]
+    /** /undo : revert des checkpoints agent (sandbox disque disponible) */
+    canUndo?: boolean
+    onUndo?: () => void
     onRegenerate?: () => void
     /** Renvoie le contenu comme nouveau prompt (répondre / brancher) */
     onUseAsPrompt: (text: string) => void
@@ -51,6 +56,11 @@
   {#if msg.role === 'assistant' && isLast && !streaming}
     <button class="act act-retry" onclick={() => onRegenerate?.()} title="Régénérer">
       ⟳<span class="act-tip">Régénérer</span>
+    </button>
+  {/if}
+  {#if canUndo && onUndo && msg.role === 'assistant'}
+    <button class="act act-undo" onclick={() => onUndo?.()} title="Annuler les modifications de l'agent (revert au checkpoint)">
+      ↩<span class="act-tip">Undo sandbox</span>
     </button>
   {/if}
   {#if msg.role === 'assistant'}
@@ -140,6 +150,9 @@
     color: #27c93f;
   }
   .act-retry:hover {
+    color: #fb923c;
+  }
+  .act-undo:hover {
     color: #fb923c;
   }
   .act-reply:hover {

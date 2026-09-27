@@ -13,6 +13,8 @@
     cards = [],
     cardsActive = [],
     onToggleCard,
+    planMode = false,
+    onTogglePlan,
     onSend,
     onStop,
     onProvider,
@@ -31,6 +33,9 @@
     /** Fiches activées POUR CE FIL */
     cardsActive?: string[]
     onToggleCard?: (id: string) => void
+    /** Mode Plan (lecture seule, inspiré d'OpenCode) — toggle Tab */
+    planMode?: boolean
+    onTogglePlan?: () => void
     onSend: (text: string) => void
     onStop: () => void
     onProvider: (pid: ProviderId) => void
@@ -112,6 +117,14 @@
         {/each}
       </select>
     {/if}
+    {#if onTogglePlan}
+      <button
+        class="plan-btn"
+        class:on={planMode}
+        onclick={onTogglePlan}
+        title="Mode Plan (Tab) : les agents lisent et proposent, sans modifier la sandbox"
+      >📋 Plan</button>
+    {/if}
     {#if cards.length && onToggleCard}
       <div class="cards-menu">
         <button
@@ -141,7 +154,15 @@
       bind:this={ta}
       bind:value={text}
       oninput={autosize}
-      onkeydown={key}
+      onkeydown={(e) => {
+        // Tab = bascule Mode Plan (OpenCode), tant qu'aucune suggestion @ n'est active
+        if (e.key === 'Tab' && onTogglePlan && !text.startsWith('@')) {
+          e.preventDefault()
+          onTogglePlan()
+          return
+        }
+        key(e)
+      }}
       rows="1"
       placeholder={agents.length
         ? 'Écris à Nexus — il orchestre, écrit dans la sandbox et délègue à Seeker…'
@@ -170,6 +191,21 @@
     align-items: center;
     gap: 8px;
     margin-bottom: 8px;
+  }
+  .plan-btn {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: none;
+    color: var(--fg);
+    font: inherit;
+    font-size: 12.5px;
+    padding: 4px 8px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .plan-btn.on {
+    background: color-mix(in srgb, #fb923c 18%, transparent);
+    border-color: color-mix(in srgb, #fb923c 50%, transparent);
   }
   .cards-menu {
     position: relative;

@@ -446,6 +446,29 @@ test.describe('fiches .CD avancé : pastille, éditeur, badge', () => {
   })
 })
 
+// /undo sandbox : checkpoint avant tour d'agent + revert (inspiré d'OpenCode)
+test.describe('undo sandbox (checkpoint/revert)', () => {
+  test('git-undo : checkpoint écrit, revert ramène au contenu précédent', async ({ request }) => {
+    const id = await convId()
+    await request.post(`/api/sandbox/${id}/bootstrap`)
+    // Fichier v1 + checkpoint
+    await request.put(`/api/sandbox/${id}/file`, { data: { path: 'undo.md', content: 'version 1' } })
+    const cp = await (await request.post(`/api/sandbox/${id}/git-undo`, { data: { op: 'checkpoint' } })).json()
+    expect(cp.ok).toBe(true)
+    expect(cp.hash).toBeTruthy()
+    // L'agent "casse" le fichier
+    await request.put(`/api/sandbox/${id}/file`, { data: { path: 'undo.md', content: 'version cassée' } })
+    const before = await (await request.get(`/api/sandbox/${id}/file?path=undo.md`)).json()
+    expect(before.content).toContain('cassée')
+    // Revert → version 1 retrouvée
+    const rv = await (await request.post(`/api/sandbox/${id}/git-undo`, { data: { op: 'revert', steps: 1 } })).json()
+    expect(rv.ok).toBe(true)
+    expect(rv.reverted).toBe(1)
+    const after = await (await request.get(`/api/sandbox/${id}/file?path=undo.md`)).json()
+    expect(after.content).toContain('version 1')
+  })
+})
+
 // Fenêtre outils (hub) : onglets, chat toujours visible, réglage quels panneaux afficher
 test.describe('fenêtre outils (hub)', () => {
   test('ouverture, switch d\'onglets, chat visible derrière, fermeture', async () => {
