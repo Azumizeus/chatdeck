@@ -12,6 +12,7 @@ blob-report/
 
 .vite-dev.pid
 release/
+electron/api-server.mjs
 build/*
 !build/icon.png
 !build/README.md

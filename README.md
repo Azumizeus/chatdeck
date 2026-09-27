@@ -59,11 +59,16 @@ de bureau, endpoint `/api/sandbox/launch-instance` en web). L'app porte l'icône
 
 Les clés se saisissent aussi dans **⚙︎ Réglages** (⌘K → « Réglages ») : test en direct par fournisseur, stockage `localStorage`, jamais envoyées ailleurs qu'au fournisseur choisi (via le proxy Vite). Fournisseurs custom : `custom-providers.local.json` (gitignore) alimente le proxy générique.
 
+En app packagée, l'UI et les endpoints `/api/*` sont servis par un petit serveur
+local (`http://127.0.0.1:<port>`, spawné par Electron : bundle
+`electron/api-server.mjs` — le même code `sandbox-server.ts` que le dev Vite).
+Le port est tracé dans `~/Library/Application Support/ChatDeck/chatdeck-port.txt`.
+
 ```bash
-npm test             # Vitest : store, SSE, coût, snap, recherche (64 tests)
-npm run test:e2e     # Playwright : 16 parcours (webServer Vite démarré auto)
+npm test             # Vitest : store, SSE, coût, snap, recherche (79 tests)
+npm run test:e2e     # Playwright : 33 parcours (webServer Vite démarré auto)
 npm run check        # svelte-check (0 erreur, 0 warning)
-npm run build        # bundle production (~72 kB gzip)
+npm run build        # bundle production + build:api (electron/api-server.mjs)
 ```
 
 ## Fonctionnalités
@@ -98,11 +103,11 @@ npm run build        # bundle production (~72 kB gzip)
 - **Nexus** 🧠, super agent orchestrateur multidisciplinaire : il écrit le brief dans `NOTES.md`, crée les fichiers, délègue à **Seeker** 🔎 (exploratrice : recherche, analyse) puis conclut d'après son rapport — délégation multi-agents dans le même fil
 - **Délégation bidirectionnelle** : Nexus⇄Seeker et Nexus⇄Deck — l'agent cible reçoit mission + émetteur, travaille avec ses propres outils, puis `report_to_deck` / `report_to_nexus` clôt la boucle ; le rapport est injecté dans la conversation d'origine (handoff plafonné à 6 sauts)
 - **Function calling réel** (OpenAI-compatible) : `list_tree`, `read_file`, `write_file`, `run_command`, `delegate_to_seeker` / `delegate_to_deck` / `delegate_to_nexus`, `report_to_*` ; rounds d'outils plafonnés avec rappel de conclusion
-- **Sandbox disque par conversation** : `~/.chatdeck/workspaces/<conv-id>/` créée au premier message du fil (README, NOTES, src/, package.json) via les endpoints `/api/sandbox` du serveur Vite — chemins confinés (anti path-traversal), tailles plafonnées, commandes agents en liste blanche
+- **Sandbox disque par conversation ET par OS** : `~/.chatdeck/workspaces/<conv-id>/` (OS de l'hôte) plus les espaces `<conv-id>@@mac`, `<conv-id>@@windows`, `<conv-id>@@linux` — créés au premier message du fil (README, NOTES, src/, package.json) via les endpoints `/api/sandbox` ; chemins confinés (anti path-traversal), tailles plafonnées, commandes agents en liste blanche. **Changer d'OS bascule d'espace, sans rien effacer** : les fichiers de chaque OS sont retrouvés intacts après un aller-retour.
 - **Terminal intégré** ⌨︎ : exécution réelle dans le workspace — `node`, `npm`, `npx`, `git`, `ls`, `cat`… — spawn sans shell, timeout 60 s, sortie streamée, historique ↑/↓
 - **Panneau Fichiers** 📁 (mode gestionnaire, élargissable ⤢) : arborescence complète filtrable, renommer/dupliquer/supprimer, import glisser-déposer (≤ 20 fichiers texte), téléchargement, preview live HTML/CSS/JS, **historique Git avec diff par commit** (+/−), commit auto annoté, **switcher d'OS sécurisé** (mac / windows / linux)
 - **Santé sandbox** dans les réglages : racine, nombre de workspaces, tailles, suppression unitaire ou générale
-- **Profil OS total** : changer d'OS (mac/windows/linux) **purge les fichiers platform/ des autres profils** — plus de dossier windows qui traîne sous mac/linux
+- **deck_search / deck_load** : les agents cherchent eux-mêmes dans la bibliothèque PromptDeck (636 fiches, recherche bilingue FR/EN) et chargent une fiche comme méthode — plus besoin de l'activer à la main. Fiche **manuel-chatdeck** (.cd/skills) : la carte de l'app, activable dans le deck ; catégorie **« outils »** en plus de skills/agents
 - **Skills & Agents (.CD)** 🃏 : panneau deck (hub ou popout) qui liste les 335+ fiches (pack PromptDeck, projet ./.cd, global ~/.chatdeck) ; **activation par clic** — globale, ou **par conversation** via la pastille 🃏 du composer (menu déroulant, compteur) ; **édition directe des fiches projet** dans le panneau (sauvegarde PUT) ; création intégrée (équivalent `deck cd --new`) ; badge 🃏 sous les messages envoyés avec fiches appliquées ; injection dans le prompt système (même mécanique que `deck run`, plafond 12 fiches)
 
 ### Mode duel

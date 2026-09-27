@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.4.1
+
+### Corrigé
+- **Écran noir de l'app packagée** : l'app charge désormais l'UI depuis un
+  serveur API local (`http://127.0.0.1:<port>`) au lieu de `file://` (chemins
+  absolus /assets cassés + aucun endpoint /api + fetch bloqué par CORS).
+  Même code de serveur que le dev : `sandbox-server.ts` exposé en bundle ESM
+  (`npm run build:api` → `electron/api-server.mjs`), spawné par Electron avec
+  son Node embarqué.
+
+### Ajouté
+- **Un espace disque par OS** : chaque conversation a ses espaces
+  `<conv>@@mac`, `<conv>@@windows`, `<conv>@@linux` côte à côte — switch_os
+  bascule instantanément SANS plus rien purger (les fichiers d'un OS sont
+  retrouvés intacts après un aller-retour).
+- **Outils agents `deck_search` / `deck_load`** : tous les agents peuvent
+  chercher dans la bibliothèque PromptDeck (636 fiches, FR/EN) et charger une
+  fiche comme méthode — plus besoin d'activer la fiche à la main.
+- **Fiche `manuel-chatdeck`** (.cd/skills) : la carte de l'app pour les agents,
+  activable dans le DeckPanel.
+- **Catégorie « outils »** dans le deck (fiche kind: outil, dossier `.cd/outils/`).
+- **Bibliothèque embarquée** dans l'app packagée (asarUnpack promptdeck/).
+
+### UI
+- Toolbar réorganisée en 3 groupes (sessions d'agents · espace de travail · app)
+  avec séparateurs, `aria-pressed` sur les boutons à états, libellés précisés.
+
 ## 0.4.0 — Projets, terminal hub, fenêtre mémorisée
 
 ### Projets (inspiré Claude Desktop)

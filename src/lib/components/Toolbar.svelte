@@ -51,54 +51,69 @@
 </script>
 
 <div class="toolbar" class:compact role="toolbar" aria-label="Outils">
-  <button
-    class="tb"
-    class:active={agentsActive}
-    onclick={onToggleAgents}
-    disabled={!conv || streaming}
-    title={agentsActive ? 'Désactiver les agents Nexus & Seeker' : 'Activer les agents Nexus & Seeker (sandbox)'}
-  >
-    🧠 {#if !compact}<span>Agents</span>{/if}
-  </button>
-  {#if !perConv}
+  <!-- Groupe 1 : sessions d'agents -->
+  <div class="grp" role="group" aria-label="Sessions d'agents">
     <button
       class="tb"
-      class:active={duelActive}
-      onclick={onToggleDuel}
-      title={duelActive ? 'Quitter le mode duel' : 'Mode duel : deux conversations côte à côte'}
+      class:active={agentsActive}
+      aria-pressed={agentsActive}
+      onclick={onToggleAgents}
+      disabled={!conv || streaming}
+      title={agentsActive ? 'Désactiver les agents Nexus, Seeker & PromptDeck' : 'Activer les agents Nexus, Seeker & PromptDeck (sandbox disque)'}
     >
-      ⚔︎ {#if !compact}<span>Duel</span>{/if}
+      <span aria-hidden="true">🧠</span> {#if !compact}<span>Agents</span>{/if}
     </button>
-  {/if}
-  <button class="tb" class:active={filesOpen} onclick={onToggleFiles} disabled={!conv} title="Fichiers de la sandbox">
-    📁 {#if !compact}<span>Fichiers</span>{/if}
-  </button>
-  <button class="tb" class:active={terminalOpen} onclick={onToggleTerminal} disabled={!conv} title="Terminal du workspace">
-    ⌨︎ {#if !compact}<span>Terminal</span>{/if}
-  </button>
-  {#if onTogglePreview}
-    <button class="tb" class:active={previewOpen} onclick={onTogglePreview} disabled={!conv} title="Preview live du workspace">
-      👁 {#if !compact}<span>Preview</span>{/if}
+    {#if !perConv}
+      <button
+        class="tb"
+        class:active={duelActive}
+        aria-pressed={duelActive}
+        onclick={onToggleDuel}
+        title={duelActive ? 'Quitter le mode duel' : 'Mode duel : deux conversations côte à côte'}
+      >
+        <span aria-hidden="true">⚔︎</span> {#if !compact}<span>Duel</span>{/if}
+      </button>
+    {/if}
+  </div>
+
+  <span class="sep" aria-hidden="true"></span>
+
+  <!-- Groupe 2 : espace de travail (sandbox) -->
+  <div class="grp" role="group" aria-label="Espace de travail de la conversation">
+    <button class="tb" class:active={filesOpen} aria-pressed={filesOpen} onclick={onToggleFiles} disabled={!conv} title="Fichiers de la sandbox (hub)">
+      <span aria-hidden="true">📁</span> {#if !compact}<span>Fichiers</span>{/if}
     </button>
-  {/if}
-  {#if onToggleGraph}
-    <button class="tb" class:active={graphOpen} onclick={onToggleGraph} title="Graphify : graphe des conversations, workspaces et agents">
-      🕸 {#if !compact}<span>Graphify</span>{/if}
+    <button class="tb" class:active={terminalOpen} aria-pressed={terminalOpen} onclick={onToggleTerminal} disabled={!conv} title="Terminal du workspace (liste blanche, cwd = sandbox)">
+      <span aria-hidden="true">⌨︎</span> {#if !compact}<span>Terminal</span>{/if}
     </button>
-  {/if}
-  {#if onToggleHub && !perConv}
-    <button class="tb" class:active={hubOpen} onclick={onToggleHub} title="Fenêtre outils : Graphify, Fichiers, Terminal, Preview, Réglages — le chat reste visible">
-      🗂 {#if !compact}<span>Outils</span>{/if}
-    </button>
-  {/if}
+    {#if onTogglePreview}
+      <button class="tb" class:active={previewOpen} aria-pressed={previewOpen} onclick={onTogglePreview} disabled={!conv} title="Preview live du workspace (index.html servi par /serve)">
+        <span aria-hidden="true">👁</span> {#if !compact}<span>Preview</span>{/if}
+      </button>
+    {/if}
+    {#if onToggleGraph}
+      <button class="tb" class:active={graphOpen} aria-pressed={graphOpen} onclick={onToggleGraph} title="Graphify : graphe des conversations, workspaces et agents">
+        <span aria-hidden="true">🕸</span> {#if !compact}<span>Graphify</span>{/if}
+      </button>
+    {/if}
+    {#if onToggleHub && !perConv}
+      <button class="tb" class:active={hubOpen} aria-pressed={hubOpen} onclick={onToggleHub} title="Hub à onglets : Graphify, Fichiers, Terminal, Preview, Réglages, Skills — double-clic sur son titre pour le replier">
+        <span aria-hidden="true">🗂</span> {#if !compact}<span>Outils</span>{/if}
+      </button>
+    {/if}
+  </div>
+
   {#if !perConv}
     <div class="spacer"></div>
-    <button class="tb" onclick={onSearch} title="Rechercher dans toutes les conversations (⌘⇧F)">
-      🔍 {#if !compact}<span>Chercher</span>{/if}
-    </button>
-    <button class="tb" onclick={onSettings} title="Réglages">
-      ⚙︎ {#if !compact}<span>Réglages</span>{/if}
-    </button>
+    <!-- Groupe 3 : app -->
+    <div class="grp" role="group" aria-label="Application">
+      <button class="tb" onclick={onSearch} title="Rechercher dans toutes les conversations (⌘⇧F)">
+        <span aria-hidden="true">🔍</span> {#if !compact}<span>Chercher</span>{/if}
+      </button>
+      <button class="tb" onclick={onSettings} title="Réglages (⌘,)">
+        <span aria-hidden="true">⚙︎</span> {#if !compact}<span>Réglages</span>{/if}
+      </button>
+    </div>
   {/if}
 </div>
 
@@ -131,6 +146,21 @@
   .compact .tb {
     padding: 4px 6px;
     font-size: 13px;
+  }
+  .grp {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .compact .grp {
+    gap: 2px;
+  }
+  .sep {
+    width: 1px;
+    height: 18px;
+    background: var(--border);
+    margin: 0 4px;
+    flex-shrink: 0;
   }
   .tb:hover:not(:disabled) {
     color: var(--text);

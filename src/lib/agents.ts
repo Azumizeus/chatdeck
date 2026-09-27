@@ -249,11 +249,47 @@ export function toolsFor(agent: AgentId, readOnly = false, projectId?: string): 
           },
         ]
       : []
+  // Bibliothèque PromptDeck : TOUS les agents peuvent chercher et charger les
+  // fiches (636 skills/agents, FR/EN) — ils n'ont plus à deviner une méthode.
+  const deckTools: ToolDef[] = [
+    {
+      type: 'function',
+      function: {
+        name: 'deck_search',
+        description:
+          "Cherche dans la bibliothèque PromptDeck (636 fiches skills/agents, recherche bilingue FR/EN) la méthode, procédure ou persona adapté à la tâche. À utiliser AVANT d'inventer une méthode.",
+        parameters: {
+          type: 'object',
+          properties: {
+            query: P('query', 'string', 'Recherche en langage naturel (français accepté, ex. « revue de code », « tutoriel »)'),
+            max: P('max', 'number', 'Nombre de résultats (défaut 6, max 12)'),
+          },
+          required: ['query'],
+        },
+      },
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'deck_load',
+        description:
+          "Charge le contenu complet d'une fiche PromptDeck par son id (ex. « verification-lot ») — la fiche devient TA méthode à appliquer jusqu'au bout.",
+        parameters: {
+          type: 'object',
+          properties: {
+            id: P('id', 'string', 'Id de fiche tel que renvoyé par deck_search (ex. verification-lot)'),
+          },
+          required: ['id'],
+        },
+      },
+    },
+  ]
   const tools: ToolDef[] = [
     ...projectTools,
     ...extra,
     ...delegate,
     ...write,
+    ...deckTools,
     {
       type: 'function',
       function: {
@@ -419,6 +455,23 @@ export async function execTool(convId: string, call: ToolCall): Promise<string> 
       const j = await api<{ out: string }>('GET', convId, 'exec', undefined, `?cmd=${encodeURIComponent(cmd)}`)
       return j.out
     }
+    case 'deck_search': {
+      const q = String(call.args.query ?? '').slice(0, 300)
+      if (!q.trim()) return '❌ deck_search : requête vide'
+      const max = Math.min(12, Math.max(1, Number(call.args.max) || 6))
+      const r = await fetch(`/api/deck/search?q=${encodeURIComponent(q)}&max=${max}`)
+      const j = (await r.json()) as { ok?: boolean; output?: string; error?: string }
+      if (j.error) return `❌ deck_search : ${j.error}`
+      return `Bibliothèque PromptDeck — recherche « ${q} » :\n${(j.output ?? '').trim()}`
+    }
+    case 'deck_load': {
+      const id = String(call.args.id ?? '').trim()
+      if (!id || /[\\/\0]/.test(id)) return "❌ deck_load : id de fiche invalide (ex. « verification-lot ») — demande le résultat à deck_search"
+      const r = await fetch(`/api/deck/card?id=${encodeURIComponent(id)}`)
+      const j = (await r.json()) as { content?: string; error?: string }
+      if (j.error) return `❌ deck_load : ${j.error} — relance deck_search pour trouver le bon id`
+      return `Fiche « ${id} » — à appliquer comme méthode :\n\n${(j.content ?? '').slice(0, 20_000)}`
+    }
     case 'web_fetch': {
       const url = String(call.args.url ?? '')
       const r = await fetch(`/api/sandbox/${convId}/webfetch?url=${encodeURIComponent(url)}`)
@@ -498,7 +551,7 @@ export function systemPromptFor(
 ): string {
   const persona = AGENTS[agent]
   const base = [persona.system, settingsSystem.trim()].filter(Boolean).join('\n\n')
-  const writeTools = readOnly ? '' : "write_file (créer/modifier un fichier), git_commit (sauvegarder l'état), switch_os (basculer mac|windows|linux),"
+  const writeTools = readOnly ? '' : "write_file (créer/modifier un fichier), git_commit (sauvegarder l'état), switch_os (basculer entre les espaces mac|windows|linux sans rien effacer),"
   const sandbox = readOnly
     ? `Tu disposes d'une sandbox disque partagée par conversation, en MODE PLAN (lecture seule) : tu peux lister et lire les fichiers, exécuter des commandes d'inspection et consulter le web, mais tu ne dois PAS modifier la sandbox. Analyse, propose un plan d'implémentation en étapes concrètes, indique les fichiers à créer/modifier et les risques — sans rien écrire. Les chemins sont relatifs au workspace.`
     : `Tu disposes d'une sandbox disque partagée par conversation. Les chemins sont relatifs au workspace. En mode collaboratif, l'autre agent écrit dans le MÊME workspace : liste l'arbre avant d'écrire pour éviter d'écraser ses fichiers.`
@@ -507,8 +560,8 @@ export function systemPromptFor(
 Tu travailles dans ChatDeck, une app qui te donne un vrai poste de développement virtuel :
 
 - **Sandbox disque persistante** par conversation (~/.chatdeck/workspaces/<id>). Tes fichiers survivent entre les tours et sont visibles par l'utilisateur dans le panneau Fichiers (hub « Outils »).
-- **Trois environnements de développement simulés** : mac, windows, linux. Le profil actif détermine les fichiers platform/ du workspace (ex. Info.plist sous mac, app.config.json sous windows). Utilise switch_os pour changer — le disque est purgé de l'ancien profil automatiquement. L'utilisateur voit le même arbre que toi : annonce le changement si tu le fais.
-- **Outils disponibles** : list_tree (arborescence), read_file, run_command (ls, cat, pwd, node -v, npm -v… liste blanche), ${writeTools} web_fetch (télécharger une page web), promptdeck_browse (catalogue de 190 agents + 133 skills pour personas et méthodes).
+- **Trois environnements réels** : mac, windows et linux. Chacun a son VRAI espace disque (<id>@@<os>) conservé côte à côte : switch_os bascule instantanément SANS rien effacer — tu retrouves exactement les fichiers de l'OS visé. Les exécutions restent bornées (liste blanche du terminal).
+- **Outils disponibles** : list_tree (arborescence), read_file, run_command (ls, cat, pwd, node -v, npm -v… liste blanche), ${writeTools} web_fetch (télécharger une page web), deck_search + deck_load (bibliothèque PromptDeck de 636 fiches méthodes/agents — CHERCHE la fiche adaptée et CHARGE-LA avant d'improviser une procédure)${agent === 'deck' ? ', promptdeck_browse (catalogue complet)' : ''}.
 - **Git intégré** : le workspace est un dépôt ; git_commit fait add+commit de tout avec un message obligatoire. Des checkpoints automatiques permettent à l'utilisateur d'annuler un tour (bouton ↩) — ne compte pas dessus pour corriger tes erreurs, committe proprement.
 - **Panneau Preview** : l'utilisateur voit en direct la première page .html du workspace (servie par /serve). Si ta tâche produit une interface, crée un index.html complet (HTML+CSS+JS inline) : la preview se mettra à jour dès l'écriture. Annonce explicitement « preview prête » quand tu écris une page.
 - **Délégation** : ${agent === 'nexus' ? 'delegate_to_seeker (recherche/analyse approfondie) et delegate_to_deck (conception de prompts/personas)' : agent === 'deck' ? 'delegate_to_nexus (orchestration et synthèse)' : 'tu peux recevoir des missions de Nexus et rendre ton rapport via report_to_deck'}.

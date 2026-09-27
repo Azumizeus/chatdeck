@@ -1,7 +1,7 @@
 {
   "name": "chatdeck",
   "private": true,
-  "version": "0.4.0",
+  "version": "0.4.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -9,7 +9,8 @@
     "dev:bg:stop": "node bin/dev-bg.mjs stop",
     "dev:bg:status": "node bin/dev-bg.mjs status",
     "dev:bg:log": "node bin/dev-bg.mjs log",
-    "build": "vite build",
+    "build": "vite build && npm run build:api",
+    "build:api": "esbuild sandbox-server.ts --bundle --platform=node --format=esm --outfile=electron/api-server.mjs --log-level=warning",
     "preview": "vite preview",
     "test": "vitest run",
     "test:e2e": "playwright test",
@@ -25,11 +26,26 @@
   "build": {
     "appId": "com.chatdeck.app",
     "productName": "ChatDeck",
-    "directories": { "output": "release", "buildResources": "build" },
-    "files": ["dist/**", "electron/**"],
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**",
+      "electron/**",
+      "promptdeck/**"
+    ],    "asarUnpack": ["promptdeck/**", "electron/api-server.mjs", "dist/**"],
     "mac": {
       "icon": "build/icon.icns",
-      "target": [{ "target": "dmg", "arch": ["arm64", "x64"] }],
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
       "category": "public.app-category.developer-tools",
       "identity": null
     }

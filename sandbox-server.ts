@@ -22,6 +22,7 @@
 // taille de fichier plafonnée, rien en dehors de la racine.
 
 import type { Plugin } from 'vite'
+import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { spawn } from 'node:child_process'
 import { mkdir, readdir, readFile, writeFile, rm, stat } from 'node:fs/promises'
 import { existsSync, readFileSync, writeFileSync, mkdirSync, realpathSync } from 'node:fs'
@@ -29,8 +30,16 @@ import { homedir } from 'node:os'
 import path from 'node:path'
 
 const WORKSPACES_ROOT = path.join(homedir(), '.chatdeck', 'workspaces')
-/** Racine du projet (pour lancer une 2ᵈ instance : npm run app:multi). */
-const projectRoot = path.resolve(import.meta.dirname ?? '.')
+/** Racine du projet : imposée par main.mjs en packagé (CHATDECK_PROJECT_ROOT,
+ *  copie asar.unpacked) ; sinon déduite du dossier courant (dev, bundle local). */
+const here = path.resolve(import.meta.dirname ?? '.')
+const projectRoot = process.env.CHATDECK_PROJECT_ROOT ?? (existsSync(path.join(here, 'package.json')) ? here : path.resolve(here, '..'))
+/** Dans l'app packagée, ce qui est asarUnpack vit dans app.asar.unpacked/ —
+ *  or notre process API est un Node PUR (ELECTRON_RUN_AS_NODE) qui ne lit pas
+ *  l'asar : on réécrit le chemin vers la copie décompressée. */
+const asarAware = (p: string): string => p.replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`)
+/** Bibliothèque de fiches PromptDeck (packagée : copie décompressée). */
+const promptdeckDir = asarAware(path.join(projectRoot, 'promptdeck'))
 /** Registre des dossiers Mac autorisés en lecture (projects.local.json, gitigné,
  *  écrit par PUT /api/sandbox/projects/:id/folders — jamais par le client direct). */
 const FOLDERS_FILE = path.join(homedir(), '.chatdeck', 'projects-folders.local.json')
@@ -52,6 +61,38 @@ const MAX_RUN_OUTPUT = 200_000
 const RUN_TIMEOUT_MS = 60_000
 const CONV_ID_RE = /^[a-z0-9][a-z0-9_-]{0,63}$/i
 type OsProfile = 'mac' | 'windows' | 'linux'
+
+/**
+ * Un espace réel PAR OS : workspaces/<conv>@@<os> (mac, windows, linux côte à
+ * côte, rien ne se purge). Le workspace « actif » est celui de l'OS courant :
+ * c'est lui (et lui seul) que voient l'arbre, le terminal, l'écriture de fichiers
+ * et les agents — rebasculer d'OS est instantané et NE PERD RIEN.
+ */
+const osWorkspace = (convId: string, os: OsProfile): string => path.join(WORKSPACES_ROOT, `${convId}@@${os}`)
+
+/** Profil OS courant d'une conversation (défaut : celui de la machine hôte). */
+function osOf(convId: string): OsProfile {
+  try {
+    const v = readFileSync(path.join(WORKSPACES_ROOT, convId, '.chatdeck', 'os.txt'), 'utf8').trim()
+    if (v === 'mac' || v === 'windows' || v === 'linux') return v
+  } catch {
+    /* pas encore fixé */
+  }
+  return process.platform === 'darwin' ? 'mac' : process.platform === 'win32' ? 'windows' : 'linux'
+}
+
+function setOsOf(convId: string, os: OsProfile): void {
+  const dir = path.join(WORKSPACES_ROOT, convId, '.chatdeck')
+  mkdirSync(dir, { recursive: true })
+  writeFileSync(path.join(dir, 'os.txt'), os, 'utf8')
+}
+
+/** Racine du workspace ACTIF de la conversation : base conv, ou <conv>@@<os> si l'OS courant n'est pas celui de l'hôte. */
+function activeBase(convId: string): string {
+  const os = osOf(convId)
+  const hostOs: OsProfile = process.platform === 'darwin' ? 'mac' : process.platform === 'win32' ? 'windows' : 'linux'
+  return os === hostOs ? path.join(WORKSPACES_ROOT, convId) : osWorkspace(convId, os)
+}
 
 /** Fichiers d'amorçage spécifiques au profil OS « sécurisé » (Secure AI Multi-OS). */
 const OS_FILES: Record<OsProfile, Record<string, string>> = {
@@ -128,25 +169,27 @@ function json(res: import('node:http').ServerResponse, code: number, data: unkno
   res.end(JSON.stringify(data))
 }
 
-/** Résout un chemin utilisateur DANS le workspace (anti path-traversal). */
-function safeResolve(convId: string, sub: string): { base: string; target: string } | null {
-  if (!CONV_ID_RE.test(convId)) return null
-  const base = path.join(WORKSPACES_ROOT, convId)
+/** Résout un chemin utilisateur DANS une base (anti path-traversal). */
+function safeResolveIn(base: string, sub: string): { base: string; target: string } | null {
   const rel = (sub ?? '').replace(/^[/\\]+/, '')
   const target = path.resolve(base, rel)
   if (target !== base && !target.startsWith(base + path.sep)) return null
   return { base, target }
 }
 
-/** Crée le workspace + fichiers d'amorçage (sans écraser) + profil OS demandé. */
-async function seedWorkspace(convId: string, os?: OsProfile): Promise<number> {
-  const g = safeResolve(convId, '')
-  if (!g) throw new Error('id de conversation invalide')
-  await mkdir(path.join(g.base, 'src'), { recursive: true })
+/** Résout un chemin utilisateur DANS le workspace ACTIF de la conversation. */
+function safeResolve(convId: string, sub: string): { base: string; target: string } | null {
+  if (!CONV_ID_RE.test(convId)) return null
+  return safeResolveIn(activeBase(convId), sub)
+}
+
+/** Crée les fichiers d'amorçage dans la base donnée (jamais écrasés) + profil OS optionnel. */
+async function seedWorkspace(base: string, os?: OsProfile): Promise<number> {
+  await mkdir(path.join(base, 'src'), { recursive: true })
   let written = 0
   const seeds: Record<string, string> = { ...SEED_FILES, ...(os ? OS_FILES[os] : {}) }
   for (const [p, content] of Object.entries(seeds)) {
-    const t = safeResolve(convId, p)
+    const t = safeResolveIn(base, p)
     if (!t) continue
     if (!existsSync(t.target)) {
       await mkdir(path.dirname(t.target), { recursive: true })
@@ -157,19 +200,7 @@ async function seedWorkspace(convId: string, os?: OsProfile): Promise<number> {
   return written
 }
 
-/** Profil OS courant d'un workspace (par défaut : celui de la machine hôte). */
-function osOf(convId: string): OsProfile {
-  const g = safeResolve(convId, '')
-  if (g) {
-    try {
-      const v = readFileSync(path.join(g.base, '.chatdeck', 'os.txt'), 'utf8').trim()
-      if (v === 'mac' || v === 'windows' || v === 'linux') return v
-    } catch {
-      /* pas encore fixé */
-    }
-  }
-  return process.platform === 'darwin' ? 'mac' : process.platform === 'win32' ? 'windows' : 'linux'
-}
+
 
 interface TreeNode {
   name: string
@@ -400,13 +431,11 @@ function runCommand(res: import('node:http').ServerResponse, convId: string, cmd
   })
 }
 
-/** Plugin Vite : monte les endpoints /api/sandbox. */
-export function sandboxServer(): Plugin {
-  return {
-    name: 'chatdeck-sandbox-server',
-    configureServer(server) {
-      server.middlewares.use('/api/sandbox', (req, res) => {
-        void (async () => {
+type RequestHandler = (req: IncomingMessage, res: ServerResponse) => void
+
+/** Handler /api/sandbox partagé : plugin Vite (dev) ET serveur autonome (app packagée). */
+const sandboxHandler: RequestHandler = (req, res) => {
+  void (async () => {
           const url = (req.url ?? '').replace(/^\//, '')
           const [pathPart, queryPart] = url.split('?')
           const query = new URLSearchParams(queryPart ?? '')
@@ -559,7 +588,7 @@ export function sandboxServer(): Plugin {
             if (action === 'bootstrap' && req.method === 'POST') {
               const osParam = query.get('os')
               const os = osParam === 'mac' || osParam === 'windows' || osParam === 'linux' ? osParam : undefined
-              const created = await seedWorkspace(convId, os)
+              const created = await seedWorkspace(base, os)
               if (os) {
                 await mkdir(path.join(base, '.chatdeck'), { recursive: true })
                 await writeFile(path.join(base, '.chatdeck', 'os.txt'), os, 'utf8')
@@ -567,35 +596,30 @@ export function sandboxServer(): Plugin {
               return json(res, 200, { ok: true, created, root: base, os: osOf(convId) })
             }
 
-            // os : lit (GET) ou choisit (POST) le profil OS sécurisé du workspace
+            // os : lit (GET) ou choisit (POST) le profil OS de la conversation.
+            // Chaque OS a son VRAI espace (<conv>@@<os>) : rien ne se purge, le
+            // workspace « actif » est celui de l'OS courant — rebasculer est
+            // instantané et ne perd RIEN. Le fichier platform/ du profil actif
+            // est (re)créé ici s'il manque (invariant arborescence).
             if (action === 'os') {
               if (req.method === 'GET') return json(res, 200, { os: osOf(convId) })
               if (req.method === 'POST') {
                 const body = JSON.parse(await readBody(req)) as { os?: string }
                 const os = body.os
                 if (os !== 'mac' && os !== 'windows' && os !== 'linux') return json(res, 400, { error: 'os invalide (mac|windows|linux)' })
-                if (!existsSync(base)) await seedWorkspace(convId, os)
-                await mkdir(path.join(base, '.chatdeck'), { recursive: true })
-                await writeFile(path.join(base, '.chatdeck', 'os.txt'), os, 'utf8')
-                // Le changement d'environnement doit être TOTAL : on retire les
-                // fichiers platform/ des AUTRES profils avant d'écrire celui-ci,
-                // sinon l'ancien profil (ex. windows) traîne sous mac/linux.
-                const otherOses = (['mac', 'windows', 'linux'] as OsProfile[]).filter((o) => o !== os)
-                for (const o of otherOses) {
-                  for (const p of Object.keys(OS_FILES[o])) {
-                    const t = safeResolve(convId, p)
-                    if (t && existsSync(t.target)) await rm(t.target, { force: true })
-                  }
+                setOsOf(convId, os)
+                const osBase = osWorkspace(convId, os)
+                if (!existsSync(osBase)) await seedWorkspace(osBase, os)
+                const pf = safeResolve(convId, Object.keys(OS_FILES[os])[0] ?? '')
+                if (pf && !existsSync(pf.target)) {
+                  await mkdir(path.dirname(pf.target), { recursive: true })
+                  await writeFile(pf.target, Object.values(OS_FILES[os])[0], 'utf8')
                 }
-                // écrit les fichiers du profil s'ils manquent
-                for (const [p, content] of Object.entries(OS_FILES[os])) {
-                  const t = safeResolve(convId, p)
-                  if (t && !existsSync(t.target)) {
-                    await mkdir(path.dirname(t.target), { recursive: true })
-                    await writeFile(t.target, content, 'utf8')
-                  }
-                }
-                return json(res, 200, { ok: true, os, note: 'profil actif : platform/ purgé des autres OS ; chroot/AES-256 simulés, exécutions bornées par la liste blanche du terminal' })
+                return json(res, 200, {
+                  ok: true,
+                  os,
+                  note: `espace « ${convId}@@${os} » actif — chaque OS (mac/windows/linux) garde son espace côte à côte, rien n'est purgé ; exécutions bornées par la liste blanche du terminal`,
+                })
               }
             }
 
@@ -885,7 +909,7 @@ export function sandboxServer(): Plugin {
               const body = JSON.parse(await readBody(req)) as { cmd?: string }
               const cmd = (body.cmd ?? '').trim()
               if (!cmd) return json(res, 400, { error: 'commande vide' })
-              if (!existsSync(base)) await seedWorkspace(convId)
+              if (!existsSync(base)) await seedWorkspace(base)
               runCommand(res, convId, cmd)
               return
             }
@@ -895,13 +919,20 @@ export function sandboxServer(): Plugin {
             return json(res, 500, { error: (e as Error).message })
           }
         })()
-      })
+}
+
+/** Plugin Vite (dev uniquement) : monte le handler partagé sur /api/sandbox. */
+export function sandboxServer(): Plugin {
+  return {
+    name: 'chatdeck-sandbox-server',
+    configureServer(server) {
+      server.middlewares.use('/api/sandbox', sandboxHandler)
     },
   }
 }
 
-/**
- * Plugin Vite : endpoints /api/deck pour le panneau Skills & Agents du hub.
+/*
+ * Endpoints /api/deck pour le panneau Skills & Agents du hub :
  *
  *   GET  /api/deck/cards            → liste des fiches .CD (library + ./.cd + ~/.chatdeck)
  *   GET  /api/deck/card?id=…        → contenu complet d'une fiche (frontmatter + corps)
@@ -910,39 +941,38 @@ export function sandboxServer(): Plugin {
  * Lecture seule sur promptdeck/library (artefact généré) ; les créations vont
  * dans ./.cd/skills|agents du projet. Aucune exécution, aucun accès réseau.
  */
-export function deckServer(): Plugin {
-  type Card = { id: string; kind: 'skill' | 'agent'; source: 'library' | 'project' | 'global'; path: string; description: string }
-  const parseFrontmatter = (src: string): { name: string; description: string; kind: string } => {
-    const m = /^---\r?\n([\s\S]*?)\r?\n---/.exec(src)
-    const pick = (k: string): string => {
-      const v = m?.[1].match(new RegExp(`^${k}:(.*)$`, 'm'))
-      return (v?.[1] ?? '').trim().replace(/^["']|["']$/g, '')
-    }
-    return { name: pick('name'), description: pick('description'), kind: pick('kind') || 'skill' }
+type Card = { id: string; kind: 'skill' | 'agent' | 'outil'; source: 'library' | 'project' | 'global'; path: string; description: string }
+const parseFrontmatter = (src: string): { name: string; description: string; kind: string } => {
+  const m = /^---\r?\n([\s\S]*?)\r?\n---/.exec(src)
+  const pick = (k: string): string => {
+    const v = m?.[1].match(new RegExp(`^${k}:(.*)$`, 'm'))
+    return (v?.[1] ?? '').trim().replace(/^["']|["']$/g, '')
   }
+  return { name: pick('name'), description: pick('description'), kind: pick('kind') || 'skill' }
+}
 
-  return {
-    name: 'chatdeck-deck-server',
-    configureServer(server) {
-      server.middlewares.use('/api/deck', (req, res) => {
-        void (async () => {
+/** Handler /api/deck partagé : plugin Vite (dev) ET serveur autonome (app packagée). */
+const deckHandler: RequestHandler = (req, res) => {
+  void (async () => {
           const url = (req.url ?? '').replace(/^\//, '')
           const [pathPart, queryPart] = url.split('?')
           const query = new URLSearchParams(queryPart ?? '')
 
           try {
             const roots: { dir: string; source: Card['source'] }[] = [
-              { dir: path.join(process.cwd(), 'promptdeck', 'library'), source: 'library' },
-              { dir: path.join(process.cwd(), '.cd'), source: 'project' },
+              { dir: path.join(promptdeckDir, 'library'), source: 'library' },
+              { dir: asarAware(path.join(projectRoot, '.cd')), source: 'project' },
               { dir: path.join(homedir(), '.chatdeck'), source: 'global' },
             ]
+            /** Dossiers de fiches par catégorie : skills/, agents/ et outils/. */
+            const kindDirs = ['skills', 'agents', 'outils'] as const
 
             // Liste des fiches
             if ((pathPart === 'cards' || pathPart === '') && req.method === 'GET') {
               const cards: Card[] = []
               const seen = new Set<string>()
               for (const { dir, source } of roots) {
-                for (const kindDir of ['skills', 'agents']) {
+                for (const kindDir of kindDirs) {
                   const full = path.join(dir, kindDir)
                   if (!existsSync(full)) continue
                   for (const f of await readdir(full)) {
@@ -952,7 +982,7 @@ export function deckServer(): Plugin {
                       const fm = parseFrontmatter(await readFile(p, 'utf8'))
                       if (!fm.name || seen.has(fm.name)) continue
                       seen.add(fm.name)
-                      cards.push({ id: fm.name, kind: fm.kind === 'agent' ? 'agent' : 'skill', source, path: p, description: fm.description })
+                      cards.push({ id: fm.name, kind: fm.kind === 'agent' ? 'agent' : fm.kind === 'outil' ? 'outil' : 'skill', source, path: p, description: fm.description })
                     } catch {
                       /* fiche illisible : ignorée */
                     }
@@ -968,7 +998,7 @@ export function deckServer(): Plugin {
               const id = query.get('id') ?? ''
               if (!id || /[\\/\0]/.test(id)) return json(res, 400, { error: 'id invalide' })
               for (const { dir, source } of roots) {
-                for (const kindDir of ['skills', 'agents']) {
+                for (const kindDir of kindDirs) {
                   for (const ext of ['.cd', '.md']) {
                     const p = path.join(dir, kindDir, `${id}${ext}`)
                     if (existsSync(p)) return json(res, 200, { id, source, content: await readFile(p, 'utf8') })
@@ -988,9 +1018,9 @@ export function deckServer(): Plugin {
               if (!id || /[\\/\0]/.test(id)) return json(res, 400, { error: 'id invalide' })
               if (content.length > 200_000) return json(res, 413, { error: 'fiche trop volumineuse' })
               if (/^---\r?\n[\s\S]*?\r?\n---/.test(content) === false) return json(res, 400, { error: 'frontmatter requis (name/description/kind)' })
-              for (const kindDir of ['skills', 'agents']) {
+              for (const kindDir of kindDirs) {
                 for (const ext of ['.cd', '.md']) {
-                  const p = path.join(process.cwd(), '.cd', kindDir, `${id}${ext}`)
+                  const p = path.join(asarAware(path.join(projectRoot, '.cd')), kindDir, `${id}${ext}`)
                   if (existsSync(p)) {
                     await writeFile(p, content, 'utf8')
                     return json(res, 200, { ok: true, path: `.cd/${kindDir}/${id}${ext}` })
@@ -1005,17 +1035,40 @@ export function deckServer(): Plugin {
               const body = JSON.parse(await readBody(req)) as { name?: string; kind?: string; description?: string }
               const slug = String(body.name ?? '').toLowerCase().replace(/[^a-z0-9-]+/g, '-')
               if (!slug || slug === '-') return json(res, 400, { error: 'nom invalide (a-z, 0-9, tirets)' })
-              const kind = body.kind === 'agent' ? 'agents' : 'skills'
-              const dir = path.join(process.cwd(), '.cd', kind)
+              const kind = body.kind === 'agent' ? 'agents' : body.kind === 'outil' ? 'outils' : 'skills'
+              const kindVal = body.kind === 'agent' ? 'agent' : body.kind === 'outil' ? 'outil' : 'skill'
+              const dir = path.join(asarAware(path.join(projectRoot, '.cd')), kind)
               const file = path.join(dir, `${slug}.cd`)
               if (existsSync(file)) return json(res, 409, { error: `existe déjà : .cd/${kind}/${slug}.cd` })
               await mkdir(dir, { recursive: true })
               await writeFile(
                 file,
-                `---\nname: ${slug}\ndescription: ${body.description ?? 'Décris ici QUAND utiliser cette fiche (déclencheurs concrets).'}\nkind: ${kind === 'agents' ? 'agent' : 'skill'}\ntools: [read, list, bash]\n---\n\n# ${slug}\n\n## Quand\n\n## Procédure\n\n1. \n\n## Vérification\n\n`,
+                `---\nname: ${slug}\ndescription: ${body.description ?? 'Décris ici QUAND utiliser cette fiche (déclencheurs concrets).'}\nkind: ${kindVal}\ntools: [read, list, bash]\n---\n\n# ${slug}\n\n## Quand\n\n## Procédure\n\n1. \n\n## Vérification\n\n`,
                 'utf8',
               )
               return json(res, 200, { ok: true, path: `.cd/${kind}/${slug}.cd` })
+            }
+
+            // Recherche bibliothèque (outil agent deck_search) : délègue au moteur
+            // officiel promptdeck/search.mjs (bilingue FR/EN), sortie brute.
+            if (pathPart === 'search' && req.method === 'GET') {
+              const q = (query.get('q') ?? '').trim().slice(0, 500)
+              if (!q) return json(res, 400, { error: 'requête vide' })
+              const max = Math.min(12, Math.max(1, Math.floor(Number(query.get('max')) || 6)))
+              const script = path.join(promptdeckDir, 'search.mjs')
+              if (!existsSync(script)) return json(res, 404, { error: 'promptdeck/search.mjs introuvable (pack non installé ?)' })
+              const { execFile } = await import('node:child_process')
+              const { promisify } = await import('node:util')
+              try {
+                const { stdout } = await promisify(execFile)(process.execPath, [script, q, '--max', String(max)], {
+                  cwd: projectRoot,
+                  timeout: 20_000,
+                  maxBuffer: 2 * 1024 * 1024,
+                })
+                return json(res, 200, { ok: true, query: q, output: stdout.slice(0, 20_000) })
+              } catch (e) {
+                return json(res, 500, { error: `recherche impossible : ${(e as Error).message}` })
+              }
             }
 
             return json(res, 404, { error: 'route deck inconnue' })
@@ -1023,7 +1076,128 @@ export function deckServer(): Plugin {
             return json(res, 500, { error: (e as Error).message })
           }
         })()
-      })
+}
+
+/** Plugin Vite (dev uniquement) : monte le handler partagé sur /api/deck. */
+export function deckServer(): Plugin {
+  return {
+    name: 'chatdeck-deck-server',
+    configureServer(server) {
+      server.middlewares.use('/api/deck', deckHandler)
     },
   }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Serveur API autonome (mode `--serve`) — pour l'APP PACKAGÉE (Electron).
+ *
+ * En dev, les endpoints /api/* vivent dans le dev server Vite (plugins ci-
+ * dessus). Une fois packagée, il n'y a plus de Vite : Electron spawn donc
+ * `node --experimental-strip-types sandbox-server.ts --serve` qui expose
+ * LES MÊMES routes sur http://127.0.0.1:<port>. main.mjs séquestre le port
+ * via CHATDECK_API_PORT et charge http://127.0.0.1:<port> au lieu de file://.
+ *──────────────────────────────────────────────────────────────────────── */
+class ChatDeckApi {
+  private server: import('node:http').Server | null = null
+
+  start(port = 0): Promise<number> {
+    return new Promise((resolve, reject) => {
+      this.server = createServer((req, res) => {
+        void (async () => {
+          const url = (req.url ?? '/').replace(/^\//, '')
+          const [pathPart, queryPart] = url.split('?')
+          const seg = (pathPart ?? '').split('/')
+          const key = seg[0] ?? ''
+          try {
+            if (key === 'health') {
+              // Réponse immédiate — même forme que le plugin dev (providers détaillés omis).
+              return json(res, 200, { ok: true, server: 'standalone', providers: {}, allUp: true })
+            }
+            if (key === 'keys.local') {
+              try {
+                return json(res, 200, JSON.parse(readFileSync(path.join(projectRoot, 'keys.local.json'), 'utf8')))
+              } catch {
+                return json(res, 404, {})
+              }
+            }
+            if (key === 'api' && seg[1] === 'health') {
+              return json(res, 200, { ok: true, server: 'standalone', providers: {}, allUp: true })
+            }
+            // Dé-légué aux MÊMES handlers que le dev : on reconstruit une req.url
+            // relative au point de montage /api/sandbox (ou /api/deck).
+            if (key === 'api' && (seg[1] === 'sandbox' || seg[1] === 'deck')) {
+              const mount = seg[1]
+              const sub = seg.slice(2).join('/')
+              const handler = mount === 'sandbox' ? sandboxHandler : deckHandler
+              req.url = `/${sub}${queryPart ? `?${queryPart}` : ''}`
+              return handler(req, res)
+            }
+            // UI : sert dist/ (build Vite) — l'app packagée charge http://127.0.0.1:<port>/.
+            const distDir = path.join(projectRoot, 'dist')
+            const rel = pathPart === '' || pathPart === undefined ? 'index.html' : decodeURIComponent(pathPart)
+            const file = path.resolve(distDir, rel)
+            if (file === distDir || file.startsWith(distDir + path.sep)) {
+              const mime: Record<string, string> = {
+                '.html': 'text/html; charset=utf-8',
+                '.js': 'text/javascript; charset=utf-8',
+                '.mjs': 'text/javascript; charset=utf-8',
+                '.css': 'text/css; charset=utf-8',
+                '.json': 'application/json; charset=utf-8',
+                '.svg': 'image/svg+xml',
+                '.png': 'image/png',
+                '.ico': 'image/x-icon',
+                '.woff2': 'font/woff2',
+              }
+              const ext = path.extname(file).toLowerCase()
+              try {
+                const data = readFileSync(file)
+                res.statusCode = 200
+                res.setHeader('Content-Type', mime[ext] ?? 'application/octet-stream')
+                res.end(data)
+                return
+              } catch {
+                // fallback SPA : toute route inconnue renvoie index.html
+                try {
+                  res.setHeader('Content-Type', 'text/html; charset=utf-8')
+                  res.end(readFileSync(path.join(distDir, 'index.html')))
+                  return
+                } catch {
+                  /* dist/ absent : 404 ci-dessous */
+                }
+              }
+            }
+            return json(res, 404, { error: `route inconnue : /${pathPart ?? ''}` })
+          } catch (e) {
+            return json(res, 500, { error: (e as Error).message })
+          }
+        })()
+      })
+      this.server.on('error', (e) => reject(e))
+      this.server.listen(port, '127.0.0.1', () => {
+        const addr = this.server?.address()
+        resolve(typeof addr === 'object' && addr ? addr.port : port)
+      })
+    })
+  }
+
+  stop(): void {
+    this.server?.close()
+  }
+}
+
+/** Démarrage autonome : `node sandbox-server.ts --serve [--port N]`.
+ *  Port par défaut : CHATDECK_API_PORT (main.mjs), sinon 0 = choisi par l'OS. */
+if (process.argv.includes('--serve')) {
+  const portArgv = process.argv.includes('--port') ? Number(process.argv[process.argv.indexOf('--port') + 1]) : NaN
+  const port = Number.isFinite(portArgv) && portArgv > 0 ? portArgv : Number(process.env.CHATDECK_API_PORT ?? 0) || 0
+  const api = new ChatDeckApi()
+  api
+    .start(port)
+    .then((p) => {
+      console.log(`[chatdeck-api] http://127.0.0.1:${p}`)
+    })
+    .catch((e) => {
+      console.error('[chatdeck-api] impossible de démarrer :', e)
+      process.exit(1)
+    })
 }

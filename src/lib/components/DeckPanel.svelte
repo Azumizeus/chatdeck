@@ -16,7 +16,7 @@
 
   interface Card {
     id: string
-    kind: 'skill' | 'agent'
+    kind: 'skill' | 'agent' | 'outil'
     source: 'library' | 'project' | 'global'
     path: string
     description: string
@@ -32,12 +32,12 @@
   let loading = $state(true)
   let error = $state('')
   let query = $state('')
-  let kindFilter = $state<'all' | 'skill' | 'agent'>('all')
+  let kindFilter = $state<'all' | 'skill' | 'agent' | 'outil'>('all')
   let sourceFilter = $state<'all' | Card['source']>('all')
   let openId = $state<string | null>(null)
   let openContent = $state('')
   let newName = $state('')
-  let newKind = $state<'skill' | 'agent'>('skill')
+  let newKind = $state<'skill' | 'agent' | 'outil'>('skill')
   let newNote = $state('')
   /** Tampon d'édition de la fiche ouverte (textarea, sauvegarde PUT explicite) */
   let editBuffer = $state('')
@@ -192,7 +192,7 @@
   <div class="filters">
     <input class="q" placeholder="chercher une fiche…" bind:value={query} />
     <div class="seg">
-      {#each [['all', 'Tout'], ['skill', 'Skills'], ['agent', 'Agents']] as [kv, label]}
+      {#each [['all', 'Tout'], ['skill', 'Skills'], ['agent', 'Agents'], ['outil', 'Outils']] as [kv, label]}
         <button class:active={kindFilter === kv} onclick={() => (kindFilter = kv as typeof kindFilter)}>{label}</button>
       {/each}
     </div>
@@ -216,7 +216,7 @@
         <div class="cardrow" class:on={isActive(c.id)}>
           <button class="main" onclick={() => void toggle(c.id)} title={isActive(c.id) ? 'Désactiver (retirée du prompt)' : 'Activer (injectée dans le prompt des agents)'}>
             <span class="check">{isActive(c.id) ? '☑' : '☐'}</span>
-            <span class="id">{c.kind === 'agent' ? '🤖' : '⚡'} {c.id}</span>
+            <span class="id">{c.kind === 'agent' ? '🤖' : c.kind === 'outil' ? '🔧' : '⚡'} {c.id}</span>
             <span class="src {c.source}">{SOURCE_LABEL[c.source]}</span>
           </button>
           <button class="eye" onclick={() => void show(c.id)} title="Voir la fiche">{openId === c.id ? '▴' : '▾'}</button>
@@ -248,6 +248,7 @@
     <select bind:value={newKind} title="Type de fiche à créer">
       <option value="skill">skill</option>
       <option value="agent">agent</option>
+      <option value="outil">outil</option>
     </select>
     <input placeholder="ma-methode" bind:value={newName} onkeydown={(e) => e.key === 'Enter' && void createCard()} />
     <button class="mini" onclick={() => void createCard()} title="Crée .cd/&lt;type&gt;/&lt;nom&gt;.cd à remplir">＋ créer</button>
