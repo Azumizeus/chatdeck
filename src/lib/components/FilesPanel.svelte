@@ -405,7 +405,7 @@
   </li>
 {/snippet}
 
-<aside class="files" class:wide aria-label="Fichiers sandbox" ondragover={(e) => e.preventDefault()} ondrop={onDrop}>
+<aside class="files hubbed" class:wide aria-label="Fichiers sandbox" ondragover={(e) => e.preventDefault()} ondrop={onDrop}>
   <header>
     <strong>📁 {convId.slice(0, 10)}…</strong>
     <span class="count">{countFiles(tree)} fichiers</span>

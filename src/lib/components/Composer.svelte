@@ -10,6 +10,9 @@
     model,
     customs = [],
     agents = [],
+    cards = [],
+    cardsActive = [],
+    onToggleCard,
     onSend,
     onStop,
     onProvider,
@@ -23,6 +26,11 @@
     customs?: CustomProvider[]
     /** Agents actifs du fil (vide = chat simple) */
     agents?: AgentId[]
+    /** Fiches .CD disponibles (id + libellé) pour la pastille 🃏 */
+    cards?: { id: string; label: string }[]
+    /** Fiches activées POUR CE FIL */
+    cardsActive?: string[]
+    onToggleCard?: (id: string) => void
     onSend: (text: string) => void
     onStop: () => void
     onProvider: (pid: ProviderId) => void
@@ -31,6 +39,8 @@
     /** Présent en mode duel : envoie le même texte aux deux conversations */
     onSendBoth?: (text: string) => void
   } = $props()
+
+  let cardsOpen = $state(false)
 
   let text = $state('')
   let ta: HTMLTextAreaElement | undefined = $state()
@@ -102,6 +112,28 @@
         {/each}
       </select>
     {/if}
+    {#if cards.length && onToggleCard}
+      <div class="cards-menu">
+        <button
+          class="cards-btn"
+          class:on={cardsActive.length > 0}
+          class:open={cardsOpen}
+          onclick={() => (cardsOpen = !cardsOpen)}
+          title="Fiches .CD appliquées à ce fil (injectées dans le prompt des agents)"
+        >🃏 {cardsActive.length ? cardsActive.length : ''}</button>
+        {#if cardsOpen}
+          <div class="cards-pop">
+            {#each cards as cd (cd.id)}
+              <button
+                class:active={cardsActive.includes(cd.id)}
+                onclick={() => onToggleCard(cd.id)}
+                title={cardsActive.includes(cd.id) ? 'Retirer de ce fil' : 'Appliquer à ce fil'}
+              >{cardsActive.includes(cd.id) ? '☑' : '☐'} {cd.label}</button>
+            {/each}
+          </div>
+        {/if}
+      </div>
+    {/if}
     <span class="hint">{hint}</span>
   </div>
   <div class="inputrow">
@@ -138,6 +170,59 @@
     align-items: center;
     gap: 8px;
     margin-bottom: 8px;
+  }
+  .cards-menu {
+    position: relative;
+  }
+  .cards-btn {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: none;
+    color: var(--fg);
+    font: inherit;
+    font-size: 12.5px;
+    padding: 4px 8px;
+    cursor: pointer;
+  }
+  .cards-btn.on {
+    background: color-mix(in srgb, var(--accent) 16%, transparent);
+    border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  }
+  .cards-pop {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    z-index: 80;
+    min-width: 280px;
+    max-height: 260px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: 0 14px 36px rgba(0, 0, 0, 0.4);
+    padding: 4px;
+  }
+  .cards-pop button {
+    border: none;
+    background: none;
+    color: var(--fg);
+    font: inherit;
+    font-size: 12.5px;
+    text-align: left;
+    padding: 6px 8px;
+    border-radius: 7px;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .cards-pop button:hover {
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+  }
+  .cards-pop button.active {
+    background: color-mix(in srgb, var(--accent) 16%, transparent);
   }
   .picker-model {
     flex: 1;

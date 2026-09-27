@@ -409,7 +409,8 @@
       }
     }
 
-    const user: Msg = { role: 'user', content: text, ts: Date.now() }
+    const appliedCards = conversations.find((c) => c.id === convId)?.cardsActive ?? loadDeckState().active
+    const user: Msg = { role: 'user', content: text, ts: Date.now(), ...(appliedCards.length ? { cards: [...appliedCards] } : {}) }
     const assistant: Msg = { role: 'assistant', content: '', ts: Date.now(), ...(multi ? { agent: 'nexus' as const } : {}) }
     conversations = conversations.map((c) =>
       c.id === convId ? { ...c, messages: [...c.messages, user, assistant], open: true } : c,
@@ -440,7 +441,7 @@
           ...conv.messages.filter((m) => !m.error && m.content).map((mm) => ({ role: mm.role, content: mm.content })),
           { role: 'user' as const, content: text },
         ]
-    const cardsBlock = activeCardsSystem()
+    const cardsBlock = activeCardsSystem(convId)
     const systemWire: WireMsg = {
       role: 'system',
       content: multi ? systemPromptFor('nexus', [settings.system, cardsBlock].filter(Boolean).join('\n\n')) : [settings.system.trim(), cardsBlock].filter(Boolean).join('\n\n'),
@@ -638,17 +639,38 @@
     void sendTo(convId, text)
   }
 
-  /** Fiches .CD activées (panneau deck) : injectées dans le prompt système, comme `deck run`. */
-  function activeCardsSystem(): string {
+  /**
+   * Fiches .CD activées pour UN fil (priorité) ou globalement (repli) :
+   * injectées dans le prompt système, comme `deck run`.
+   */
+  function activeCardsSystem(convId: string | null): string {
     const st = loadDeckState()
-    if (!st.active.length) return ''
-    const loaded = st.active
+    const ids = (convId ? conversations.find((x) => x.id === convId)?.cardsActive : undefined) ?? st.active
+    if (!ids.length) return ''
+    const loaded = ids
       .map((id) => st.cache[id])
       .filter(Boolean)
       .map((raw) => raw!.slice(0, 6000))
     if (!loaded.length) return ''
     return `Fiches de méthode activées par l'utilisateur — suis leurs instructions :\n\n${loaded.join('\n\n---\n\n')}`
   }
+
+  /** Toggle d'une fiche activée pour le fil courant (pastille 🃏 du composer). */
+  function toggleCardForConv(convId: string, id: string): void {
+    conversations = conversations.map((c) => {
+      if (c.id !== convId) return c
+      const cur = c.cardsActive ?? loadDeckState().active
+      const next = cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]
+      return { ...c, cardsActive: next }
+    })
+  }
+
+  /** Fiches proposées dans la pastille 🃏 : actives globalement + cache (accès instantané). */
+  const cardsOffer = $derived.by(() => {
+    const st = loadDeckState()
+    const ids = [...new Set([...st.active, ...Object.keys(st.cache)])].slice(0, 40)
+    return ids.map((id) => ({ id, label: id }))
+  })
 
   /** Saut depuis la recherche : ouvre le fil, scrolle au message et le flashe. */
   function jumpTo(convId: string, ts: number): void {
@@ -751,15 +773,20 @@
   }
 
   function toggleTerminal(): void {
+    // Terminal docké SOUS LE COMPOSER de la conversation courante (plus jamais
+    // en overlay devant le chat) ; Preview reste en overlay centré.
     if (!showTerminal) terminalConvId = currentId
     showTerminal = !showTerminal
   }
 
+  /** Fichiers : s'ouvre TOUJOURS dans la fenêtre outils (hub), jamais en overlay. */
   function toggleFiles(convId?: string): void {
     filesConvId = convId ?? currentId
     showFiles = !showFiles
+    openHub('files')
   }
 
+  /** Preview : overlay centré discret sous le chat (inchangé). */
   function togglePreview(convId?: string): void {
     if (!showPreview || convId) previewConvId = convId ?? currentId
     showPreview = !showPreview
@@ -1021,7 +1048,7 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
     { id: 'agents', label: current?.agents?.length ? 'Désactiver les agents Nexus & Seeker' : 'Activer les agents Nexus & Seeker (sandbox)', run: () => setAgents(current?.agents?.length ? [] : ['nexus', 'seeker']) },
     { id: 'collab', label: 'Collaboration : Nexus + PromptDeck en parallèle (workspace partagé)', run: startCollab },
     { id: 'files', label: showFiles ? 'Fermer le panneau Fichiers (sandbox)' : 'Ouvrir le panneau Fichiers (sandbox)', run: () => (showFiles = !showFiles) },
-    { id: 'graph', label: showGraph ? 'Fermer le panneau Graphify' : 'Ouvrir le graphe Graphify', run: () => (showGraph = !showGraph) },
+    { id: 'graph', label: 'Graphe Graphify (fenêtre outils)', run: () => openHub('graph') },
     { id: 'commit', label: 'Commit auto de la sandbox (git add + commit)', run: () => currentId && void autoCommit(currentId) },
     { id: 'search', label: 'Rechercher dans toutes les conversations', hint: '⌘⇧F', run: () => (showSearch = true) },
     { id: 'hub', label: showHub ? 'Fermer la fenêtre outils' : 'Fenêtre outils : Graphify, Fichiers, Terminal, Preview, Réglages', run: () => openHub(hubTab) },
@@ -1057,7 +1084,7 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
     onToggleFiles={() => toggleFiles()}
     onToggleTerminal={toggleTerminal}
     onTogglePreview={() => togglePreview()}
-    onToggleGraph={() => (showGraph = !showGraph)}
+    onToggleGraph={() => openHub('graph')}
     onToggleHub={() => openHub(hubTab)}
     hubOpen={showHub}
     onSearch={() => (showSearch = true)}
@@ -1137,12 +1164,20 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
           model={current.model}
           {customs}
           agents={current.agents ?? []}
+          cards={cardsOffer}
+          cardsActive={current.cardsActive ?? []}
+          onToggleCard={(id) => toggleCardForConv(current.id, id)}
           onSend={send}
           onStop={stop}
           onProvider={setProvider}
           onModel={setModel}
           onAgents={setAgents}
         />
+        {#if showTerminal && terminalConvId === current.id}
+          <div class="term-docked">
+            <TerminalPanel convId={terminalConvId} onClose={() => (showTerminal = false)} />
+          </div>
+        {/if}
       {/if}
     </main>
 
@@ -1208,6 +1243,7 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
               msg={m}
               isLast={i === c.messages.length - 1}
               streaming={streamingIds.has(convId)}
+              cardsApplied={m.cards ?? []}
               onRegenerate={() => regenerate(convId, m.ts)}
               onUseAsPrompt={(t) => void sendTo(convId, t)}
               onDelete={() => deleteFrom(convId, m.ts)}
@@ -1222,6 +1258,9 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
       model={c.model}
       {customs}
       agents={c.agents ?? []}
+      cards={cardsOffer}
+      cardsActive={c.cardsActive ?? []}
+      onToggleCard={(id) => toggleCardForConv(convId, id)}
       onSend={(t) => void sendTo(convId, t)}
       onStop={() => stop(convId)}
       onProvider={setProvider}
@@ -1229,6 +1268,11 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
       onAgents={(l) => setAgentsFor(convId, l)}
       onSendBoth={sendBoth}
     />
+    {#if showTerminal && terminalConvId === convId}
+      <div class="term-docked">
+        <TerminalPanel convId={terminalConvId} onClose={() => (showTerminal = false)} />
+      </div>
+    {/if}
   {/if}
 {/snippet}
 
@@ -1269,7 +1313,7 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
         onToggleDuel={toggleDuel}
         onToggleFiles={() => (showFiles = !showFiles)}
         onToggleTerminal={toggleTerminal}
-        onToggleGraph={() => (showGraph = !showGraph)}
+        onToggleGraph={() => openHub('graph')}
         onSearch={() => (showSearch = true)}
         onSettings={() => layout.toggleSettings()}
       />
@@ -1305,7 +1349,7 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
         <button class="ghost" onclick={() => void autoCommit(layout.duel!.left)} disabled={commitBusy} title="git add + commit de la sandbox via l'endpoint sécurisé">
           {commitBusy ? '…' : '⑂ commit auto'}
         </button>
-        <button class="ghost" class:active={showGraph} onclick={() => (showGraph = !showGraph)} title="Graphe des conversations et workspaces">🕸</button>
+        <button class="ghost" class:active={showGraph} onclick={() => openHub('graph')} title="Graphe des conversations et workspaces (fenêtre outils)">🕸</button>
       </div>
       {#if verdict}
         <div class="verdict">
@@ -1351,20 +1395,12 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
   <SearchPanel {conversations} onOpen={jumpTo} onClose={() => (showSearch = false)} />
 {/if}
 
-{#if showGraph && !showHub}
-  <GraphPanel
-    {conversations}
-    onOpen={(id) => selectChat(id)}
-    onClose={() => (showGraph = false)}
-  />
+{#if showGraph && showHub && hubInView.includes('graph')}
+  <!-- Graphify : rendu DANS le hub (fenêtre déplaçable), jamais en overlay devant le chat -->
 {/if}
 
-{#if showFiles && !showHub && (filesConvId ?? currentId)}
-  {@const fid = filesConvId ?? currentId!}
-  {@const fc = conversations.find((x) => x.id === fid)}
-  {#if fc}
-    <FilesPanel convId={fid} enabled={Boolean(fc.agents?.length)} onClose={() => (showFiles = false)} />
-  {/if}
+{#if showFiles && showHub && hubInView.includes('files') && (filesConvId ?? currentId)}
+  <!-- Fichiers : idem, dans le hub -->
 {/if}
 
 {#if showHub && hubInView.length}
@@ -1421,10 +1457,6 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
   </HubWindow>
 {/if}
 
-{#if showTerminal && !showHub && terminalConvId}
-  <TerminalPanel convId={terminalConvId} onClose={() => (showTerminal = false)} />
-{/if}
-
 {#if showPreview && !showHub && (previewConvId ?? currentId)}
   <PreviewPanel convId={previewConvId ?? currentId!} onClose={() => (showPreview = false)} />
 {/if}
@@ -1459,6 +1491,23 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
     display: flex;
     min-height: 0;
     flex: 1;
+  }
+  /* Terminal docké sous le composer : le panneau (fixed chez lui) s'y déplie */
+  .term-docked {
+    position: relative;
+    flex-shrink: 0;
+    display: flex;
+  }
+  .term-docked :global(.term) {
+    position: static;
+    width: 100%;
+    max-width: none;
+    height: 260px;
+    max-height: none;
+    border: none;
+    border-top: 1px solid var(--border);
+    border-radius: 0;
+    box-shadow: none;
   }
   .app > :global(.frame) {
     flex: 1;

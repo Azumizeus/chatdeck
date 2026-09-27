@@ -8,6 +8,7 @@
     msg,
     isLast,
     streaming,
+    cardsApplied = [],
     onRegenerate,
     onUseAsPrompt,
     onDelete,
@@ -16,6 +17,8 @@
     /** Vrai si c'est le dernier message du fil (régénérer visible) */
     isLast: boolean
     streaming: boolean
+    /** Fiches .CD actives au moment de l'envoi (badge 🃏 « fiche appliquée ») */
+    cardsApplied?: string[]
     onRegenerate?: () => void
     /** Renvoie le contenu comme nouveau prompt (répondre / brancher) */
     onUseAsPrompt: (text: string) => void
@@ -66,6 +69,9 @@
     <button class="act act-delete" onclick={() => onDelete?.()} title="Supprimer">
       🗑<span class="act-tip">Supprimer</span>
     </button>
+  {/if}
+  {#if cardsApplied.length}
+    <span class="cards-badge" title="Fiches .CD appliquées : {cardsApplied.join(', ')}">🃏 {cardsApplied.length}</span>
   {/if}
 </div>
 
@@ -147,5 +153,17 @@
   }
   .act-delete:hover {
     color: #ff6b6b;
+  }
+  /* Badge « fiches .CD appliquées » (prompt enrichi au moment de l'envoi) */
+  .cards-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    margin-left: 2px;
+    font-size: 10.5px;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1px 6px;
   }
 </style>

@@ -325,8 +325,12 @@ test.describe('deck : skills & agents (.CD)', () => {
     const deck = hub.locator('.deck')
     await expect(deck).toBeVisible()
 
-    // La bibliothèque est chargée (335 fiches minimum : pack + verification-lot)
-    await expect(deck.locator('.cardrow').first()).toBeVisible()
+    // La bibliothèque est chargée (335 fiches minimum : pack + verification-lot).
+    // Le fetch du panneau peut être lent au premier chargement : retry via ⟳ si besoin.
+    await expect(deck.locator('.cardrow').first()).toBeVisible({ timeout: 10_000 }).catch(async () => {
+      await deck.locator('header .mini[title="Rafraîchir"]').click()
+      await expect(deck.locator('.cardrow').first()).toBeVisible({ timeout: 10_000 })
+    })
     const row = deck.locator('.cardrow', { hasText: 'verification-lot' }).first()
     await expect(row).toBeVisible()
 

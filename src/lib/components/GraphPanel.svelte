@@ -177,7 +177,7 @@
   })
 </script>
 
-<aside class="graphify" aria-label="Graphe des conversations">
+<aside class="graphify hubbed" aria-label="Graphe des conversations">
   <header>
     <strong>🕸 Graphify</strong>
     <span class="stats">{stats.convs} conv · {stats.workspaces} sandbox · {stats.agents} agents · {stats.links} liens</span>

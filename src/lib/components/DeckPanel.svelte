@@ -39,6 +39,8 @@
   let newName = $state('')
   let newKind = $state<'skill' | 'agent'>('skill')
   let newNote = $state('')
+  /** Tampon d'édition de la fiche ouverte (textarea, sauvegarde PUT explicite) */
+  let editBuffer = $state('')
 
   // État activé partagé app ⇄ popouts (localStorage)
   let deck = $state(loadDeckState())
@@ -115,6 +117,30 @@
       const r = await fetch(`/api/deck/card?id=${encodeURIComponent(id)}`)
       const j = (await r.json()) as { content?: string }
       openContent = j.content ?? ''
+    }
+    editBuffer = openContent
+  }
+
+  /** Édition : sauvegarde via PUT (fiches projet uniquement). */
+  async function saveEdit(): Promise<void> {
+    if (!openId) return
+    try {
+      const r = await fetch('/api/deck/card', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: openId, content: editBuffer }),
+      })
+      const j = (await r.json()) as { ok?: boolean; path?: string; error?: string }
+      if (j.error) newNote = `✗ ${j.error}`
+      else {
+        newNote = `✓ enregistrée : ${j.path}`
+        openContent = editBuffer
+        deck.cache[openId] = editBuffer
+        persist()
+        setTimeout(() => (newNote = ''), 2600)
+      }
+    } catch (e) {
+      newNote = `✗ ${(e as Error).message}`
     }
   }
 
@@ -197,7 +223,22 @@
         </div>
         {#if openId === c.id}
           <p class="desc">{c.description}</p>
-          {#if openContent}<pre class="content">{openContent.slice(0, 2400)}{openContent.length > 2400 ? '\n…' : ''}</pre>{/if}
+          {#if openContent}
+            <textarea
+              class="edit"
+              bind:value={editBuffer}
+              spellcheck="false"
+              rows={Math.min(18, editBuffer.split('\n').length + 2)}
+            ></textarea>
+            {#if c.source === 'project'}
+              <div class="editbar">
+                <button class="mini" onclick={() => void saveEdit()}>💾 enregistrer</button>
+                <span class="edithint">fiche projet — éditable</span>
+              </div>
+            {:else}
+              <div class="editbar"><span class="edithint">fiche du pack — lecture seule (copie-la pour l'éditer)</span></div>
+            {/if}
+          {/if}
         {/if}
       {/each}
     {/if}
@@ -371,17 +412,28 @@
     font-size: 11.5px;
     color: var(--muted);
   }
-  .content {
-    margin: 0 16px 8px 34px;
-    max-height: 180px;
-    overflow: auto;
+  .edit {
+    margin: 0 16px 4px 34px;
+    width: calc(100% - 50px);
     font-size: 11px;
     line-height: 1.45;
     background: var(--bg);
+    color: var(--fg);
     border: 1px solid var(--border);
     border-radius: 8px;
     padding: 8px;
-    white-space: pre-wrap;
+    resize: vertical;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .editbar {
+    margin: 0 16px 8px 34px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .edithint {
+    font-size: 10.5px;
+    color: var(--muted);
   }
   footer {
     display: flex;

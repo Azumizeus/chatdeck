@@ -62,15 +62,22 @@ arrêt via `npm run dev:bg:stop` — indispensable après un redémarrage de mac
   persistées (`chatdeck.graph.v1`), rangement auto (type/agent/récence), export
   PNG 2×.
 - **WelcomeTour.svelte** : visite guidée 6 étapes au premier lancement ;
-  réglage `Settings.showTour` (Réglages → Apparence), rejouable via ⌘K « tour ».
-- **HubWindow.svelte** : fenêtre outils à onglets (graph/files/terminal/preview/
+  réglage `Settings.showTour` (Réglages → Apparence), rejouable via ⌘K « tour ».- **HubWindow.svelte** : fenêtre outils à onglets (graph/files/terminal/preview/
   settings/deck) ; réglage `Settings.hubTabs`/`hubDefault` (l'onglet actif est
-  réécrit dans `hubDefault` au switch), géométrie `chatdeck.hub.v1` ; les
-  panneaux y sont re-ancrés via la classe `.hubbed` (ils sont
+  réécrit dans `hubDefault` au switch), géométrie
+  `chatdeck.hub.v1` ; les panneaux y sont re-ancrés via la classe `.hubbed` (ils sont
   `position: fixed` chez eux) ; quand le hub affiche un onglet, le panneau
   docké équivalent est masqué (`!showHub || hubActive !== …`). Chaque onglet
   peut être extrait en popout dédié (`/#popout=<panel>`, canal
-  `chatdeck-sync-v1`).
+  `chatdeck-sync-v1`). **Fichiers et Graphify n'existent plus qu'en hub** :
+  `toggleFiles()` et tous les boutons Graphify appellent `openHub(...)` —
+  ne pas recréer d'overlay fixed pour eux. Le **terminal** est docké sous le
+  composer (`.term-docked`, override `:global(.term)`).
+- **Fiches par conversation** : `Conversation.cardsActive` (ids) prioritaire
+  sur la sélection globale du DeckPanel ; pastille 🃏 du composer (menu
+  `cards-pop`) ; le `Msg.cards` de l'envoi alimente le badge 🃏 de
+  MessageActions. Édition des fiches projet : PUT `/api/deck/card`
+  (frontmatter requis, pack en lecture seule).
 - **CLI `deck`** (travail d'un autre agent, non commité à ce jour) : lit les
   fiches `.CD` dans `promptdeck/library/`, `./.cd/` et `~/.chatdeck/`.
   Première fiche projet : `.cd/skills/verification-lot.cd`.

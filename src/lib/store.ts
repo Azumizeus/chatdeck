@@ -14,6 +14,8 @@ export interface Msg {
   agent?: AgentId
   /** Traces d'outils exécutés pendant le tour (sandbox) */
   toolEvents?: { tool: string; detail: string }[]
+  /** Fiches .CD injectées dans le prompt de ce message (badge 🃏) */
+  cards?: string[]
 }
 
 export interface Conversation {
@@ -33,6 +35,8 @@ export interface Conversation {
   sandboxReady?: boolean
   /** Mode collaboratif duel : les 2 agents partagent le workspace de la colonne de gauche */
   collabOf?: string
+  /** Fiches .CD activées POUR CE FIL (ids) ; absent = fallback sur la sélection globale */
+  cardsActive?: string[]
 }
 
 export interface Keys {

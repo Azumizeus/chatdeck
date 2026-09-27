@@ -816,6 +816,28 @@ export function deckServer(): Plugin {
               return json(res, 404, { error: `fiche inconnue : ${id}` })
             }
 
+            // Édition : remplace le corps d'une fiche du PROJET (.cd/ uniquement,
+            // le pack promptdeck reste intouchable). Le frontmatter est préservé
+            // si l'utilisateur n'en fournit pas.
+            if (pathPart === 'card' && req.method === 'PUT') {
+              const body = JSON.parse(await readBody(req)) as { id?: string; content?: string }
+              const id = body.id ?? ''
+              const content = body.content ?? ''
+              if (!id || /[\\/\0]/.test(id)) return json(res, 400, { error: 'id invalide' })
+              if (content.length > 200_000) return json(res, 413, { error: 'fiche trop volumineuse' })
+              if (/^---\r?\n[\s\S]*?\r?\n---/.test(content) === false) return json(res, 400, { error: 'frontmatter requis (name/description/kind)' })
+              for (const kindDir of ['skills', 'agents']) {
+                for (const ext of ['.cd', '.md']) {
+                  const p = path.join(process.cwd(), '.cd', kindDir, `${id}${ext}`)
+                  if (existsSync(p)) {
+                    await writeFile(p, content, 'utf8')
+                    return json(res, 200, { ok: true, path: `.cd/${kindDir}/${id}${ext}` })
+                  }
+                }
+              }
+              return json(res, 404, { error: 'fiche projet introuvable (les fiches du pack ne sont pas éditables — copie-la d\'abord)' })
+            }
+
             // Création (équivalent deck cd --new)
             if (pathPart === 'cards' && req.method === 'POST') {
               const body = JSON.parse(await readBody(req)) as { name?: string; kind?: string; description?: string }
