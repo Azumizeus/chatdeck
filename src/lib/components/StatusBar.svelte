@@ -11,6 +11,7 @@
     streaming,
     latencyMs,
     customs = [],
+    onCascade,
   }: {
     /** Conversation à décrire (peut être null) */
     conv: Conversation | null
@@ -18,6 +19,8 @@
     /** Latence du dernier échange (envoi → 1er token) */
     latencyMs: number | null
     customs?: CustomProvider[]
+    /** Ouvre le panneau Cascade (santé des 9 providers + test réel) */
+    onCascade: () => void
   } = $props()
 
   const provider = $derived(conv ? providerOf(conv.providerId, customs) : null)
@@ -52,6 +55,7 @@
     <span class="health" title="Réseau : {proxyState === 'up' ? 'proxy OpenRouter OK' : proxyState === 'down' ? 'proxy OpenRouter INJOIGNABLE' : 'sonde en cours'}">
       <i class="hdot {proxyState}" ></i>proxy
     </span>
+    <button class="cascade-btn" onclick={onCascade} title="Cascade LLM : santé des 9 providers du méga-pack + test réel">⚡ cascade</button>
     {#each Object.keys(DOT_LABELS) as pid (pid)}
       {@const st = healthOf(pid)}
       <span class="health" title="{DOT_LABELS[pid]} : {st === 'up' ? 'joignable' : st === 'down' ? 'injoignable' : 'non sondé'}">
@@ -150,5 +154,21 @@
   }
   .hdot.checking {
     animation: pulse 0.8s ease-in-out infinite;
+  }
+  .cascade-btn {
+    border: 1px solid var(--border);
+    background: none;
+    color: var(--muted);
+    border-radius: 6px;
+    padding: 1px 7px;
+    font: inherit;
+    font-size: 10.5px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .cascade-btn:hover {
+    color: var(--fg);
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
   }
 </style>

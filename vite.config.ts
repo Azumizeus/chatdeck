@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { sandboxServer, deckServer } from './sandbox-server'
+import { cascadeServer } from './cascade-server'
 
 const root = fileURLToPath(new URL('.', import.meta.url))
 
@@ -241,7 +242,7 @@ function connectorGateway(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [svelte(), localKeys(), customProxy(), connectorGateway(), sandboxServer(), deckServer(), healthEndpoint()],
+  plugins: [svelte(), localKeys(), customProxy(), connectorGateway(), sandboxServer(), deckServer(), cascadeServer(), healthEndpoint()],
   server: {
     port: 5199,
     strictPort: true,
