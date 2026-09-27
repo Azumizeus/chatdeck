@@ -14,7 +14,7 @@ import type { CustomProvider } from './store'
  * l'historique complet (jamais de conversation cassée pour un résumé).
  */
 
-/** Seuil : au-delà de N messages (hors système), on condense l'historique ancien. */
+/** Seuil par défaut : au-delà de N messages (hors système), on condense. */
 export const CONTEXT_LIMIT = 40
 /** Nombre de messages récents conservés tels quels autour du résumé. */
 const CONTEXT_KEEP = 12
@@ -26,10 +26,12 @@ const CONTEXT_KEEP = 12
  */
 export async function condenseHistory(
   wires: WireMsg[],
-  summarizer: { providerId: string; model: string; apiKey: string; customs?: CustomProvider[]; temperature?: number; maxTokens?: number },
+  summarizer: { providerId: string; model: string; apiKey: string; customs?: CustomProvider[]; temperature?: number; maxTokens?: number; threshold?: number },
 ): Promise<WireMsg[]> {
+  const limit = typeof summarizer.threshold === 'number' && summarizer.threshold > 0 ? summarizer.threshold : CONTEXT_LIMIT
+  if (summarizer.threshold === 0) return wires // 0 = condenseur désactivé
   const convo = wires.filter((w) => w.role !== 'system' && w.role !== 'tool' && !w.tool_calls)
-  if (convo.length <= CONTEXT_LIMIT) return wires
+  if (convo.length <= limit) return wires
   const cut = convo.length - CONTEXT_KEEP
   if (cut <= 0) return wires
   const old = convo.slice(0, cut)
@@ -450,6 +452,7 @@ Tu travailles dans ChatDeck, une app qui te donne un vrai poste de développemen
 - **Trois environnements de développement simulés** : mac, windows, linux. Le profil actif détermine les fichiers platform/ du workspace (ex. Info.plist sous mac, app.config.json sous windows). Utilise switch_os pour changer — le disque est purgé de l'ancien profil automatiquement. L'utilisateur voit le même arbre que toi : annonce le changement si tu le fais.
 - **Outils disponibles** : list_tree (arborescence), read_file, run_command (ls, cat, pwd, node -v, npm -v… liste blanche), ${writeTools} web_fetch (télécharger une page web), promptdeck_browse (catalogue de 190 agents + 133 skills pour personas et méthodes).
 - **Git intégré** : le workspace est un dépôt ; git_commit fait add+commit de tout avec un message obligatoire. Des checkpoints automatiques permettent à l'utilisateur d'annuler un tour (bouton ↩) — ne compte pas dessus pour corriger tes erreurs, committe proprement.
+- **Panneau Preview** : l'utilisateur voit en direct la première page .html du workspace (servie par /serve). Si ta tâche produit une interface, crée un index.html complet (HTML+CSS+JS inline) : la preview se mettra à jour dès l'écriture. Annonce explicitement « preview prête » quand tu écris une page.
 - **Délégation** : ${agent === 'nexus' ? 'delegate_to_seeker (recherche/analyse approfondie) et delegate_to_deck (conception de prompts/personas)' : agent === 'deck' ? 'delegate_to_nexus (orchestration et synthèse)' : 'tu peux recevoir des missions de Nexus et rendre ton rapport via report_to_deck'}.
 - **Fiches .CD actives** : si des fiches sont injectées ci-dessus (section « Fiches actives »), elles sont des méthodes/personas que tu DOIS appliquer pendant cette conversation.
 

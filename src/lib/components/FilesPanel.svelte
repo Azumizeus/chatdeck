@@ -3,6 +3,7 @@
   // création/renommage/duplication/suppression, upload (drag & drop), téléchargement,
   // arbre Git + diff par commit, commit auto, profil OS, preview live.
   import type { FileNode } from '../agents'
+  import { loadToolLog, type ToolLogEntry } from '../store'
 
   let {
     convId,
@@ -22,6 +23,8 @@
   let error = $state('')
   let loading = $state(false)
   let gitOpen = $state(false)
+  let logOpen = $state(false)
+  let toolLog = $state<ToolLogEntry[]>([])
   let git = $state<{ repo: boolean; log: { hash: string; date: string; subject: string }[]; status: string[] } | null>(null)
   let diff = $state<{ hash: string; files: { path: string; add: number; del: number }[]; diff: string } | null>(null)
   let diffBusy = $state(false)
@@ -290,6 +293,12 @@
     if (e.dataTransfer?.files.length) void upload(e.dataTransfer.files)
   }
 
+  /** Journal des exécutions d'outils de cette conversation (plus récent d'abord). */
+  function toggleLog(): void {
+    logOpen = !logOpen
+    if (logOpen) toolLog = loadToolLog().filter((e) => e.conv === convId).slice(-100).reverse()
+  }
+
   async function loadGit(): Promise<void> {
     gitOpen = !gitOpen
     if (!gitOpen) {
@@ -420,6 +429,7 @@
     <span class="count">{countFiles(tree)} fichiers</span>
     <button class="mini" onclick={() => fileInput?.click()} title="Importer des fichiers (ou glisser-déposer)">⬆ import</button>
     <button class="mini" class:active={gitOpen} onclick={loadGit} title="Arbre Git">⑂</button>
+    <button class="mini" class:active={logOpen} onclick={toggleLog} title="Journal des outils">⌘</button>
     <button class="mini" class:active={wide} onclick={() => (wide = !wide)} title="Agrandir / réduire le panneau">⤢</button>
     <button class="mini" onclick={refresh} title="Rafraîchir">⟳</button>
     <button class="mini" onclick={onClose} title="Fermer">×</button>
@@ -452,6 +462,24 @@
       </button>
     {/each}
   </div>
+
+  {#if logOpen}
+    <div class="toollog">
+      <div class="log-head">⌘ Journal des outils — {toolLog.length} entrée(s)</div>
+      {#if !toolLog.length}
+        <p class="note">Aucune exécution d'outil encore enregistrée dans ce fil.</p>
+      {:else}
+        {#each toolLog as e (e.ts + e.tool)}
+          <div class="log-entry">
+            <span class="log-ok" class:bad={!e.ok}>{e.ok ? '✓' : '✗'}</span>
+            <span class="log-time">{new Date(e.ts).toLocaleTimeString('fr-FR')}</span>
+            <code class="log-tool">{e.tool}</code>
+            <span class="log-detail" title={e.detail}>{e.detail}</span>
+          </div>
+        {/each}
+      {/if}
+    </div>
+  {/if}
 
   {#if gitOpen}
     <div class="git">
@@ -630,6 +658,50 @@
     font-family: var(--mono);
     max-height: 260px;
     overflow: auto;
+  }
+  .toollog {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 6px 8px;
+    font-size: 11.5px;
+    font-family: var(--mono);
+    max-height: 260px;
+    overflow: auto;
+  }
+  .log-head {
+    color: var(--muted);
+    margin-bottom: 5px;
+    font-size: 11px;
+  }
+  .log-entry {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    padding: 2px 0;
+    border-top: 1px dashed #ffffff10;
+  }
+  .log-ok {
+    color: #27c93f;
+    flex-shrink: 0;
+  }
+  .log-ok.bad {
+    color: #ff6b6b;
+  }
+  .log-time {
+    color: var(--muted);
+    flex-shrink: 0;
+    font-size: 10.5px;
+  }
+  .log-tool {
+    color: #a5b4fc;
+    flex-shrink: 0;
+  }
+  .log-detail {
+    color: var(--fg);
+    opacity: 0.85;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .autocommit {
     width: 100%;

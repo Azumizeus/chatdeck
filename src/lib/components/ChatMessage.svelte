@@ -14,6 +14,9 @@
     {#if who}
       <span class="who">{who.emoji} {who.name} · {who.role}</span>
     {/if}
+    {#if msg.condensed}
+      <span class="condensed-pill" title="L'historique ancien de ce fil a été remplacé par un résumé (condenseur de contexte) pour garder le prompt léger.">🗜 historique résumé</span>
+    {/if}
     {#if msg.role === 'assistant'}
       {#if msg.content}
         {@html renderMarkdown(msg.content)}
@@ -62,6 +65,18 @@
     font-family: var(--mono);
     color: var(--muted);
     margin-bottom: 4px;
+  }
+  .condensed-pill {
+    display: inline-block;
+    font-size: 10px;
+    font-family: var(--mono);
+    color: #a5b4fc;
+    background: #818cf81c;
+    border: 1px solid #818cf844;
+    border-radius: 999px;
+    padding: 1px 8px;
+    margin-bottom: 5px;
+    cursor: help;
   }
   .user .bubble {
     background: var(--user-bubble);

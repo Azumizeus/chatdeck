@@ -44,7 +44,7 @@
   })
 </script>
 
-<aside class="preview" aria-label="Preview live du workspace">
+<aside class="preview hubbed" aria-label="Preview live du workspace">
   <header>
     <strong>👁 Preview</strong>
     <select bind:value={path} onchange={() => key++} title="Page à afficher">

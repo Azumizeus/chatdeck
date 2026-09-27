@@ -370,6 +370,28 @@
         <span>Tokens max</span>
         <input type="number" min="128" max="32768" step="128" value={settings.maxTokens} oninput={(e) => setSetting('maxTokens', Number(e.currentTarget.value) || 2048)} />
       </label>
+      <label>
+        <span>Condenseur de contexte : seuil de messages</span>
+        <input
+          type="number"
+          min="0"
+          max="200"
+          step="5"
+          value={settings.condenseThreshold ?? 40}
+          title="Au-delà de N messages, l'historique ancien est résumé par le modèle. 0 = désactivé."
+          oninput={(e) => setSetting('condenseThreshold', Math.max(0, Number(e.currentTarget.value) || 0))}
+        />
+      </label>
+      <label>
+        <span>Modèle du résumé (vide = modèle du fil)</span>
+        <input
+          type="text"
+          placeholder="ex. openai/gpt-4.1-mini"
+          value={settings.condenseModel ?? ''}
+          title="Un modèle rapide et économique est recommandé pour les résumés."
+          oninput={(e) => setSetting('condenseModel', e.currentTarget.value.trim())}
+        />
+      </label>
     </div>
     <div class="syshead">
       <span class="syslabel">Instructions système (utilisées par tous les fils)</span>

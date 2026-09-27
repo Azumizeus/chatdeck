@@ -21,6 +21,9 @@
     loadDeckState,
     loadIncognitoId,
     saveIncognitoId,
+    loadHubGeometry,
+    saveHubGeometry,
+    appendToolLog,
     newConversation,
     newIncognitoConversation,
     newCollabConversation,
@@ -98,10 +101,50 @@
   /** Ouvre la fenêtre outils sur un onglet (s'il fait partie du réglage hubTabs). */
   function openHub(tab: HubTab): void {
     if (!(settings.hubTabs ?? []).includes(tab)) return
-    if (showHub && hubTab === tab) showHub = false
-    else {
-      hubTab = tab
-      showHub = true
+    if (showHub && hubTab === tab) {
+      showHub = false
+      return
+    }
+    hubTab = tab
+    showHub = true
+    // Le hub est une fenêtre outils LATÉRALE : si sa géométrie chevauche la
+    // fenêtre app (mode flottant) ou sort du viewport, on l'amarrе dans la
+    // zone libre à droite de l'app (mesurée dans le DOM) — jamais devant le chat.
+    const fw = document.querySelector<HTMLElement>('.float-win')
+    const ar = fw?.getBoundingClientRect()
+    const app = ar ? { x: ar.x, y: ar.y, w: ar.width, h: ar.height } : layout.appMode === 'floating' ? layout.appGeo : null
+    const vw = window.innerWidth
+    const vh = window.innerHeight
+    const ax = app ? app.x : 0
+    const freeLeft = ax
+    const freeRight = vw - (app ? app.x + app.w : vw)
+    const g = loadHubGeometry()
+    const overlaps =
+      app && g.x < ax + app.w && g.x + g.w > ax && g.y < app.y + app.h && g.y + g.h > app.y
+    const outside = g.x + g.w > vw || g.x < 0 || g.y + g.h > vh
+    if (overlaps || outside) {
+      // Priorité à la zone droite dès qu'elle peut accueillir un hub utile ;
+      // sinon zone gauche ; sinon (aucune zone libre) le hub se pose à DROITE
+      // du viewport en réduisant l'app — la fenêtre outils reste latérale.
+      const MIN = 300
+      const useRight = freeRight >= MIN
+      const useLeft = !useRight && freeLeft >= MIN
+      const w = Math.min(g.w || 460, Math.max(300, useRight ? freeRight - 16 : useLeft ? freeLeft - 16 : 460))
+      const x = useRight
+        ? Math.min(vw - w - 8, app ? app.x + app.w + Math.max(0, freeRight - w - 12) : vw - w - 12)
+        : useLeft
+          ? Math.max(8, freeLeft - w - 12)
+          : Math.max(8, vw - w - 12)
+      saveHubGeometry({
+        w,
+        h: Math.min(Math.max(g.h || 520, 320), vh - 24),
+        x,
+        y: Math.max(56, Math.min(g.y || 64, vh - 120)),
+      })
+      // Aucune zone libre : on rétrécit l'app pour laisser la place au hub.
+      if (!useRight && !useLeft && app) {
+        layout.setAppGeo({ ...app, w: Math.max(640, vw - w - 24) })
+      }
     }
   }
 
@@ -485,12 +528,16 @@
     // est remplacé par un résumé LLM (échec → historique intégral, jamais cassé).
     const baseMessages = await condenseHistory(baseMessagesPre, {
       providerId: convProvider,
-      model: convModel,
+      model: settings.condenseModel || convModel,
       apiKey,
       customs,
       temperature: settings.temperature,
       maxTokens: settings.maxTokens,
+      threshold: settings.condenseThreshold,
     })
+    /** Le condenseur a-t-il remplacé l'historique ancien par un résumé ? (pastille) */
+    const condensed = baseMessages !== baseMessagesPre
+    if (condensed) patchLive((m) => ({ ...m, condensed: true }))
 
     /** Un tour d'agent : stream + exécution des outils, jusqu'à réponse finale ou délégation. */
     async function runTurns(
@@ -595,6 +642,7 @@
             }
             const detail = result.slice(0, 80)
             patchLive((m) => ({ ...m, toolEvents: [...(m.toolEvents ?? []), { tool: call.name, detail }] }))
+            appendToolLog({ conv: convId, ts: Date.now(), agent, tool: call.name, detail: result.slice(0, 160), ok: !result.startsWith('❌') && !result.startsWith('Erreur') })
           }
           wires.push({ role: 'tool', tool_call_id: call.id, content: result })
         }

@@ -16,6 +16,8 @@ export interface Msg {
   toolEvents?: { tool: string; detail: string }[]
   /** Fiches .CD injectées dans le prompt de ce message (badge 🃏) */
   cards?: string[]
+  /** Le prompt de ce message a été condensé (résumé de l'historique ancien) */
+  condensed?: boolean
 }
 
 export interface Conversation {
@@ -73,6 +75,9 @@ export interface Settings {
   hubDefault?: HubTab
   /** Permissions par outil (inspiré d'OpenCode) : 'allow' | 'ask' | 'deny'. Défaut : allow. */
   toolPerms?: Record<string, 'allow' | 'ask' | 'deny'>
+  /** Condenseur de contexte : seuil (messages) et modèle de résumé. 0 = désactivé. */
+  condenseThreshold?: number
+  condenseModel?: string
 }
 
 /** Outils soumis aux permissions (les lectures restent toujours libres). */
@@ -242,6 +247,33 @@ export interface DeckState {
 
 export function defaultDeckState(): DeckState {
   return { active: [], cache: {} }
+}
+
+/* ── Journal des exécutions d'outils (par conversation) ──
+ *
+ * Chaque appel d'outil (y compris refus de permission et condensations) est
+ * journalisé en mémoire + localStorage : « qui a fait quoi, quand, résultat ».
+ * Consulté par le panneau Fichiers (onglet ⌘ Journal). Volume borné.
+ */
+export interface ToolLogEntry {
+  conv: string
+  ts: number
+  agent: AgentId | null
+  tool: string
+  detail: string
+  ok: boolean
+}
+
+const TOOLLOG_KEY = 'chatdeck.toollog.v1'
+const TOOLLOG_MAX = 300
+
+export function loadToolLog(): ToolLogEntry[] {
+  return readJson<ToolLogEntry[]>(TOOLLOG_KEY, [])
+}
+
+export function appendToolLog(entry: ToolLogEntry): void {
+  const all = [...loadToolLog(), entry].slice(-TOOLLOG_MAX)
+  writeJson(TOOLLOG_KEY, all)
 }
 
 const CARDS_KEY = 'chatdeck.cards.v1'
