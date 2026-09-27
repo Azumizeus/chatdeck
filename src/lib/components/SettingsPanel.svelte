@@ -3,6 +3,7 @@
   // fournisseurs personnalisés OpenAI-compatible, préférences IDE, effacement des données.
   import { PROVIDERS, isCustom } from '../llm'
   import { groupNotes, vaultSummary } from '../organize'
+  import { HUB_TABS } from '../store'
   import {
     defaultSettings,
     type CustomProvider,
@@ -503,6 +504,29 @@
     {#if tourOn}
       <button class="ghost" onclick={onReplayTour}>▶ Revoir la visite guidée maintenant</button>
     {/if}
+
+    <div class="hubtabs">
+      <span class="hubtabs-label">Fenêtre outils : quels panneaux afficher</span>
+      <div class="hubtabs-row">
+        {#each HUB_TABS as t (t.id)}
+          <label class="hubtab" title="Afficher {t.label} dans la fenêtre outils">
+            <input
+              type="checkbox"
+              checked={(settings.hubTabs ?? HUB_TABS.map((x) => x.id)).includes(t.id)}
+              onchange={(e) => {
+                const cur = settings.hubTabs ?? HUB_TABS.map((x) => x.id)
+                const next = e.currentTarget.checked ? [...cur, t.id] : cur.filter((x) => x !== t.id)
+                // Ordre canonique conservé ; si l'onglet par défaut sort, on retombe sur le 1ᵉʳ restant
+                const ordered = HUB_TABS.filter((h) => next.includes(h.id)).map((h) => h.id)
+                setSetting('hubTabs', ordered)
+                if (!ordered.includes(settings.hubDefault ?? 'graph')) setSetting('hubDefault', ordered[0])
+              }}
+            />
+            <span>{t.icon} {t.label}</span>
+          </label>
+        {/each}
+      </div>
+    </div>
     {/if}
 
     {@render head('data', 'Données')}
@@ -684,6 +708,33 @@
     margin-top: 10px;
     font-size: 13px;
     color: var(--muted);
+  }
+  .hubtabs {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px dashed var(--border);
+  }
+  .hubtabs-label {
+    display: block;
+    font-size: 12.5px;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+  .hubtabs-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 12px;
+  }
+  .hubtab {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--fg);
+    cursor: pointer;
+  }
+  .hubtab input {
+    accent-color: var(--accent);
   }
   .system {
     width: 100%;

@@ -61,6 +61,10 @@ export interface Settings {
   arbitreDebate?: boolean
   /** Mode d'emploi interactif : afficher la visite guidée au lancement */
   showTour?: boolean
+  /** Onglets affichés dans la fenêtre hub (outils) ; [] = bouton hub masqué */
+  hubTabs?: HubTab[]
+  /** Onglet hub actif à l'ouverture (si présent dans hubTabs) */
+  hubDefault?: HubTab
 }
 
 /** Fournisseur personnalisé OpenAI-compatible (proxifié via /api/custom/:id). */
@@ -155,6 +159,44 @@ export function saveGraphLayout(g: GraphLayout): void {
   writeJson(GRAPH_KEY, g)
 }
 
+/* ── Hub : fenêtre outils déployable (Graphify, Fichiers, Terminal, Preview, Réglages) ── */
+
+/** Onglets affichables dans le hub, dans l'ordre des boutons. */
+export type HubTab = 'graph' | 'files' | 'terminal' | 'preview' | 'settings'
+export const HUB_TABS: { id: HubTab; label: string; icon: string }[] = [
+  { id: 'graph', label: 'Graphify', icon: '🕸' },
+  { id: 'files', label: 'Fichiers', icon: '📁' },
+  { id: 'terminal', label: 'Terminal', icon: '⌨︎' },
+  { id: 'preview', label: 'Preview', icon: '👁' },
+  { id: 'settings', label: 'Réglages', icon: '⚙︎' },
+]
+
+/** Géométrie du hub, persistée entre sessions (même schéma que le flottant). */
+export interface HubGeometry {
+  x: number
+  y: number
+  w: number
+  h: number
+}
+
+export function defaultHubGeometry(): HubGeometry {
+  const vw = typeof window === 'undefined' ? 1280 : window.innerWidth
+  const vh = typeof window === 'undefined' ? 800 : window.innerHeight
+  const w = Math.min(980, Math.max(420, vw - 260))
+  const h = Math.min(640, Math.max(360, Math.round(vh * 0.68)))
+  return { x: Math.max(12, Math.round((vw - w) / 2)), y: Math.max(12, Math.round((vh - h) * 0.16)), w, h }
+}
+
+const HUB_KEY = 'chatdeck.hub.v1'
+
+export function loadHubGeometry(): HubGeometry {
+  return readJson<HubGeometry>(HUB_KEY, defaultHubGeometry())
+}
+
+export function saveHubGeometry(g: HubGeometry): void {
+  writeJson(HUB_KEY, g)
+}
+
 /** Le tour n'a-t-il déjà été complété une fois ? (indépendant du réglage) */
 export function tourDone(): boolean {
   try {
@@ -189,6 +231,8 @@ export const defaultSettings = (): Settings => ({
   reduceMotion: false,
   arbitreDebate: false,
   showTour: true,
+  hubTabs: ['graph', 'files', 'terminal', 'preview', 'settings'],
+  hubDefault: 'graph',
 })
 
 function readJson<T>(key: string, fallback: T): T {
@@ -272,7 +316,11 @@ export function saveKeys(k: Keys): void {
 }
 
 export function loadSettings(): Settings {
-  return readJson<Settings>(SET_KEY, defaultSettings())
+  const s = readJson<Settings>(SET_KEY, defaultSettings())
+  // Normalisation des réglages ajoutés après coup : les anciens localStorage
+  // (d'avant le hub) n'ont pas hubTabs → le bouton Outils resterait muet.
+  if (!Array.isArray(s.hubTabs)) s.hubTabs = defaultSettings().hubTabs
+  return s
 }
 
 export function saveSettings(s: Settings): void {

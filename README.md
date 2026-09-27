@@ -66,7 +66,8 @@ npm run build        # bundle production (~72 kB gzip)
 - **Barre de tâches (pill)** : bouton jaune du châssis (ou ⌘K) réduit ChatDeck en pastille compacte avec état live du stream (point pulsant, tokens), restaurable en un clic
 - **Barre d'état** : fournisseur, modèle, latence, **tokens réels** (usage renvoyé par l'API quand disponible, estimation sinon) et **coût estimé par conversation** (tarifs du catalogue OpenRouter, repli indicatif)
 - **Palette de commandes ⌘K** : toutes les actions au clavier, dont snap zone suivante (⌘⌥S)
-- **Barre d'outils permanente** : Agents · Duel · Fichiers · Terminal · Chercher · Réglages, présente dans tous les modes (docké, duel, flottant), états actifs surlignés
+- **Barre d'outils permanente** : Agents · Duel · Fichiers · Terminal · Preview · Graphify · Outils · Chercher · Réglages, présente dans tous les modes (docké, duel, flottant), états actifs surlignés
+- **Fenêtre outils (hub)** 🗂 : une fenêtre déployable et déplaçable qui regroupe Graphify, Fichiers, Terminal, Preview et Réglages — le chat reste entièrement visible et utilisable derrière ; géométrie persistée, et réglage « quels panneaux afficher » dans ⚙︎ Réglages → Apparence
 
 ### Agents & sandbox (Nexus & Seeker)
 - **Nexus** 🧠, super agent orchestrateur multidisciplinaire : il écrit le brief dans `NOTES.md`, crée les fichiers, délègue à **Seeker** 🔎 (exploratrice : recherche, analyse) puis conclut d'après son rapport — délégation multi-agents dans le même fil
@@ -136,6 +137,7 @@ src/
         ├── WindowFrame.svelte    # châssis macOS (3 pastilles)
         ├── Toolbar.svelte        # barre d'outils permanente (agents, duel, fichiers, terminal…)
         ├── FloatingWindow.svelte # fenêtre flottante : drag, resize 8 dirs, snap + ghost 150 ms
+        ├── HubWindow.svelte      # fenêtre outils à onglets (drag/resize, géométrie persistée)
         ├── TaskbarPill.svelte    # pastille barre de tâches (état live, restaurable)
         ├── TabBar.svelte         # onglets réordonnables
         ├── Sidebar.svelte        # historique + import/export + incognito

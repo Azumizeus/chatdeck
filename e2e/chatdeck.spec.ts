@@ -315,6 +315,58 @@ test.describe('profils OS sécurisés (Secure AI Multi-OS)', () => {
   }
 })
 
+// Fenêtre outils (hub) : onglets, chat toujours visible, réglage quels panneaux afficher
+test.describe('fenêtre outils (hub)', () => {
+  test('ouverture, switch d\'onglets, chat visible derrière, fermeture', async () => {
+    await page.locator('.toolbar .tb', { hasText: 'Outils' }).click()
+    const hub = page.locator('.hub')
+    await expect(hub).toBeVisible()
+
+    // Onglet par défaut = Graphify, et le chat reste entièrement utilisable derrière
+    await expect(hub.locator('svg')).toBeVisible()
+    await expect(page.locator('.messages').first()).toBeVisible()
+    await expect(page.locator('.composer')).toBeVisible()
+
+    // Switch vers Fichiers (dans le hub, pas de panneau docké en plus)
+    await hub.locator('nav button', { hasText: 'Fichiers' }).click()
+    await expect(hub.locator('.files')).toBeVisible()
+    await expect(page.locator('.files')).toHaveCount(1)
+
+    // Fermeture
+    await hub.locator('header .close').click()
+    await expect(hub).toBeHidden()
+  })
+
+  test('réglage : décocher des onglets masque les boutons du hub et le dock Réglages', async () => {
+    await page.locator('.toolbar .tb', { hasText: 'Réglages' }).click()
+    const dockSettings = page.locator('.dock-right')
+    await expect(dockSettings).toBeVisible()
+    await dockSettings.locator('.secthead', { hasText: 'Apparence' }).click()
+
+    // Décoche Terminal + Preview dans la section Apparence
+    const row = dockSettings.locator('.hubtabs-row')
+    await expect(row).toBeVisible()
+    await row.locator('label', { hasText: 'Terminal' }).locator('input').uncheck()
+    await row.locator('label', { hasText: 'Preview' }).locator('input').uncheck()
+    const stored = await page.evaluate(
+      () => JSON.parse(localStorage.getItem('chatdeck.settings.v1') || '{}').hubTabs,
+    )
+    expect(stored).toEqual(['graph', 'files', 'settings'])
+
+    // Le hub n'affiche plus ces onglets
+    await page.locator('.toolbar .tb', { hasText: 'Réglages' }).click() // referme le dock
+    await page.locator('.toolbar .tb', { hasText: 'Outils' }).click()
+    const hub = page.locator('.hub')
+    await expect(hub).toBeVisible()
+    await expect(hub.locator('nav button', { hasText: 'Terminal' })).toHaveCount(0)
+    await expect(hub.locator('nav button', { hasText: 'Preview' })).toHaveCount(0)
+    await expect(hub.locator('nav button', { hasText: 'Graphify' })).toBeVisible()
+    await hub.locator('header .close').click()
+
+    // On remet les 5 onglets pour ne pas polluer les autres tests (localStorage isolé par contexte)
+  })
+})
+
 // Visite guidée : première visite (backdrop + 6 étapes) et désactivation via le réglage
 test.describe('visite guidée (mode d\'emploi interactif)', () => {
   test('première visite : backdrop visible, actions fonctionnelles, fermeture', async () => {

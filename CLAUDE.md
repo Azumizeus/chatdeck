@@ -63,6 +63,14 @@ arrêt via `npm run dev:bg:stop` — indispensable après un redémarrage de mac
   PNG 2×.
 - **WelcomeTour.svelte** : visite guidée 6 étapes au premier lancement ;
   réglage `Settings.showTour` (Réglages → Apparence), rejouable via ⌘K « tour ».
+- **HubWindow.svelte** : fenêtre outils à onglets (graph/files/terminal/preview/
+  settings) ; réglage `Settings.hubTabs`/`hubDefault`, géométrie
+  `chatdeck.hub.v1` ; les panneaux y sont re-ancrés via la classe `.hubbed`
+  (ils sont `position: fixed` chez eux) ; quand le hub affiche un onglet, le
+  panneau docké équivalent est masqué (`!showHub || hubActive !== …`).
+- **CLI `deck`** (travail d'un autre agent, non commité à ce jour) : lit les
+  fiches `.CD` dans `promptdeck/library/`, `./.cd/` et `~/.chatdeck/`.
+  Première fiche projet : `.cd/skills/verification-lot.cd`.
 - **Rangement Obsidian** : SettingsPanel regroupe les notes par dossier
   (`groupNotes`, `vaultSummary` dans organize.ts).
 

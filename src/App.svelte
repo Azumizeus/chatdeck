@@ -43,6 +43,8 @@
   import StatusBar from './lib/components/StatusBar.svelte'
   import WindowFrame from './lib/components/WindowFrame.svelte'
   import FloatingWindow from './lib/components/FloatingWindow.svelte'
+  import HubWindow from './lib/components/HubWindow.svelte'
+  import type { HubTab } from './lib/store'
   import TaskbarPill from './lib/components/TaskbarPill.svelte'
   import CommandPalette from './lib/components/CommandPalette.svelte'
   import SearchPanel from './lib/components/SearchPanel.svelte'
@@ -68,6 +70,10 @@
   let showPalette = $state(false)
   let showFiles = $state(false)
   let showGraph = $state(false)
+  // Fenêtre outils (hub) : regroupe Graphify/Fichiers/Terminal/Preview/Réglages
+  // dans une fenêtre déployable — le chat reste visible derrière.
+  let showHub = $state(false)
+  let hubTab = $state<HubTab>('graph')
   let showSearch = $state(false)
   /** Mode d'emploi interactif : 1ʳᵉ visite (réglage showTour actif et jamais complété) */
   let showTour = $state(false)
@@ -83,6 +89,21 @@
     else if (cmd === 'graph') showGraph = true
     else if (cmd === 'net') void net.probe()
   }
+
+  /** Ouvre la fenêtre outils sur un onglet (s'il fait partie du réglage hubTabs). */
+  function openHub(tab: HubTab): void {
+    if (!(settings.hubTabs ?? []).includes(tab)) return
+    if (showHub && hubTab === tab) showHub = false
+    else {
+      hubTab = tab
+      showHub = true
+    }
+  }
+
+  /** Onglets cochés dans les réglages (ordre canonique conservé). */
+  const hubInView = $derived((settings.hubTabs ?? []).slice())
+  /** Onglet réellement affiché : retombe sur le premier visible si le réglage change pendant l'ouverture. */
+  const hubActive = $derived(hubInView.includes(hubTab) ? hubTab : (hubInView[0] ?? 'graph'))
   let showTerminal = $state(false)
   let showPreview = $state(false)
   /** Conversations épinglées à l'ouverture des panneaux (duel inclus) */
@@ -972,6 +993,7 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
     { id: 'graph', label: showGraph ? 'Fermer le panneau Graphify' : 'Ouvrir le graphe Graphify', run: () => (showGraph = !showGraph) },
     { id: 'commit', label: 'Commit auto de la sandbox (git add + commit)', run: () => currentId && void autoCommit(currentId) },
     { id: 'search', label: 'Rechercher dans toutes les conversations', hint: '⌘⇧F', run: () => (showSearch = true) },
+    { id: 'hub', label: showHub ? 'Fermer la fenêtre outils' : 'Fenêtre outils : Graphify, Fichiers, Terminal, Preview, Réglages', run: () => openHub(hubTab) },
     { id: 'tour', label: "Mode d'emploi interactif (visite guidée)", run: () => (showTour = true) },
     { id: 'duel', label: layout.duel ? 'Quitter le mode duel' : 'Mode duel : deux conversations côte à côte', run: toggleDuel },
     { id: 'debate', label: `Arbitre : débat en 2 tours ${settings.arbitreDebate ? '✓ (désactiver)' : '(activer)'}`, run: () => (settings = { ...settings, arbitreDebate: !settings.arbitreDebate }) },
@@ -1005,6 +1027,8 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
     onToggleTerminal={toggleTerminal}
     onTogglePreview={() => togglePreview()}
     onToggleGraph={() => (showGraph = !showGraph)}
+    onToggleHub={() => openHub(hubTab)}
+    hubOpen={showHub}
     onSearch={() => (showSearch = true)}
     onSettings={() => layout.toggleSettings()}
   />
@@ -1091,7 +1115,7 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
       {/if}
     </main>
 
-    {#if !layout.layout.settingsCollapsed}
+    {#if !layout.layout.settingsCollapsed && !(showHub && hubActive === 'settings')}
       <div class="dock-right" style="width: {layout.layout.settingsWidth}px">
         <SettingsPanel
           {keys}
@@ -1296,7 +1320,7 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
   <SearchPanel {conversations} onOpen={jumpTo} onClose={() => (showSearch = false)} />
 {/if}
 
-{#if showGraph}
+{#if showGraph && !showHub}
   <GraphPanel
     {conversations}
     onOpen={(id) => selectChat(id)}
@@ -1304,7 +1328,7 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
   />
 {/if}
 
-{#if showFiles && (filesConvId ?? currentId)}
+{#if showFiles && !showHub && (filesConvId ?? currentId)}
   {@const fid = filesConvId ?? currentId!}
   {@const fc = conversations.find((x) => x.id === fid)}
   {#if fc}
@@ -1312,11 +1336,63 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
   {/if}
 {/if}
 
-{#if showTerminal && terminalConvId}
+{#if showHub && hubInView.length}
+  <HubWindow
+    tabs={hubInView}
+    active={hubActive}
+    onTab={(t) => (hubTab = t)}
+    onClose={() => (showHub = false)}
+  >
+    {#if hubActive === 'graph'}
+      <GraphPanel {conversations} onOpen={(id) => selectChat(id)} onClose={() => (showHub = false)} />
+    {:else if hubActive === 'files'}
+      {@const fid = filesConvId ?? currentId}
+      {@const fc = conversations.find((x) => x.id === fid)}
+      {#if fc && fid}
+        <FilesPanel convId={fid} enabled={Boolean(fc.agents?.length)} onClose={() => (showHub = false)} />
+      {:else}
+        <p class="hub-empty">Aucune conversation — crée-en une pour voir ses fichiers.</p>
+      {/if}
+    {:else if hubActive === 'terminal'}
+      {#if terminalConvId}
+        <TerminalPanel convId={terminalConvId} onClose={() => (showHub = false)} />
+      {:else}
+        <p class="hub-empty">Aucune conversation pour le terminal.</p>
+      {/if}
+    {:else if hubActive === 'preview'}
+      {#if previewConvId ?? currentId}
+        <PreviewPanel convId={previewConvId ?? currentId!} onClose={() => (showHub = false)} />
+      {:else}
+        <p class="hub-empty">Aucune conversation pour la preview.</p>
+      {/if}
+    {:else if hubActive === 'settings'}
+      <div class="hub-settings">
+        <SettingsPanel
+          {keys}
+          {settings}
+          {customs}
+          onKeys={(k) => (keys = k)}
+          onSettings={(s) => (settings = s)}
+          onAddCustom={() => {
+            const id = `custom:${Math.random().toString(36).slice(2, 7)}`
+            customs = [...customs, { id, name: 'Nouveau fournisseur', baseUrl: '', keyHeader: 'Authorization', models: [] }]
+          }}
+          onUpdateCustom={(p) => (customs = customs.map((x) => (x.id === p.id ? p : x)))}
+          onRemoveCustom={(id) => (customs = customs.filter((x) => x.id !== id))}
+          onClose={() => (showHub = false)}
+          onSendNote={send}
+          onReplayTour={() => (showTour = true)}
+        />
+      </div>
+    {/if}
+  </HubWindow>
+{/if}
+
+{#if showTerminal && !showHub && terminalConvId}
   <TerminalPanel convId={terminalConvId} onClose={() => (showTerminal = false)} />
 {/if}
 
-{#if showPreview && (previewConvId ?? currentId)}
+{#if showPreview && !showHub && (previewConvId ?? currentId)}
   <PreviewPanel convId={previewConvId ?? currentId!} onClose={() => (showPreview = false)} />
 {/if}
 
@@ -1339,6 +1415,17 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
     height: 100%;
     display: flex;
     flex-direction: column;
+  }
+  .hub-empty {
+    margin: auto;
+    color: var(--muted, var(--fg));
+    opacity: 0.7;
+    font-size: 13px;
+  }
+  .hub-settings {
+    display: flex;
+    min-height: 0;
+    flex: 1;
   }
   .app > :global(.frame) {
     flex: 1;

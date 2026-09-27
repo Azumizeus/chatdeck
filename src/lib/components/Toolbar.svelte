@@ -21,6 +21,8 @@
     onToggleGraph,
     onSearch,
     onSettings,
+    onToggleHub,
+    hubOpen,
   }: {
     conv: { id: string; agents?: string[] } | null
     streaming: boolean
@@ -39,6 +41,9 @@
     onToggleGraph?: () => void
     onSearch: () => void
     onSettings: () => void
+    /** Fenêtre outils (hub) : bouton affiché si fourni, actif si hubOpen */
+    onToggleHub?: () => void
+    hubOpen?: boolean
   } = $props()
 
   const compact = $derived(variant === 'compact')
@@ -79,6 +84,11 @@
   {#if onToggleGraph}
     <button class="tb" class:active={graphOpen} onclick={onToggleGraph} title="Graphify : graphe des conversations, workspaces et agents">
       🕸 {#if !compact}<span>Graphify</span>{/if}
+    </button>
+  {/if}
+  {#if onToggleHub && !perConv}
+    <button class="tb" class:active={hubOpen} onclick={onToggleHub} title="Fenêtre outils : Graphify, Fichiers, Terminal, Preview, Réglages — le chat reste visible">
+      🗂 {#if !compact}<span>Outils</span>{/if}
     </button>
   {/if}
   {#if !perConv}
