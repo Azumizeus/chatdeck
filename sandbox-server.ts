@@ -1317,11 +1317,17 @@ class ChatDeckApi {
               return json(res, 200, { ok: true, server: 'standalone', providers: {}, allUp: true })
             }
             if (key === 'keys.local') {
-              try {
-                return json(res, 200, JSON.parse(readFileSync(path.join(projectRoot, 'keys.local.json'), 'utf8')))
-              } catch {
-                return json(res, 404, {})
+              // Le foyer des données de l'app : ~/.chatdeck/keys.local.json.
+              // (projectRoot pointe sur app.asar.unpacked en packagé — le fichier
+              // n'y est pas : les clés vivaient dans le dossier projet en dev.)
+              for (const f of [path.join(homedir(), '.chatdeck', 'keys.local.json'), path.join(projectRoot, 'keys.local.json')]) {
+                try {
+                  return json(res, 200, JSON.parse(readFileSync(f, 'utf8')))
+                } catch {
+                  /* fichier suivant */
+                }
               }
+              return json(res, 404, {})
             }
             if (key === 'api' && seg[1] === 'health') {
               return json(res, 200, { ok: true, server: 'standalone', providers: {}, allUp: true })

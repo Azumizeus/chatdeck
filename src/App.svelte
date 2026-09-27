@@ -493,7 +493,8 @@
             }
           : c,
       )
-      layout.toggleSettings() // ouvre le panneau réglages si replié
+      // OUVRE les réglages sans jamais les refermer (toggle = double appel = panneau refermé).
+      if (layout.layout.settingsCollapsed) layout.toggleSettings()
       return
     }
 
