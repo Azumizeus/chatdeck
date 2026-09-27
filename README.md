@@ -50,8 +50,12 @@ npm run dmg            # fabrique release/ChatDeck-<version>.dmg (arm64 + x64)
 
 Par défaut une seule instance tourne : relancer l'app focus la fenêtre existante.
 `npm run app:multi` (ou `--multi`) ouvre des instances indépendantes — utile pour
-comparer deux conversations côte à côte. Le DMG n'est pas signé (usage local) :
-au premier lancement, clic droit → Ouvrir.
+comparer deux conversations côte à côte. La palette ⌘K a aussi une commande
+**« + instance »** qui lance directement une 2ᵈ ChatDeck indépendante (IPC en app
+de bureau, endpoint `/api/sandbox/launch-instance` en web). L'app porte l'icône
+éclair ⚡ ChatDeck dans le Dock et le DMG (`build/icon.icns`, régénérable par
+`node tools/gen-icon.mjs` — PNG écrit sans dépendance). Le DMG n'est pas signé
+(usage local) : au premier lancement, clic droit → Ouvrir.
 
 Les clés se saisissent aussi dans **⚙︎ Réglages** (⌘K → « Réglages ») : test en direct par fournisseur, stockage `localStorage`, jamais envoyées ailleurs qu'au fournisseur choisi (via le proxy Vite). Fournisseurs custom : `custom-providers.local.json` (gitignore) alimente le proxy générique.
 
@@ -87,7 +91,7 @@ npm run build        # bundle production (~72 kB gzip)
 - **Barre d'état** : fournisseur, modèle, latence, **tokens réels** (usage renvoyé par l'API quand disponible, estimation sinon) et **coût estimé par conversation** (tarifs du catalogue OpenRouter, repli indicatif)
 - **Palette de commandes ⌘K** : toutes les actions au clavier, dont snap zone suivante (⌘⌥S)
 - **Barre d'outils permanente** : Agents · Duel · Fichiers · Terminal · Preview · Graphify · Outils · Chercher · Réglages, présente dans tous les modes (docké, duel, flottant), états actifs surlignés
-- **Fenêtre outils (hub)** 🗂 : une fenêtre déployable et déplaçable qui regroupe Graphify, Fichiers, Terminal, Preview, Réglages et **Skills & Agents** — le chat reste entièrement visible et utilisable derrière ; géométrie persistée, onglet actif mémorisé entre les sessions, réglage « quels panneaux afficher » dans ⚙︎ Réglages → Apparence, et extraction de chaque onglet en popout dédié. **Fichiers et Graphify s'ouvrent exclusivement dedans** (plus aucun panneau fixe devant le chat)
+- **Fenêtre outils (hub)** 🗂 : une fenêtre déployable et déplaçable qui regroupe Graphify, Fichiers, Terminal, Preview, Réglages et **Skills & Agents** — le chat reste entièrement visible et utilisable derrière ; géométrie persistée, onglet actif mémorisé entre les sessions, réglage « quels panneaux afficher » dans ⚙︎ Réglages → Apparence, et extraction de chaque onglet en popout dédié. **Double-clic sur sa barre de titre : le hub se replie en bande fine verticale** (dock d'icônes ; clic = re-déploiement sur l'onglet, second double-clic aussi), la largeur d'origine est restaurée. **Fichiers et Graphify s'ouvrent exclusivement dedans** (plus aucun panneau fixe devant le chat)
 - **Terminal docké** ⌨︎ : s'affiche **sous le champ de saisie** de la conversation (plus d'overlay qui masque le chat)
 
 ### Agents & sandbox (Nexus & Seeker)

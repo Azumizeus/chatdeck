@@ -3,6 +3,7 @@
 // Racine : ~/.chatdeck/workspaces/<conversation-id>/
 // Le navigateur n'y accède QUE via les endpoints /api/sandbox (plugin Vite, dev) :
 //   GET    /api/sandbox/status                  → racine, N workspaces, tailles
+//   POST   /api/sandbox/launch-instance         → ouvre une 2ᵈ instance ChatDeck (--multi)
 //   POST   /api/sandbox/:convId/bootstrap       → crée le workspace + fichiers d'amorçage
 //   GET    /api/sandbox/:convId/tree            → arborescence JSON
 //   GET    /api/sandbox/:convId/file?path=…     → contenu d'un fichier (cap 1 Mo)
@@ -28,6 +29,8 @@ import { homedir } from 'node:os'
 import path from 'node:path'
 
 const WORKSPACES_ROOT = path.join(homedir(), '.chatdeck', 'workspaces')
+/** Racine du projet (pour lancer une 2ᵈ instance : npm run app:multi). */
+const projectRoot = path.resolve(import.meta.dirname ?? '.')
 const MAX_FILE_BYTES = 1_000_000
 const MAX_TREE_ENTRIES = 500
 const MAX_RUN_OUTPUT = 200_000
@@ -604,6 +607,30 @@ export function sandboxServer(): Plugin {
               res.setHeader('X-Content-Type-Options', 'nosniff')
               res.end(await readFile(t.target, 'utf8'))
               return
+            }
+
+            // launch-instance : « + instance » de la palette ⌘K (mode web/dev).
+            // Spawn détaché d'une 2ᵈ instance Electron indépendante (--multi).
+            // Sécurité : aucun argument utilisateur — commande fixe du projet,
+            // aucune donnée transmise au process enfant.
+            // (Route au niveau convId : /api/sandbox/launch-instance.)
+            if (convId === 'launch-instance' && req.method === 'POST') {
+              if (process.platform !== 'darwin') {
+                return json(res, 501, { ok: false, error: 'supporté sur macOS pour l\'instant (ouvrez un 2ᵈ terminal : npm run app:multi)' })
+              }
+              try {
+                const { spawn } = await import('node:child_process')
+                const child = spawn('npx', ['electron', '.', '--multi'], {
+                  cwd: projectRoot,
+                  detached: true,
+                  stdio: 'ignore',
+                  env: { ...process.env },
+                })
+                child.unref()
+                return json(res, 200, { ok: true, pid: child.pid })
+              } catch (e) {
+                return json(res, 500, { ok: false, error: (e as Error).message })
+              }
             }
 
             // git-commit : endpoint sécurisé pour les agents — git add -A + commit.

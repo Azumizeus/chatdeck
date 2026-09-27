@@ -194,6 +194,10 @@ export interface HubGeometry {
   y: number
   w: number
   h: number
+  /** Replié en bande fine (double-clic sur la barre de titre) ? */
+  collapsed?: boolean
+  /** Largeur d'origine à restaurer au re-déploiement. */
+  expandedW?: number
 }
 
 export function defaultHubGeometry(): HubGeometry {

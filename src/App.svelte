@@ -107,6 +107,8 @@
     }
     hubTab = tab
     showHub = true
+    // Hub replié en bande fine ? On le re-déploie (événement écouté par HubWindow).
+    window.dispatchEvent(new Event('chatdeck-hub-expand'))
     // Le hub est une fenêtre outils LATÉRALE : si sa géométrie chevauche la
     // fenêtre app (mode flottant) ou sort du viewport, on l'amarrе dans la
     // zone libre à droite de l'app (mesurée dans le DOM) — jamais devant le chat.
@@ -1240,7 +1242,36 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
 
   /* ---------- palette ---------- */
 
+  /** Notification éphémère (coin bas) — sert au retour de « + instance ». */
+  let notice = $state('')
+  let noticeTimer: ReturnType<typeof setTimeout> | null = null
+  function notify(msg: string): void {
+    notice = msg
+    if (noticeTimer) clearTimeout(noticeTimer)
+    noticeTimer = setTimeout(() => (notice = ''), 5000)
+  }
+
+  /** « + instance » : IPC Electron d'abord, sinon endpoint web (npm run app:multi). */
+  async function launchInstance(): Promise<void> {
+    try {
+      const bridge = (window as { chatdeck?: { launchInstance?: () => Promise<{ ok: boolean; error?: string }> } }).chatdeck
+      if (bridge?.launchInstance) {
+        const r = await bridge.launchInstance()
+        if (!r.ok) throw new Error(r.error ?? 'échec IPC')
+        notify('⚡ Nouvelle instance ChatDeck lancée')
+        return
+      }
+      const r = await fetch('/api/sandbox/launch-instance', { method: 'POST' })
+      const j = (await r.json()) as { ok: boolean; error?: string }
+      if (!j.ok) throw new Error(j.error ?? `HTTP ${r.status}`)
+      notify('⚡ Nouvelle instance ChatDeck lancée')
+    } catch (e) {
+      notify(`+ instance : ${(e as Error).message}`)
+    }
+  }
+
   const commands = $derived<Command[]>([
+    { id: 'new-instance', label: '+ instance : ouvrir une 2ᵈ ChatDeck indépendante', hint: '⚡', run: () => void launchInstance() },
     { id: 'new', label: 'Nouvelle conversation', hint: '⌘N', run: () => newChat() },
     { id: 'incognito', label: 'Nouvelle conversation incognito 👻', hint: '⌘⇧N', run: () => newChat(true) },
     { id: 'theme', label: `Basculer en thème ${settings.theme === 'dark' ? 'clair' : 'sombre'}`, run: () => (settings = { ...settings, theme: settings.theme === 'dark' ? 'light' : 'dark' }) },
@@ -1589,6 +1620,9 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
     </WindowFrame>
 
     <StatusBar conv={current} streaming={anyStreaming} {latencyMs} {customs} />
+    {#if notice}
+      <div class="notice" role="status">{notice}</div>
+    {/if}
   </div>
 {:else if layout.appMode === 'floating'}
   <FloatingWindow
@@ -1684,10 +1718,6 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
   </HubWindow>
 {/if}
 
-{#if showPreview && showHub && hubInView.includes('preview') && (previewConvId ?? currentId)}
-  <PreviewPanel convId={previewConvId ?? currentId!} onClose={() => (showHub = false)} />
-{/if}
-
 {#if showPalette}
   <CommandPalette {commands} onClose={() => (showPalette = false)} />
 {/if}
@@ -1718,6 +1748,20 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
     display: flex;
     min-height: 0;
     flex: 1;
+  }
+  /* Notification éphémère (retour « + instance ») — coin bas droit */
+  .notice {
+    position: fixed;
+    right: 16px;
+    bottom: 44px;
+    z-index: 95;
+    max-width: 380px;
+    padding: 8px 14px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--panel) 92%, transparent);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+    font-size: 13px;
   }
   /* Terminal docké sous le composer : le panneau (fixed chez lui) s'y déplie */
   .term-docked {

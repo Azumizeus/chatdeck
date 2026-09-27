@@ -28,10 +28,36 @@
 
   const MIN_W = 380
   const MIN_H = 280
+  /** Largeur de la bande fine repliée. */
+  const COLLAPSED_W = 46
 
   // Géométrie persistée, re-clampée à l'init (fenêtre redimensionnée entre-temps,
   // ou géométrie obsolète d'une ancienne session).
   let geo = $state<HubGeometry>(clamp(loadHubGeometry()))
+
+  /* Repli en bande fine : double-clic sur la barre de titre (hors boutons).
+   * On garde x/y/h et la largeur d'origine (expandedW) pour re-déployer tel quel. */
+  const collapsed = $derived(Boolean(geo.collapsed))
+  function toggleCollapse(e?: MouseEvent): void {
+    // Un double-clic sur un onglet/croix reste une interaction d'onglet.
+    if (e && (e.target as Element).closest('button')) return
+    if (geo.collapsed) {
+      const w = Math.max(MIN_W, geo.expandedW ?? MIN_W)
+      geo = clamp({ ...geo, w, collapsed: false })
+    } else {
+      geo = { ...geo, expandedW: geo.w, w: COLLAPSED_W, collapsed: true }
+    }
+    saveHubGeometry({ ...geo })
+  }
+  /** Clic d'onglet : si le hub est replié, on re-déploie sur cet onglet. */
+  function tabClick(t: HubTab): void {
+    if (geo.collapsed) {
+      const w = Math.max(MIN_W, geo.expandedW ?? MIN_W)
+      geo = clamp({ ...geo, w, collapsed: false })
+      saveHubGeometry({ ...geo })
+    }
+    onTab(t)
+  }
   let dragging = $state(false)
   let resizing = $state<false | 'e' | 's' | 'se'>(false)
   let grab: { dx: number; dy: number } | null = null
@@ -41,7 +67,9 @@
   function clamp(g: HubGeometry): HubGeometry {
     const vw = window.innerWidth
     const vh = window.innerHeight
-    const w = Math.max(MIN_W, Math.min(g.w, vw - 24))
+    // Replié, la largeur est la bande fine (46 px) — pas le minimum utile.
+    const minW = g.collapsed ? COLLAPSED_W : MIN_W
+    const w = Math.max(minW, Math.min(g.w, vw - 24))
     const h = Math.max(MIN_H, Math.min(g.h, vh - 24))
     return {
       w,
@@ -107,22 +135,45 @@
   }
 
   const visible = $derived(HUB_TABS.filter((t) => tabs.includes(t.id)))
-  const style = $derived(`left:${geo.x}px;top:${geo.y}px;width:${geo.w}px;height:${geo.h}px`)
+  const style = $derived(
+    collapsed
+      ? `left:${geo.x}px;top:${geo.y}px;width:${geo.w}px` // hauteur auto : la bande s'ajuste à ses icônes
+      : `left:${geo.x}px;top:${geo.y}px;width:${geo.w}px;height:${geo.h}px`,
+  )
+
+  // openHub() (App) demande l'expansion quand on rouvre un hub replié.
+  $effect(() => {
+    const expand = (): void => {
+      if (!geo.collapsed) return
+      const w = Math.max(MIN_W, geo.expandedW ?? MIN_W)
+      geo = clamp({ ...geo, w, collapsed: false })
+      saveHubGeometry({ ...geo })
+    }
+    window.addEventListener('chatdeck-hub-expand', expand)
+    return () => window.removeEventListener('chatdeck-hub-expand', expand)
+  })
 </script>
 
-<section class="hub" class:dragging class:resizing {style} aria-label="Fenêtre outils">
-  <header role="presentation" onpointerdown={down} onpointermove={move} onpointerup={up} onpointercancel={up}>
+<section class="hub" class:dragging class:resizing class:collapsed {style} aria-label="Fenêtre outils">
+  <header
+    role="presentation"
+    onpointerdown={down}
+    onpointermove={move}
+    onpointerup={up}
+    onpointercancel={up}
+    ondblclick={toggleCollapse}
+  >
     <span class="grip">⠿</span>
     <nav aria-label="Outils du hub">
       {#each visible as t (t.id)}
         <button
           class:active={active === t.id}
-          onclick={() => onTab(t.id)}
+          onclick={() => tabClick(t.id)}
           onpointerdown={(e) => tabDown(e, t.id)}
           onpointermove={tabMove}
           onpointerup={tabUp}
           onpointercancel={tabUp}
-          title="{t.label} — glisser horizontalement pour détacher en fenêtre"
+          title={collapsed ? `${t.label} — clic pour re-déployer` : `${t.label} — glisser horizontalement pour détacher en fenêtre`}
         >
           <span class="ico">{t.icon}</span><span class="lbl">{t.label}</span>
         </button>
@@ -130,9 +181,11 @@
     </nav>
     <button class="close" title="Fermer la fenêtre outils" onclick={onClose}>×</button>
   </header>
-  <div class="hub-body">
-    {@render children?.()}
-  </div>
+  {#if !collapsed}
+    <div class="hub-body">
+      {@render children?.()}
+    </div>
+  {/if}
   <div class="rz e" role="separator" aria-label="Redimensionner E" onpointerdown={(e) => startResize(e, 'e')} onpointermove={move} onpointerup={up}></div>
   <div class="rz s" role="separator" aria-label="Redimensionner S" onpointerdown={(e) => startResize(e, 's')} onpointermove={move} onpointerup={up}></div>
   <div class="rz se" role="separator" aria-label="Redimensionner SE" onpointerdown={(e) => startResize(e, 'se')} onpointermove={move} onpointerup={up}></div>
@@ -158,6 +211,39 @@
   .hub.resizing {
     user-select: none;
     border-color: var(--accent);
+  }
+  /* Replié : bande fine verticale — onglets en icônes empilées. Un clic sur
+   * une icône re-déploie sur cet onglet, un double-clic sur la barre aussi. */
+  .hub.collapsed {
+    border-radius: 10px;
+  }
+  .hub.collapsed header {
+    flex-direction: column;
+    height: auto;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 3px;
+    border-bottom: none;
+    border-radius: 10px;
+    cursor: pointer;
+    overflow: hidden;
+  }
+  .hub.collapsed .grip {
+    font-size: 11px;
+  }
+  .hub.collapsed nav {
+    flex-direction: column;
+    overflow: visible;
+  }
+  .hub.collapsed nav button {
+    padding: 6px 8px;
+    justify-content: center;
+  }
+  .hub.collapsed nav button .lbl {
+    display: none;
+  }
+  .hub.collapsed .close {
+    margin-top: auto;
   }
   header {
     height: 40px;
@@ -249,6 +335,9 @@
   .rz {
     position: absolute;
     touch-action: none;
+  }
+  .hub.collapsed .rz {
+    display: none;
   }
   .rz.e {
     top: 12px;

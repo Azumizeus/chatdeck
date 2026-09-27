@@ -18,15 +18,17 @@
     "app": "npm run build && electron electron/main.mjs",
     "app:dev": "CHATDECK_DEV_URL=http://localhost:5199 electron electron/main.mjs",
     "app:multi": "npm run build && electron electron/main.mjs --multi",
+    "icons": "node tools/gen-icon.mjs && iconutil -c icns build/icon.iconset -o build/icon.icns",
     "dmg": "npm run build && electron-builder --mac dmg"
   },
   "main": "electron/main.mjs",
   "build": {
     "appId": "com.chatdeck.app",
     "productName": "ChatDeck",
-    "directories": { "output": "release" },
+    "directories": { "output": "release", "buildResources": "build" },
     "files": ["dist/**", "electron/**"],
     "mac": {
+      "icon": "build/icon.icns",
       "target": [{ "target": "dmg", "arch": ["arm64", "x64"] }],
       "category": "public.app-category.developer-tools",
       "identity": null

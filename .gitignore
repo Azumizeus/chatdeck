@@ -12,3 +12,14 @@ blob-report/
 
 .vite-dev.pid
 release/
+build/*
+!build/icon.png
+!build/README.md
+.claude/
+.obsidian/
+promptdeck/
+.cd/
+bin/deck.mjs
+bin/promptdeck-sync
+"Secure AI  Multi-OS/"
+!build/icon.png
