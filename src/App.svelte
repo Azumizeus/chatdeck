@@ -57,6 +57,8 @@
   import HubWindow from './lib/components/HubWindow.svelte'
   import DeckPanel from './lib/components/DeckPanel.svelte'
   import ConnectorsPanel from './lib/components/ConnectorsPanel.svelte'
+  import CleanupBanner from './lib/components/CleanupBanner.svelte'
+  import CascadePanel from './lib/components/CascadePanel.svelte'
   import type { HubTab } from './lib/store'
   import TaskbarPill from './lib/components/TaskbarPill.svelte'
   import CommandPalette from './lib/components/CommandPalette.svelte'
@@ -95,6 +97,10 @@
   $effect(() => {
     saveHubSession({ open: showHub, tab: hubTab })
   })
+  /** Semi-nettoyage sandbox : vérifié À CHAQUE LANCEMENT de l'app — la bannière
+   *  ne s'affiche que s'il y a quelque chose à nettoyer (check local instantané)
+   *  et ne supprime JAMAIS sans validation humaine. */
+  let showCleanup = $state(true)
   /** Popout dédié au panneau deck (fenêtre window.open, état via localStorage) */
   let deckPopout = $state<Window | null>(null)
   let showSearch = $state(false)
@@ -1110,7 +1116,7 @@
   }
 
   /** Dock outils à droite (comme Réglages) : un seul panneau actif à la fois. */
-  type DockTool = 'files' | 'terminal' | 'preview' | null
+  type DockTool = 'files' | 'terminal' | 'preview' | 'cascade' | null
   let dockTool = $state<DockTool>(null)
   function toggleToolDock(tool: Exclude<DockTool, null>, convId?: string): void {
     if (tool === 'files') filesConvId = convId ?? currentId
@@ -1118,7 +1124,8 @@
     if (tool === 'preview') previewConvId = convId ?? currentId
     // Si le hub est ouvert, il prend l'onglet correspondant (comportement IDE) ;
     // sinon le panneau se dock à droite du chat, comme Réglages.
-    if (showHub) {
+    // (« cascade » n'existe pas comme onglet hub : il reste toujours en dock.)
+    if (showHub && tool !== 'cascade') {
       openHub(tool)
       return
     }
@@ -1552,6 +1559,9 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
       />
       {#if current}
         <NetworkBanner />
+        {#if showCleanup}
+          <CleanupBanner onDone={() => (showCleanup = false)} />
+        {/if}
         <div class="messages" bind:this={scroller}>
           {#if current.messages.length === 0}
             <div class="hero">
@@ -1655,6 +1665,8 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
           {/if}
         {:else if dockTool === 'preview' && (previewConvId ?? currentId)}
           <PreviewPanel convId={previewConvId ?? currentId!} onClose={() => { dockTool = null; showPreview = false }} />
+        {:else if dockTool === 'cascade'}
+          <CascadePanel onClose={() => (dockTool = null)} />
         {/if}
       </div>
     {/if}
@@ -1826,7 +1838,7 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
       {/if}
     </WindowFrame>
 
-    <StatusBar conv={current} streaming={anyStreaming} {latencyMs} {customs} />
+    <StatusBar conv={current} streaming={anyStreaming} {latencyMs} {customs} onCascade={() => { dockTool = dockTool === 'cascade' ? null : 'cascade' }} />
     {#if notice}
       <div class="notice" role="status">{notice}</div>
     {/if}
@@ -1841,7 +1853,7 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
       onMinimize={togglePill}
     >
     {@render ideShell()}
-    <StatusBar conv={current} streaming={anyStreaming} {latencyMs} {customs} />
+    <StatusBar conv={current} streaming={anyStreaming} {latencyMs} {customs} onCascade={() => { dockTool = dockTool === 'cascade' ? null : 'cascade' }} />
   </FloatingWindow>
 {:else}
   <div class="app">
@@ -1854,7 +1866,7 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
     {@render ideShell()}
     </WindowFrame>
 
-    <StatusBar conv={current} streaming={anyStreaming} {latencyMs} {customs} />
+    <StatusBar conv={current} streaming={anyStreaming} {latencyMs} {customs} onCascade={() => { dockTool = dockTool === 'cascade' ? null : 'cascade' }} />
   </div>
 {/if}
 

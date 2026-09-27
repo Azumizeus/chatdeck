@@ -605,6 +605,9 @@ const sandboxHandler: RequestHandler = (req, res) => {
                 : []
               const orphanSet = new Set((body.orphans ?? []).filter((s) => CONV_ID_RE.test(s)))
               for (const d of dirs) {
+                // Les workspaces PROJET (p-*) ne sont jamais nettoyés automatiquement :
+                // ils regroupent plusieurs conversations et se gèrent manuellement.
+                if (d.name.startsWith('p-')) continue
                 // orphelins explicites (conversations supprimées) : base + @@os
                 const baseId = d.name.split('@@')[0]
                 const isOrphan = orphanSet.has(baseId)
