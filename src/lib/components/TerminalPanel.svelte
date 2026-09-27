@@ -3,6 +3,27 @@
   // (spawn sans shell, timeout 60 s, sortie stdout+stderr streamée).
   import { loadTermHeight, saveTermHeight } from '../store'
 
+  /** Historique persisté PAR conversation (comme un vrai shell) : ↑↓ retrouve
+   *  les commandes même après fermeture/réouverture du panneau. */
+  const HIST_KEY = 'chatdeck.termhist.v1'
+  function loadHist(conv: string): string[] {
+    try {
+      const all = JSON.parse(localStorage.getItem(HIST_KEY) || '{}') as Record<string, string[]>
+      return all[conv] ?? []
+    } catch {
+      return []
+    }
+  }
+  function saveHist(conv: string, hist: string[]): void {
+    try {
+      const all = JSON.parse(localStorage.getItem(HIST_KEY) || '{}') as Record<string, string[]>
+      all[conv] = hist.slice(-100)
+      localStorage.setItem(HIST_KEY, JSON.stringify(all))
+    } catch {
+      /* quota : on ignore */
+    }
+  }
+
   let {
     convId,
     onClose,
@@ -42,8 +63,12 @@
   let input = $state('')
   let running = $state(false)
   let bodyEl: HTMLDivElement | undefined = $state()
-  let history = $state<string[]>([])
-  let historyIx = $state(-1)
+  // svelte-ignore state_referenced_locally (valeur initiale voulue : historique persisté de CE fil)
+  const initialHist = loadHist(convId)
+  let history = $state<string[]>(initialHist)
+  let historyIx = $state(initialHist.length)
+  /** Saisie en cours conservée pendant la navigation ↑↓ (comme bash). */
+  let draft = $state('')
 
   const BINARIES = 'node, npm, npx, ls, cat, pwd, echo, mkdir, touch, rm, cp, mv, git'
 
@@ -55,8 +80,13 @@
     if (!cmd.trim() || running) return
     running = true
     lines = [...lines, { text: `$ ${cmd}`, cls: 'cmd' }]
-    history = [...history, cmd]
+    // Pas de doublon consécutif dans l'historique (comme HISTCONTROL=ignoredups)
+    if (history[history.length - 1] !== cmd) {
+      history = [...history, cmd]
+      saveHist(convId, history)
+    }
     historyIx = history.length
+    draft = ''
     input = ''
     scrollEnd()
     try {
@@ -98,12 +128,21 @@
     if (e.key === 'Enter') void run(input)
     else if (e.key === 'ArrowUp' && history.length) {
       e.preventDefault()
+      if (historyIx === history.length) draft = input // on garde la saisie en cours
       historyIx = Math.max(0, historyIx - 1)
       input = history[historyIx] ?? ''
     } else if (e.key === 'ArrowDown' && history.length) {
       e.preventDefault()
       historyIx = Math.min(history.length, historyIx + 1)
-      input = history[historyIx] ?? ''
+      input = historyIx === history.length ? draft : (history[historyIx] ?? '')
+    } else if (e.key === 'c' && e.ctrlKey) {
+      // Ctrl+C : annule la ligne courante (prompt neuf), comme un vrai shell
+      e.preventDefault()
+      lines = [...lines, { text: `$ ${input}^C`, cls: 'cmd' }]
+      input = ''
+      draft = ''
+      historyIx = history.length
+      scrollEnd()
     }
   }
 

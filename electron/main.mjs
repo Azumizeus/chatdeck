@@ -34,13 +34,15 @@ if (!MULTI && !app.requestSingleInstanceLock()) {
 
   const PARTITION = MULTI ? `persist:chatdeck-${process.pid}` : 'persist:chatdeck'
 
-  /* Géométrie de fenêtre persistée (chatdeck-window.json) : position/taille
-   * réouvertes au lancement, re-clampées à l'écran courant (écran changé,
-   * fenêtre fermée sur un moniteur débranché…). Les instances --multi partagent
-   * le fichier : tant pis, la dernière fermée gagne — pas critique. */
+  /* Géométrie de fenêtre persistée : position/taille réouvertes au lancement,
+   * re-clampées à l'écran courant (écran changé, fenêtre fermée sur un moniteur
+   * débranché…). Les instances --multi ont CHACUN leur fichier
+   * (chatdeck-window-multi.json) : « + instance » n'écrase plus la position de
+   * la fenêtre principale. */
   const stateFile = () => {
     try {
-      return path.join(app.getPath('userData'), 'chatdeck-window.json')
+      const name = MULTI ? 'chatdeck-window-multi.json' : 'chatdeck-window.json'
+      return path.join(app.getPath('userData'), name)
     } catch {
       return null // app pas prêt (jamais le cas dans createWindow)
     }

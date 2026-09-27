@@ -286,6 +286,29 @@ export function saveHubGeometry(g: HubGeometry): void {
   writeJson(HUB_KEY, g)
 }
 
+/** État d'ouverture du hub, restauré au lancement (hub ouvert sur l'onglet
+ *  actif d'une session à l'autre, comme VS Code rouvre ses panneaux). */
+export interface HubSession {
+  open: boolean
+  tab?: HubTab
+}
+const HUB_SESSION_KEY = 'chatdeck.hub-session.v1'
+export function loadHubSession(): HubSession {
+  try {
+    const v = JSON.parse(localStorage.getItem(HUB_SESSION_KEY) || '{}') as HubSession
+    return { open: Boolean(v.open), tab: v.tab }
+  } catch {
+    return { open: false }
+  }
+}
+export function saveHubSession(s: HubSession): void {
+  try {
+    localStorage.setItem(HUB_SESSION_KEY, JSON.stringify(s))
+  } catch {
+    /* ignore */
+  }
+}
+
 /** Hauteur du terminal docké (px), mémorisée entre les sessions. */
 const TERM_KEY = 'chatdeck.term.v1'
 

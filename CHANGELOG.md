@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.4.2
+
+### Corrigé
+- **Le message qui disparaissait avec Entrée** : sans clé API, le texte était
+  perdu et les réglages s'ouvraient en silence. Maintenant le message reste
+  dans le fil avec une erreur explicite + réglages ouverts pour coller la clé.
+- **Double terminal** (hub + dock) : gardes mutuelles entre les trois ancrages
+  du terminal (hub, dock outils, sous-composer) — un seul rendu à la fois.
+
+### Ajouté
+- **Dock outils à droite** : Fichiers / Terminal / Preview se dockent comme
+  Réglages quand le hub est fermé (hub prioritaire s'il est ouvert).
+- **Terminal ↑↓ persistant** : historique par conversation (100 dernières),
+  brouillon conservé pendant la navigation, Ctrl+C annule la ligne.
+- **Hub restauré au lancement** : ouvert/fermé + onglet actif mémorisés.
+- **Géométrie par instance** : les fenêtres --multi ont leur propre fichier
+  (chatdeck-window-multi.json) — « + instance » n'écrase plus la principale.
+- **write_project_file** : l'agent écrit un livrable dans le workspace partagé
+  du projet (confirmation systématique, dossiers Mac toujours lecture seule).
+- **Connecteurs MCP stdio** : serveurs locaux (~/.chatdeck/mcp-servers.local.json),
+  handshake initialize/initialized, appariement JSON-RPC par id, tools listés
+  dans le panneau Connecteurs et appelables via connector_call.
+- **Fiche .cd/outils/macos-install.cd** (install macOS, testée via deck_load).
+
 ## 0.4.1
 
 ### Corrigé

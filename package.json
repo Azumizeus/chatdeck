@@ -1,7 +1,7 @@
 {
   "name": "chatdeck",
   "private": true,
-  "version": "0.4.1",
+  "version": "0.4.2",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -34,7 +34,12 @@
       "dist/**",
       "electron/**",
       "promptdeck/**"
-    ],    "asarUnpack": ["promptdeck/**", "electron/api-server.mjs", "dist/**"],
+    ],
+    "asarUnpack": [
+      "promptdeck/**",
+      "electron/api-server.mjs",
+      "dist/**"
+    ],
     "mac": {
       "icon": "build/icon.icns",
       "target": [

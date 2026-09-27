@@ -23,6 +23,8 @@
     saveIncognitoId,
     loadHubGeometry,
     saveHubGeometry,
+    loadHubSession,
+    saveHubSession,
     loadProjects,
     saveProjects,
     newProject,
@@ -84,9 +86,15 @@
   let showGraph = $state(false)
   // Fenêtre outils (hub) : regroupe Graphify/Fichiers/Terminal/Preview/Réglages
   // dans une fenêtre déployable — le chat reste visible derrière.
-  let showHub = $state(false)
+  // Rouvert au lancement sur l'onglet actif de la session précédente (VS Code style).
+  const hubSession = loadHubSession()
+  let showHub = $state(hubSession.open)
   // svelte-ignore state_referenced_locally (valeur initiale voulue : dernier onglet de la session précédente)
-  let hubTab = $state<HubTab>(settings.hubDefault ?? 'graph')
+  let hubTab = $state<HubTab>(hubSession.tab ?? settings.hubDefault ?? 'graph')
+  // Persistance de l'état du hub (ouvert/onglet) à chaque changement.
+  $effect(() => {
+    saveHubSession({ open: showHub, tab: hubTab })
+  })
   /** Popout dédié au panneau deck (fenêtre window.open, état via localStorage) */
   let deckPopout = $state<Window | null>(null)
   let showSearch = $state(false)
@@ -456,22 +464,10 @@
     const conv = conversations.find((c) => c.id === convId)
     if (!conv) return
     const apiKey = keyOf(conv.providerId)
-    if (!apiKey) {
-      layout.toggleSettings() // ouvre le panneau réglages si replié
-      return
-    }
+    // Le message est TOUJOURS ajouté au fil (bug : il disparaissait + ouverture
+    // silencieuse des réglages quand la clé manquait). Sans clé : bulle d'erreur
+    // explicite dans la conversation + réglages ouverts pour la saisir.
     const multi = Boolean(conv.agents?.length)
-
-    // Bootstrap de la sandbox au premier message d'un fil agents (~/.chatdeck/workspaces/<id>)
-    if (multi && !conv.sandboxReady) {
-      conversations = conversations.map((c) => (c.id === convId ? { ...c, sandboxReady: true } : c))
-      try {
-        await fetch(`/api/sandbox/${convId}/bootstrap`, { method: 'POST' })
-      } catch {
-        /* sandbox indisponible : les outils renverront une erreur lisible */
-      }
-    }
-
     const appliedCards = conversations.find((c) => c.id === convId)?.cardsActive ?? loadDeckState().active
     const user: Msg = { role: 'user', content: text, ts: Date.now(), ...(appliedCards.length ? { cards: [...appliedCards] } : {}) }
     const assistant: Msg = { role: 'assistant', content: '', ts: Date.now(), ...(multi ? { agent: 'nexus' as const } : {}) }
@@ -482,6 +478,34 @@
       conversations = conversations.map((c) => (c.id === convId ? { ...c, title: text.slice(0, 46) } : c))
     }
     scrollDown(convId)
+    if (!apiKey) {
+      const label = providerOf(conv.providerId, customs).label
+      const errTs = assistant.ts
+      conversations = conversations.map((c) =>
+        c.id === convId
+          ? {
+              ...c,
+              messages: c.messages.map((m) =>
+                m.ts === errTs && m.role === 'assistant'
+                  ? { ...m, content: `**Clé API manquante pour ${label}.** Ouvre ⚙︎ Réglages (⌘,) et colle ta clé — ton message est conservé ci-dessus : renvoie-le ensuite.`, error: true }
+                  : m,
+              ),
+            }
+          : c,
+      )
+      layout.toggleSettings() // ouvre le panneau réglages si replié
+      return
+    }
+
+    // Bootstrap de la sandbox au premier message d'un fil agents (~/.chatdeck/workspaces/<id>)
+    if (multi && !conv.sandboxReady) {
+      conversations = conversations.map((c) => (c.id === convId ? { ...c, sandboxReady: true } : c))
+      try {
+        await fetch(`/api/sandbox/${convId}/bootstrap`, { method: 'POST' })
+      } catch {
+        /* sandbox indisponible : les outils renverront une erreur lisible */
+      }
+    }
 
     const live = conversations.find((c) => c.id === convId)!.messages.slice(-1)[0]
     streamingIds = new Set([...streamingIds, convId])
@@ -665,7 +689,9 @@
           } else {
             // Permissions par outil (OpenCode) : deny → refus immédiat,
             // ask → l'utilisateur autorise/refuse dans le fil avant l'exécution.
-            const perm = settings.toolPerms?.[call.name] ?? 'allow'
+            // write_project_file est TOUJOURS confirmé (défaut ask) : l'agent
+            // écrit dans le dossier projet partagé, pas seulement la sandbox.
+            const perm = call.name === 'write_project_file' ? (settings.toolPerms?.[call.name] ?? 'ask') : (settings.toolPerms?.[call.name] ?? 'allow')
             if (perm === 'deny') {
               result = `❌ refusé : l'outil ${call.name} est interdit par les réglages (permissions).`
             } else if (perm === 'ask') {
@@ -1017,10 +1043,15 @@
   }
 
   function toggleTerminal(): void {
-    // Terminal docké SOUS LE COMPOSER de la conversation courante (plus jamais
-    // en overlay devant le chat) ; Preview reste en overlay centré.
+    // Terminal : dock outils à droite (comme Réglages) quand le hub est fermé ;
+    // sous le composer sinon (comportement historique conservé).
+    if (showHub) {
+      openHub('terminal')
+      return
+    }
     if (!showTerminal) terminalConvId = currentId
     showTerminal = !showTerminal
+    dockTool = showTerminal ? 'terminal' : null
   }
 
   /** Exécution d'outil avec erreur capturée (utilisé par la gate de permissions).
@@ -1028,7 +1059,7 @@
    *  workspace dédié p-<projectId> + dossiers Mac autorisés. */
   async function runToolSafe(convId: string, call: ToolCall): Promise<string> {
     try {
-      if (call.name === 'read_project_file' || call.name === 'list_project_tree') {
+      if (call.name === 'write_project_file' || call.name === 'read_project_file' || call.name === 'list_project_tree') {
         const projectId = String(call.args.project ?? current?.projectId ?? '')
         return await execTool(`p-${projectId}`, call)
       }
@@ -1069,17 +1100,32 @@
     pendingPerm = null
   }
 
-  /** Fichiers : s'ouvre TOUJOURS dans la fenêtre outils (hub), jamais en overlay. */
-  function toggleFiles(convId?: string): void {
-    filesConvId = convId ?? currentId
-    showFiles = !showFiles
-    openHub('files')
+  /** Dock outils à droite (comme Réglages) : un seul panneau actif à la fois. */
+  type DockTool = 'files' | 'terminal' | 'preview' | null
+  let dockTool = $state<DockTool>(null)
+  function toggleToolDock(tool: Exclude<DockTool, null>, convId?: string): void {
+    if (tool === 'files') filesConvId = convId ?? currentId
+    if (tool === 'terminal') terminalConvId = convId ?? currentId
+    if (tool === 'preview') previewConvId = convId ?? currentId
+    // Si le hub est ouvert, il prend l'onglet correspondant (comportement IDE) ;
+    // sinon le panneau se dock à droite du chat, comme Réglages.
+    if (showHub) {
+      openHub(tool)
+      return
+    }
+    dockTool = dockTool === tool ? null : tool
+    if (tool === 'files') showFiles = dockTool === 'files'
+    if (tool === 'terminal') showTerminal = dockTool === 'terminal'
+    if (tool === 'preview') showPreview = dockTool === 'preview'
   }
-  /** Preview : s'ouvre TOUJOURS dans la fenêtre outils (hub), jamais en overlay. */
+
+  /** Fichiers : hub s'il est ouvert, sinon dock outils à droite. */
+  function toggleFiles(convId?: string): void {
+    toggleToolDock('files', convId)
+  }
+  /** Preview : hub s'il est ouvert, sinon dock outils à droite. */
   function togglePreview(convId?: string): void {
-    previewConvId = convId ?? currentId
-    showPreview = !showPreview
-    openHub('preview')
+    toggleToolDock('preview', convId)
   }
 
   /** Commit auto : git add -A + commit de la sandbox via l'endpoint sécurisé. */
@@ -1550,7 +1596,7 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
           onAgents={setAgents}
           onSlash={(cmd) => void runSlash(cmd, current.id)}
         />
-        {#if showTerminal && terminalConvId === current.id && (!showHub || hubActive !== 'terminal')}
+        {#if showTerminal && terminalConvId === current.id && (!showHub || hubActive !== 'terminal') && dockTool !== 'terminal'}
           <div class="term-docked">
             <TerminalPanel convId={terminalConvId} onClose={() => (showTerminal = false)} />
           </div>
@@ -1581,6 +1627,28 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
           onpointerdown={(e) => startSettingsResize(e)}
           ondblclick={() => layout.setSettingsWidth(400)}
         ></div>
+      </div>
+    {/if}
+
+    <!-- Dock outils à droite (comme Réglages) : Fichiers / Terminal / Preview,
+         quand le hub est fermé et que l'outil est demandé depuis la toolbar. -->
+    {#if dockTool && !showHub && (dockTool !== 'terminal' || hubActive !== 'terminal')}
+      <div class="dock-right dock-tools" style="width: {Math.max(300, Math.min(560, layout.layout.settingsWidth))}px">
+        {#if dockTool === 'files'}
+          {#if filesFid && filesConv}
+            <FilesPanel convId={filesFid} enabled={Boolean(filesConv.agents?.length)} onClose={() => { dockTool = null; showFiles = false }} />
+          {:else}
+            <p class="hub-empty">Aucune conversation — crée-en une pour voir ses fichiers.</p>
+          {/if}
+        {:else if dockTool === 'terminal'}
+          {#if terminalConvId}
+            <TerminalPanel convId={terminalConvId} onClose={() => { dockTool = null; showTerminal = false }} />
+          {:else}
+            <p class="hub-empty">Aucune conversation pour le terminal.</p>
+          {/if}
+        {:else if dockTool === 'preview' && (previewConvId ?? currentId)}
+          <PreviewPanel convId={previewConvId ?? currentId!} onClose={() => { dockTool = null; showPreview = false }} />
+        {/if}
       </div>
     {/if}
   </div>
@@ -1657,7 +1725,7 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
       onAgents={(l) => setAgentsFor(convId, l)}
       onSendBoth={sendBoth}
     />
-    {#if showTerminal && terminalConvId === convId && (!showHub || hubActive !== 'terminal')}
+    {#if showTerminal && terminalConvId === convId && (!showHub || hubActive !== 'terminal') && dockTool !== 'terminal'}
       <div class="term-docked">
         <TerminalPanel convId={terminalConvId} onClose={() => (showTerminal = false)} />
       </div>
@@ -1815,7 +1883,7 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
         <p class="hub-empty">Aucune conversation — crée-en une pour voir ses fichiers.</p>
       {/if}
     </div>
-    <div hidden={hubActive !== 'terminal'}>
+    <div hidden={hubActive !== 'terminal' || dockTool === 'terminal'}>
       {#if terminalConvId}
         <TerminalPanel convId={terminalConvId} onClose={() => (showHub = false)} />
       {:else}

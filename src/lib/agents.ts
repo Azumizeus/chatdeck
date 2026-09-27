@@ -145,6 +145,22 @@ export function toolsFor(
         {
           type: 'function',
           function: {
+            name: 'write_project_file',
+            description:
+              "Écrit un fichier dans le WORKSPACE PARTAGÉ du projet (~/.chatdeck/workspaces/p-<id>) — visible par toutes les conversations du projet. Pour les livrables destinés au projet. Les dossiers Mac autorisés restent en LECTURE SEULE ; chaque écriture est soumise à la confirmation de l'utilisateur.",
+            parameters: {
+              type: 'object',
+              properties: {
+                path: P('path', 'string', 'Chemin relatif au workspace projet (ex. docs/rapport.md, src/app.ts)'),
+                content: P('content', 'string', 'Contenu complet du fichier'),
+              },
+              required: ['path', 'content'],
+            },
+          },
+        },
+        {
+          type: 'function',
+          function: {
             name: 'list_project_tree',
             description:
               'Liste l\'arborescence du PROJET (workspace partagé par toutes ses conversations) + les dossiers du Mac autorisés par l\'utilisateur.',
@@ -396,7 +412,7 @@ export function toolsFor(
   }
   if (!readOnly) return tools
   // Mode Plan : lecture seule — les noms d'outils d'écriture sont filtrés
-  const deny = new Set(['write_file', 'git_commit', 'delegate_to_seeker', 'delegate_to_deck', 'delegate_to_nexus'])
+  const deny = new Set(['write_file', 'write_project_file', 'git_commit', 'delegate_to_seeker', 'delegate_to_deck', 'delegate_to_nexus'])
   return tools.filter((t) => !deny.has(t.function.name))
 }
 
@@ -456,6 +472,16 @@ export interface FileNode {
   type: 'file' | 'dir'
   size?: number
   children?: FileNode[]
+}
+
+/** Extrait les arguments libres de l'appel (tout sauf connector/op/path) —
+ *  passés tels quels au serveur MCP cible. */
+function safeArgs(args: Record<string, unknown>): Record<string, unknown> {
+  const { connector: _c, op: _o, path: _p, ...rest } = args
+  void _c
+  void _o
+  void _p
+  return rest
 }
 
 /** Exécute un appel d'outil. Renvoie le résultat à renvoyer au modèle (chaîne). */
@@ -520,6 +546,27 @@ export async function execTool(convId: string, call: ToolCall): Promise<string> 
           if (j.error) return `❌ deck : ${j.error}`
           return j.output ?? '(aucun résultat)'
         }
+      }
+      // Serveur MCP stdio (déclaré dans ~/.chatdeck/mcp-servers.local.json) :
+      // op « tools » liste les outils, op « call » + path « <outil> » + args JSON.
+      if (op === 'tools' || op === 'call') {
+        const srv = conn
+        if (op === 'tools') {
+          const r = await fetch(`/api/sandbox/mcp/tools?server=${encodeURIComponent(srv)}`)
+          const j = (await r.json()) as { tools?: { name: string; description?: string }[]; error?: string }
+          if (j.error) return `❌ MCP ${srv} : ${j.error}`
+          return `Outils du serveur MCP « ${srv} » :\n${(j.tools ?? []).map((t) => `- ${t.name}${t.description ? ` — ${t.description}` : ''}`).join('\n') || '(aucun)'}`
+        }
+        const r = await fetch(`/api/sandbox/mcp/call?server=${encodeURIComponent(srv)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tool: p, args: safeArgs(call.args) }),
+          // (safeArgs retire connector/op/path : le reste part au serveur MCP)
+        })
+        const j = (await r.json()) as { result?: { content?: { type: string; text?: string }[] }; error?: string }
+        if (j.error) return `❌ MCP ${srv}.${p} : ${j.error}`
+        const text = (j.result?.content ?? []).map((c) => c.text ?? '').join('\n')
+        return `MCP ${srv}.${p}\n\n${text.slice(0, 40_000) || '(réponse vide)'}`
       }
       // Connecteur HTTP externe : passerelle locale /api/connector/<nom>
       const r = await fetch(`/api/connector/${enc(conn)}${p && !p.startsWith('/') ? '/' : ''}${p}`, {
@@ -600,6 +647,21 @@ export async function execTool(convId: string, call: ToolCall): Promise<string> 
       if (j.error) return `❌ read_project_file : ${j.error}`
       return `📄 ${p} (${j.scope === 'workspace' ? 'workspace projet' : `dossier Mac ${j.scope}`})\n\n${(j.content ?? '').slice(0, 50_000)}`
     }
+    case 'write_project_file': {
+      const projectId = convId.startsWith('p-') ? convId.slice(2) : String(call.args.project ?? '')
+      const p = String(call.args.path ?? '')
+      const c = String(call.args.content ?? '')
+      if (!projectId) return '❌ write_project_file : identifiant de projet manquant'
+      if (!p || p.includes('..')) return '❌ write_project_file : chemin invalide (relatif au workspace projet, sans ..)'
+      const r = await fetch(`/api/sandbox/projects/${encodeURIComponent(projectId)}/file`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: p, content: c }),
+      })
+      const j = (await r.json()) as { ok?: boolean; error?: string }
+      if (j.error) return `❌ write_project_file : ${j.error}`
+      return `✅ écrit dans le workspace projet : ${p} (${c.length} caractères) — visible par toutes les conversations du projet`
+    }
     case 'list_project_tree': {
       const projectId = convId.startsWith('p-') ? convId.slice(2) : String(call.args.project ?? '')
       if (!projectId) return '❌ list_project_tree : identifiant de projet manquant'
@@ -627,7 +689,7 @@ export function systemPromptFor(
 ): string {
   const persona = AGENTS[agent]
   const base = [persona.system, settingsSystem.trim()].filter(Boolean).join('\n\n')
-  const writeTools = readOnly ? '' : "write_file (créer/modifier un fichier), git_commit (sauvegarder l'état), switch_os (basculer entre les espaces mac|windows|linux sans rien effacer),"
+  const writeTools = readOnly ? '' : "write_file (créer/modifier un fichier de la sandbox), write_project_file (livrable dans le workspace du PROJET, avec confirmation), git_commit (sauvegarder l'état), switch_os (basculer entre les espaces mac|windows|linux sans rien effacer),"
   const sandbox = readOnly
     ? `Tu disposes d'une sandbox disque partagée par conversation, en MODE PLAN (lecture seule) : tu peux lister et lire les fichiers, exécuter des commandes d'inspection et consulter le web, mais tu ne dois PAS modifier la sandbox. Analyse, propose un plan d'implémentation en étapes concrètes, indique les fichiers à créer/modifier et les risques — sans rien écrire. Les chemins sont relatifs au workspace.`
     : `Tu disposes d'une sandbox disque partagée par conversation. Les chemins sont relatifs au workspace. En mode collaboratif, l'autre agent écrit dans le MÊME workspace : liste l'arbre avant d'écrire pour éviter d'écraser ses fichiers.`

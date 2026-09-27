@@ -30,6 +30,127 @@ import { homedir } from 'node:os'
 import path from 'node:path'
 
 const WORKSPACES_ROOT = path.join(homedir(), '.chatdeck', 'workspaces')
+/**
+ * Serveurs MCP stdio (façon Claude Desktop) : commande locale lancée par l'app,
+ * parlant JSON-RPC sur stdin/stdout. Déclarés dans ~/.chatdeck/mcp-servers.local.json :
+ *   [{ "name": "filesystem", "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"] }]
+ * Le process démarre paresseusement au premier appel ; tools/list est mis en
+ * cache 60 s ; tools/call transmet l'invocation. Aucune saisie utilisateur dans
+ * la commande (liste blanche du fichier local, gitigné).
+ */
+interface McpServerCfg {
+  name: string
+  command: string
+  args?: string[]
+  env?: Record<string, string>
+  enabled?: boolean
+  /** Délai max par appel MCP (ms). Défaut 25 s ; cognee exige 120 s (init ~31 s + extraction). */
+  timeoutMs?: number
+}
+function mcpServers(): McpServerCfg[] {
+  try {
+    const v = JSON.parse(readFileSync(path.join(homedir(), '.chatdeck', 'mcp-servers.local.json'), 'utf8')) as McpServerCfg[]
+    return Array.isArray(v) ? v.filter((s) => s && typeof s.name === 'string' && typeof s.command === 'string') : []
+  } catch {
+    return []
+  }
+}
+const mcpProcs = new Map<
+  string,
+  {
+    child: import('node:child_process').ChildProcess
+    buf: string
+    /** Réponses appariées PAR ID JSON-RPC (jamais par ordre d'arrivée). */
+    pending: Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: NodeJS.Timeout }>
+    id: number
+  }
+>()
+function mcpRpc(name: string, method: string, params: unknown, timeoutMs = 25_000): Promise<unknown> {
+  const cfg = mcpServers().find((s) => s.name === name && s.enabled !== false)
+  if (!cfg) return Promise.reject(new Error(`serveur MCP « ${name} » inconnu ou désactivé (~/.chatdeck/mcp-servers.local.json)`))
+  // Timeout par serveur (timeoutMs du fichier local) — cognee démarre en ~31 s.
+  const effTimeout = cfg.timeoutMs && cfg.timeoutMs > 0 ? cfg.timeoutMs : timeoutMs
+  let entry = mcpProcs.get(name)
+  let needInit = false
+  if (!entry || !entry.child.stdin || entry.child.killed) {
+    const child = spawn(cfg.command, cfg.args ?? [], {
+      env: { ...process.env, ...(cfg.env ?? {}) },
+      stdio: ['pipe', 'pipe', 'pipe'],
+    })
+    entry = { child, buf: '', pending: new Map(), id: 0 }
+    mcpProcs.set(name, entry)
+    needInit = true
+    child.stdout!.on('data', (d: Buffer) => {
+      entry!.buf += String(d)
+      let nl: number
+      while ((nl = entry!.buf.indexOf('\n')) >= 0) {
+        const line = entry!.buf.slice(0, nl).trim()
+        entry!.buf = entry!.buf.slice(nl + 1)
+        if (!line) continue
+        try {
+          const j = JSON.parse(line) as { id?: number; result?: unknown; error?: { message?: string } }
+          // Appariement par id : la réponse retrouve son demandeur, quel que soit l'ordre.
+          const rid = typeof j.id === 'number' ? j.id : undefined
+          const p = rid !== undefined ? entry!.pending.get(rid) : undefined
+          if (p && rid !== undefined) {
+            entry!.pending.delete(rid)
+            clearTimeout(p.timer)
+            if (j.error) p.reject(new Error(j.error.message ?? 'erreur MCP'))
+            else p.resolve(j.result)
+          }
+          // notifications du serveur et lignes non appariées : ignorées
+        } catch {
+          /* ligne non-JSON (bannière…) : ignorée */
+        }
+      }
+    })
+    child.stderr!.on('data', () => {/* journal MCP ignoré */})
+    child.on('exit', () => {
+      for (const [, p] of entry!.pending) {
+        clearTimeout(p.timer)
+        p.reject(new Error(`MCP ${name} : process terminé`))
+      }
+      entry!.pending.clear()
+      mcpProcs.delete(name)
+    })
+  }
+  const e = entry
+  return new Promise((resolve, reject) => {
+    const id = ++e.id
+    const timer = setTimeout(() => {
+      e.pending.delete(id)
+      reject(new Error(`MCP ${name} : délai dépassé (${method})`))
+    }, effTimeout)
+    e.pending.set(id, { resolve, reject, timer })
+    const write = (obj: unknown): boolean => e.child.stdin!.write(`${JSON.stringify(obj)}\n`)
+    // Handshake obligatoire du protocole MCP au premier appel d'un process neuf :
+    // initialize → (réponse appariée par id) → notifications/initialized.
+    if (needInit) {
+      const initId = ++e.id
+      const initTimer = setTimeout(() => e.pending.delete(initId), effTimeout)
+      e.pending.set(initId, {
+        resolve: () => {
+          write({ jsonrpc: '2.0', method: 'notifications/initialized' })
+        },
+        reject: () => {},
+        timer: initTimer,
+      })
+      write({
+        jsonrpc: '2.0',
+        id: initId,
+        method: 'initialize',
+        params: {
+          protocolVersion: '2024-11-05',
+          capabilities: {},
+          clientInfo: { name: 'ChatDeck', version: '0.4.2' },
+        },
+      })
+    }
+    write({ jsonrpc: '2.0', id, method, params })
+  })
+}
+const MCP_TOOLS_TTL = 60_000
+const mcpToolsCache = new Map<string, { at: number; tools: { name: string; description?: string }[] }>()
 /** Racine du projet : imposée par main.mjs en packagé (CHATDECK_PROJECT_ROOT,
  *  copie asar.unpacked) ; sinon déduite du dossier courant (dev, bundle local). */
 const here = path.resolve(import.meta.dirname ?? '.')
@@ -737,6 +858,19 @@ const sandboxHandler: RequestHandler = (req, res) => {
                 }
                 return json(res, 404, { error: `fichier introuvable ni dans le workspace projet ni dans les ${allowedFolders().length} dossier(s) Mac autorisé(s)` })
               }
+              // Écriture DANS LE WORKSPACE PROJET uniquement (p-<id>) — jamais
+              // dans les dossiers Mac autorisés (lecture seule). L'appel passe
+              // par la gate de permissions de l'app (toolPerms.ask). Suit le
+              // format de l'outil write_file : {path, content}.
+              if (subAction === 'file' && req.method === 'PUT') {
+                const body = JSON.parse(await readBody(req)) as { path?: string; content?: string }
+                const t = safeResolve(`p-${projectId}`, body.path ?? '')
+                if (!t || typeof body.content !== 'string') return json(res, 400, { error: 'requête invalide' })
+                if (Buffer.byteLength(body.content) > MAX_FILE_BYTES) return json(res, 413, { error: 'contenu > 1 Mo' })
+                await mkdir(path.dirname(t.target), { recursive: true })
+                await writeFile(t.target, body.content, 'utf8')
+                return json(res, 200, { ok: true, path: body.path, base: pbase })
+              }
               if (subAction === 'tree' && req.method === 'GET') {
                 const budget = { n: MAX_TREE_ENTRIES }
                 const tree = (existsSync(pbase) ? await walk(pbase, 0, budget) : null) ?? []
@@ -912,6 +1046,38 @@ const sandboxHandler: RequestHandler = (req, res) => {
               if (!existsSync(base)) await seedWorkspace(base)
               runCommand(res, convId, cmd)
               return
+            }
+
+            /* ── Connecteurs MCP stdio ── */
+            // GET /api/sandbox/mcp-config → liste des serveurs déclarés (noms + état)
+            // GET /api/sandbox/mcp/<serveur>/tools → tools/list (cache 60 s)
+            // POST /api/sandbox/mcp/<serveur>/call {tool,args} → tools/call
+            if (convId === 'mcp-config' && req.method === 'GET') {
+              return json(res, 200, { servers: mcpServers().map((s) => ({ name: s.name, enabled: s.enabled !== false })) })
+            }
+            if (convId === 'mcp' || action === 'mcp') {
+              const sub = convId === 'mcp' ? (action ?? '') : (pathPart.split('/').slice(2).join('/') || '')
+              const srv = convId === 'mcp' ? (query.get('server') ?? '') : convId
+              if (!srv) return json(res, 400, { error: 'nom de serveur MCP requis' })
+              try {
+                if (sub === 'tools' || sub === 'tools/list') {
+                  const hit = mcpToolsCache.get(srv)
+                  if (hit && Date.now() - hit.at < MCP_TOOLS_TTL) return json(res, 200, { server: srv, tools: hit.tools })
+                  const r = (await mcpRpc(srv, 'tools/list', {})) as { tools?: { name: string; description?: string }[] }
+                  const tools = r.tools ?? []
+                  mcpToolsCache.set(srv, { at: Date.now(), tools })
+                  return json(res, 200, { server: srv, tools })
+                }
+                if (sub === 'call' && req.method === 'POST') {
+                  const body = JSON.parse(await readBody(req)) as { tool?: string; args?: Record<string, unknown> }
+                  if (!body.tool) return json(res, 400, { error: 'tool requis' })
+                  const r = await mcpRpc(srv, 'tools/call', { name: body.tool, arguments: body.args ?? {} })
+                  return json(res, 200, { server: srv, result: r })
+                }
+                return json(res, 404, { error: 'route MCP inconnue (tools|call)' })
+              } catch (e) {
+                return json(res, 502, { error: (e as Error).message })
+              }
             }
 
             /* ── Connecteurs locaux (level « connecteur » du hub) ── */

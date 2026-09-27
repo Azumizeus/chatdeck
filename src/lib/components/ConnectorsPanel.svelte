@@ -5,8 +5,42 @@
   //  · HTTP      : déclarés par l'utilisateur (base URL + auth optionnelle),
   //                passés par la passerelle locale /api/connector/<nom> — la clé
   //                reste sur la machine, jamais exposée au modèle.
+  //  · MCP stdio : serveurs locaux (~/.chatdeck/mcp-servers.local.json) lancés
+  //                par l'app ; leurs tools sont exposés via connector_call.
   // Test d'un connecteur HTTP en un clic (GET sur la base, statut + extrait).
   import { BUILTIN_CONNECTORS, type ConnectorCfg } from '../store'
+
+  interface McpTool {
+    name: string
+    description?: string
+  }
+  let mcpList = $state<{ server: string; tools: McpTool[] }[]>([])
+  let mcpError = $state('')
+
+  async function loadMcp(): Promise<void> {
+    mcpError = ''
+    try {
+      // La liste des serveurs déclarés vit dans le fichier local ; on demande
+      // tools/list pour chacun d'eux (cache serveur 60 s).
+      const servers: { name: string; enabled?: boolean }[] = await fetch('/api/sandbox/mcp-config').then((r) => r.json()).then((j) => j.servers ?? [])
+      const out: { server: string; tools: McpTool[] }[] = []
+      for (const s of servers.filter((x) => x.enabled !== false)) {
+        try {
+          const r = await fetch(`/api/sandbox/mcp/tools?server=${encodeURIComponent(s.name)}`)
+          const j = (await r.json()) as { tools?: McpTool[]; error?: string }
+          out.push({ server: s.name, tools: j.error ? [] : (j.tools ?? []) })
+        } catch {
+          out.push({ server: s.name, tools: [] })
+        }
+      }
+      mcpList = out
+    } catch (e) {
+      mcpError = (e as Error).message
+    }
+  }
+  $effect(() => {
+    void loadMcp()
+  })
 
   let {
     connectors = [],
@@ -114,6 +148,24 @@
         </div>
       </div>
     {/each}
+
+    <!-- Serveurs MCP stdio (~/.chatdeck/mcp-servers.local.json) -->
+    {#if mcpList.length}
+      <div class="conn on">
+        <div class="row"><span class="name">🛰 Serveurs MCP</span><span class="tag">stdio</span></div>
+        {#each mcpList as m (m.server)}
+          <div class="mcp-row">
+            <code class="mono">{m.server}</code>
+            <span class="ws-meta">{m.tools.length} outil{m.tools.length > 1 ? 's' : ''}</span>
+          </div>
+          {#if m.tools.length}
+            <p class="desc">{m.tools.map((t) => t.name).join(', ')}</p>
+          {/if}
+        {/each}
+        <p class="note">Déclarés dans <code>~/.chatdeck/mcp-servers.local.json</code> — ex. &#123;"name": "…", "command": "npx", "args": ["-y", "@modelcontextprotocol/server-…"]&#125; — les agents les appellent via <code>connector_call</code> (op: tools|call).</p>
+      </div>
+    {/if}
+    {#if mcpError}<p class="desc">MCP : {mcpError}</p>{/if}
 
     <button class="add" onclick={add} title="Ajoute un connecteur HTTP (base URL + auth optionnelle)">＋ ajouter un connecteur HTTP</button>
     <p class="note">
@@ -250,6 +302,15 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     max-width: 70%;
+  }
+  .mcp-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .ws-meta {
+    font-size: 11px;
+    color: var(--muted);
   }
   .add {
     border: 1px dashed var(--border);
