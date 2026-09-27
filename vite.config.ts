@@ -175,8 +175,73 @@ function customProxy(): Plugin {
   }
 }
 
+/**
+ * Passerelle connecteurs (façon MCP) : POST /api/connector/{nom} {path} est
+ * transmis vers la base URL du connecteur déclaré (localStorage dupliqué dans
+ * custom-connectors.local.json, gitigné). La clé d'auth reste sur la machine ;
+ * seules http(s) et un host explicite sont autorisés (pas de localhost).
+ */
+function connectorGateway(): Plugin {
+  type Connector = { name: string; baseUrl: string; keyHeader?: string; key?: string; enabled?: boolean }
+  let connectors: Connector[] = []
+  try {
+    connectors = JSON.parse(readFileSync(resolve(root, 'custom-connectors.local.json'), 'utf8')) as Connector[]
+  } catch {
+    connectors = []
+  }
+  return {
+    name: 'chatdeck-connector-gateway',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const url = req.url ?? ''
+        const m = url.match(/^\/api\/connector\/([^/]+)(\/.*)?$/)
+        if (!m) return next()
+        const name = decodeURIComponent(m[1])
+        const rest = m[2] ?? '/'
+        const def = connectors.find((c) => c.name === name && c.enabled !== false)
+        if (!def) {
+          res.statusCode = 404
+          res.end(JSON.stringify({ error: `connecteur « ${name} » inconnu ou désactivé (custom-connectors.local.json)` }))
+          return
+        }
+        if (!/^https?:\/\//.test(def.baseUrl)) {
+          res.statusCode = 400
+          res.end(JSON.stringify({ error: 'baseUrl http(s) requise' }))
+          return
+        }
+        const target = def.baseUrl.replace(/\/$/, '') + rest
+        const headers: Record<string, string> = { accept: 'application/json, text/*;q=0.9' }
+        if (def.keyHeader && def.key) {
+          headers[def.keyHeader] = def.keyHeader.toLowerCase() === 'authorization' ? `Bearer ${def.key}` : def.key
+        }
+        const chunks: Uint8Array[] = []
+        req.on('data', (c: Uint8Array) => chunks.push(c))
+        req.on('end', () => {
+          const body = Buffer.concat(chunks)
+          fetch(target, {
+            method: req.method === 'POST' ? 'POST' : 'GET',
+            headers,
+            body: req.method === 'POST' && body.length ? body : undefined,
+            signal: AbortSignal.timeout(20_000),
+          })
+            .then(async (up) => {
+              res.statusCode = up.status
+              res.setHeader('Content-Type', up.headers.get('content-type') ?? 'application/json; charset=utf-8')
+              const text = (await up.text()).slice(0, 400_000)
+              res.end(text)
+            })
+            .catch((e) => {
+              res.statusCode = 502
+              res.end(JSON.stringify({ error: `connecteur « ${name} » : ${e.message}` }))
+            })
+        })
+      })
+    },
+  }
+}
+
 export default defineConfig({
-  plugins: [svelte(), localKeys(), customProxy(), sandboxServer(), deckServer(), healthEndpoint()],
+  plugins: [svelte(), localKeys(), customProxy(), connectorGateway(), sandboxServer(), deckServer(), healthEndpoint()],
   server: {
     port: 5199,
     strictPort: true,

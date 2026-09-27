@@ -22,6 +22,8 @@
     onAgents,
     onSendBoth,
     convId = undefined,
+    agentsActive = false,
+    onSlash,
   }: {
     streaming: boolean
     providerId: ProviderId
@@ -46,6 +48,10 @@
     onSendBoth?: (text: string) => void
     /** Id de conversation : active l'autocomplétion @fichier (arbre sandbox) */
     convId?: string
+    /** Sandbox disponible (agents actifs) : le menu @fichier le signale sinon */
+    agentsActive?: boolean
+    /** Commandes / : reçoit « /undo » … (intercepté par App, pas envoyé au LLM) */
+    onSlash?: (cmd: string, arg?: string) => boolean | void
   } = $props()
 
   let cardsOpen = $state(false)
@@ -104,10 +110,50 @@
     atStart = -1
   }
 
+  /** Menu / : commandes disponibles, filtrées par le préfixe tapé. */
+  const SLASH_COMMANDS: { cmd: string; label: string; hint: string }[] = [
+    { cmd: '/undo', label: '/undo', hint: 'Annule le dernier tour d\'agent (checkpoint sandbox)' },
+    { cmd: '/plan', label: '/plan', hint: 'Mode Plan : agents en lecture seule' },
+    { cmd: '/agents', label: '/agents', hint: 'Active/désactive Nexus + Seeker' },
+    { cmd: '/fichiers', label: '/fichiers', hint: 'Ouvre le panneau Fichiers' },
+    { cmd: '/terminal', label: '/terminal', hint: 'Ouvre le terminal du workspace' },
+  ]
+  let slashOpen = $state(false)
+  let slashIndex = $state(0)
+  let slashStart = -1
+
+  function closeSlash(): void {
+    slashOpen = false
+    slashIndex = 0
+    slashStart = -1
+  }
+
+  const slashItems = $derived.by(() => {
+    if (slashStart < 0) return []
+    const q = text.slice(slashStart + 1).split(/\s/)[0].toLowerCase()
+    return SLASH_COMMANDS.filter((c) => c.cmd.startsWith(`/${q}`)).slice(0, 6)
+  })
+
+  function applySlash(cmd: string): void {
+    text = ''
+    closeSlash()
+    onSlash?.(cmd)
+  }
+
   async function updateAt(): Promise<void> {
-    if (!convId || !ta) return closeAt()
+    if (!ta) return closeAt()
     const pos = ta.selectionStart ?? text.length
     const upto = text.slice(0, pos)
+    // /commande en cours de frappe ?
+    const sm = upto.match(/(^|\s)(\/[\w-]*)$/)
+    if (sm && onSlash) {
+      closeAt()
+      slashStart = pos - sm[2].length
+      slashIndex = 0
+      slashOpen = true
+      return
+    }
+    if (slashOpen) closeSlash()
     const m = upto.match(/(^|\s)@([\w./-]*)$/)
     if (!m) return closeAt()
     atStart = pos - m[2].length - 1
@@ -138,9 +184,22 @@
     ta.style.height = Math.min(ta.scrollHeight, 180) + 'px'
   }
 
+  /** Commande / tapée dans le champ : interceptée AVANT l'envoi au modèle. */
+  function trySlash(raw: string): boolean {
+    if (!raw.startsWith('/') || !onSlash) return false
+    const [cmd, ...rest] = raw.slice(1).split(/\s+/)
+    const handled = onSlash(`/${cmd}`, rest.join(' ').trim() || undefined)
+    if (handled !== false) {
+      text = ''
+      requestAnimationFrame(autosize)
+    }
+    return handled !== false
+  }
+
   function submit(): void {
     const t = text.trim()
     if (!t || streaming) return
+    if (trySlash(t)) return
     onSend(t)
     text = ''
     requestAnimationFrame(autosize)
@@ -160,6 +219,14 @@
       submit()
     }
   }
+
+  const atHintSandbox = $derived(
+    !convId
+      ? null
+      : agentsActive
+        ? null
+        : 'Active les agents (barre d\'outils) pour joindre des fichiers de la sandbox',
+  )
 
   const agentsValue = $derived(agents.length ? agents.join(',') : '')
 </script>
@@ -245,6 +312,23 @@
         <li class="at-hint">↑↓ naviguer · Entrée/Tab insérer · Échap fermer — l'extrait sera joint au prompt</li>
       </ul>
     {/if}
+    {#if slashOpen && slashItems.length}
+      <ul class="at-menu slash" role="listbox" aria-label="Commandes">
+        {#each slashItems as c, i (c.cmd)}
+          <li>
+            <button
+              type="button"
+              class:sel={i === slashIndex}
+              onmouseenter={() => (slashIndex = i)}
+              onclick={() => applySlash(c.cmd)}
+            >
+              <span class="at-ico">⌘</span> <strong>{c.label}</strong> <span class="slash-hint">{c.hint}</span>
+            </button>
+          </li>
+        {/each}
+        <li class="at-hint">Entrée exécute la commande — le reste part au modèle comme d'habitude</li>
+      </ul>
+    {/if}
     <textarea
       bind:this={ta}
       bind:value={text}
@@ -253,6 +337,29 @@
         void updateAt()
       }}
       onkeydown={(e) => {
+        // Menu /commandes ouvert : navigation clavier prioritaire
+        if (slashOpen && slashItems.length) {
+          if (e.key === 'ArrowDown') {
+            e.preventDefault()
+            slashIndex = (slashIndex + 1) % slashItems.length
+            return
+          }
+          if (e.key === 'ArrowUp') {
+            e.preventDefault()
+            slashIndex = (slashIndex - 1 + slashItems.length) % slashItems.length
+            return
+          }
+          if (e.key === 'Enter' || e.key === 'Tab') {
+            e.preventDefault()
+            applySlash(slashItems[slashIndex].cmd)
+            return
+          }
+          if (e.key === 'Escape') {
+            e.preventDefault()
+            closeSlash()
+            return
+          }
+        }
         // Menu @fichier ouvert : navigation clavier prioritaire
         if (atOpen && atItems.length) {
           if (e.key === 'ArrowDown') {
@@ -285,9 +392,11 @@
         key(e)
       }}
       rows="1"
-      placeholder={agents.length
-        ? 'Écris à Nexus — il orchestre, écrit dans la sandbox et délègue à Seeker…'
-        : 'Écris ton message…  (Entrée = envoyer · Maj+Entrée = nouvelle ligne)'}
+      placeholder={atHintSandbox
+        ? atHintSandbox
+        : agents.length
+          ? 'Écris à Nexus — @fichier pour joindre, / pour les commandes…'
+          : 'Écris ton message…  (Entrée = envoyer · @fichier · /commandes)'}
     ></textarea>
     {#if streaming}
       <button class="stop" onclick={onStop} title="Arrêter la génération">■</button>
@@ -451,6 +560,11 @@
   }
   .at-ico {
     margin-right: 4px;
+  }
+  .slash-hint {
+    color: var(--muted);
+    font-size: 11.5px;
+    margin-left: 6px;
   }
   .at-hint {
     font-size: 10.5px;

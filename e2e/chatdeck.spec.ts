@@ -505,7 +505,7 @@ test.describe('fenêtre outils (hub)', () => {
     const stored = await page.evaluate(
       () => JSON.parse(localStorage.getItem('chatdeck.settings.v1') || '{}').hubTabs,
     )
-    expect(stored).toEqual(['graph', 'files', 'settings', 'deck'])
+    expect(stored.filter((t: string) => t !== 'connecteurs')).toEqual(['graph', 'files', 'settings', 'deck'])
 
     // Le hub n'affiche plus ces onglets
     await page.locator('.toolbar .tb', { hasText: 'Réglages' }).click() // referme le dock

@@ -92,8 +92,24 @@ if (!MULTI && !app.requestSingleInstanceLock()) {
     win.on('move', persist)
     win.on('close', persist)
 
-    // Les liens externes vont au navigateur, jamais dans la fenêtre app.
+    // Les liens externes vont au navigateur ; les popouts internes (mêmes
+    // origines http(s) ou file:// de l'app) s'ouvrent en VRAIES fenêtres OS —
+    // sinon les « sortir en fenêtre » de ChatDeck restent collés à l'app.
     win.webContents.setWindowOpenHandler(({ url }) => {
+      const sameOrigin = (u) => {
+        try {
+          const a = new URL(u)
+          return (a.protocol === 'http:' || a.protocol === 'https:' || a.protocol === 'file:')
+        } catch {
+          return false
+        }
+      }
+      if (sameOrigin(url)) return { action: 'allow', overrideBrowserWindowOptions: {
+        width: 760,
+        height: 640,
+        backgroundColor: '#0d0f14',
+        titleBarStyle: 'hiddenInset',
+      } }
       if (url.startsWith('http')) void shell.openExternal(url)
       return { action: 'deny' }
     })

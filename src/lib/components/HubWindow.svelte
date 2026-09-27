@@ -59,10 +59,14 @@
     onTab(t)
   }
   let dragging = $state(false)
+  /** Le drag n'armer qu'après 3 px : sinon le micro-mouvement entre deux clics
+   *  déplace la fenêtre et EMPECHE le double-clic de repli (bug signalé). */
+  let dragArmed = false
   let resizing = $state<false | 'e' | 's' | 'se'>(false)
   let grab: { dx: number; dy: number } | null = null
   let startGeo: HubGeometry | null = null
   let startPoint: { x: number; y: number } | null = null
+  let pressPoint: { x: number; y: number } | null = null
 
   function clamp(g: HubGeometry): HubGeometry {
     const vw = window.innerWidth
@@ -82,9 +86,12 @@
   function down(e: PointerEvent): void {
     // Toute la barre de titre est une surface de drag SAUF les boutons :
     // presser un onglet (ou la croix) reste un clic, le reste déplace la
-    // fenêtre — comme la barre de titre d'un IDE.
+    // fenêtre — comme la barre de titre d'un IDE. Le drag ne s'arme qu'après
+    // 3 px de mouvement pour préserver le double-clic.
     if ((e.target as Element).closest('button')) return
     dragging = true
+    dragArmed = false
+    pressPoint = { x: e.clientX, y: e.clientY }
     grab = { dx: e.clientX - geo.x, dy: e.clientY - geo.y }
     ;(e.currentTarget as Element).setPointerCapture(e.pointerId)
   }
@@ -95,8 +102,15 @@
     ;(e.currentTarget as Element).setPointerCapture(e.pointerId)
   }
   function move(e: PointerEvent): void {
-    if (dragging && grab) geo = clamp({ ...geo, x: e.clientX - grab.dx, y: e.clientY - grab.dy })
-    else if (resizing && startGeo && startPoint) {
+    if (dragging && grab) {
+      if (!dragArmed && pressPoint) {
+        const dx = e.clientX - pressPoint.x
+        const dy = e.clientY - pressPoint.y
+        if (Math.hypot(dx, dy) < 3) return // sous le seuil : pas encore un drag
+        dragArmed = true
+      }
+      geo = clamp({ ...geo, x: e.clientX - grab.dx, y: e.clientY - grab.dy })
+    } else if (resizing && startGeo && startPoint) {
       const dw = e.clientX - startPoint.x
       const dh = e.clientY - startPoint.y
       geo = clamp({
@@ -107,8 +121,10 @@
     }
   }
   function up(): void {
-    if (dragging || resizing) saveHubGeometry({ ...geo })
+    if (dragging && dragArmed) saveHubGeometry({ ...geo })
     dragging = false
+    dragArmed = false
+    pressPoint = null
     resizing = false
     grab = null
     startGeo = null

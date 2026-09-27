@@ -914,6 +914,43 @@ const sandboxHandler: RequestHandler = (req, res) => {
               return
             }
 
+            /* ── Connecteurs locaux (level « connecteur » du hub) ── */
+            // GET /api/sandbox/connectors/<convId>/tree|file|deck|deck-search|clock
+            if (convId === 'connectors' || action === 'connectors') {
+              const sub = convId === 'connectors' ? (action ?? '') : (pathPart.split('/').slice(2).join('/') || '')
+              const rid = convId === 'connectors' ? (query.get('conv') ?? '') : convId
+              if (sub === 'tree' && rid) {
+                const t = safeResolve(rid, '')
+                if (!t) return json(res, 400, { error: 'id de conversation invalide' })
+                const budget = { n: MAX_TREE_ENTRIES }
+                const tree = (existsSync(t.base) ? await walk(t.base, 0, budget) : null) ?? []
+                return json(res, 200, { connector: 'workspace', tree })
+              }
+              if (sub === 'file' && rid) {
+                const t = safeResolve(rid, query.get('path') ?? '')
+                if (!t) return json(res, 400, { error: 'chemin invalide' })
+                const info = await stat(t.target).catch(() => null)
+                if (!info?.isFile()) return json(res, 404, { error: 'fichier introuvable' })
+                if (info.size > MAX_FILE_BYTES) return json(res, 413, { error: 'fichier trop volumineux (> 1 Mo)' })
+                return json(res, 200, { connector: 'workspace', path: query.get('path'), content: await readFile(t.target, 'utf8') })
+              }
+              if (sub === 'deck') {
+                const script = path.join(promptdeckDir, 'search.mjs')
+                const q = (query.get('q') ?? '').trim()
+                if (!q) return json(res, 400, { error: 'q requis' })
+                if (!existsSync(script)) return json(res, 404, { error: 'search.mjs introuvable' })
+                const { execFile } = await import('node:child_process')
+                const { promisify } = await import('node:util')
+                const { stdout } = await promisify(execFile)(process.execPath, [script, q, '--max', query.get('max') ?? '6'], { cwd: projectRoot, timeout: 20_000, maxBuffer: 2 * 1024 * 1024 })
+                return json(res, 200, { connector: 'deck', output: stdout.slice(0, 20_000) })
+              }
+              if (sub === 'clock') {
+                const now = new Date()
+                return json(res, 200, { connector: 'horloge', iso: now.toISOString(), local: now.toString(), tz: Intl.DateTimeFormat().resolvedOptions().timeZone })
+              }
+              return json(res, 404, { error: 'connecteur inconnu (tree|file|deck|clock)' })
+            }
+
             return json(res, 404, { error: 'route inconnue' })
           } catch (e) {
             return json(res, 500, { error: (e as Error).message })

@@ -41,6 +41,7 @@
     type Msg,
     type Project,
     type Settings,
+    BUILTIN_CONNECTORS,
   } from './lib/store'
   import { layout, type PanelId } from './lib/layout.svelte'
   import Sidebar from './lib/components/Sidebar.svelte'
@@ -53,6 +54,7 @@
   import FloatingWindow from './lib/components/FloatingWindow.svelte'
   import HubWindow from './lib/components/HubWindow.svelte'
   import DeckPanel from './lib/components/DeckPanel.svelte'
+  import ConnectorsPanel from './lib/components/ConnectorsPanel.svelte'
   import type { HubTab } from './lib/store'
   import TaskbarPill from './lib/components/TaskbarPill.svelte'
   import CommandPalette from './lib/components/CommandPalette.svelte'
@@ -506,22 +508,36 @@
     // du fichier de la sandbox au prompt (lecture asynchrone bornée).
     const atRefs = [...new Set([...text.matchAll(/@([\w./-]+)/g)].map((m) => m[1]).filter((p) => /\.[\w]+$/.test(p)))].slice(0, 5)
     let atBlock = ''
+    const atMissed: string[] = []
     if (atRefs.length) {
       const excerpts = await Promise.all(
         atRefs.map(async (p) => {
           try {
             const r = await fetch(`/api/sandbox/${convId}/file?path=${encodeURIComponent(p)}`)
-            if (!r.ok) return null
+            if (!r.ok) {
+              atMissed.push(p)
+              return null
+            }
             const j = (await r.json()) as { content?: string }
             const body = (j.content ?? '').slice(0, 4000)
-            return body ? `@${p} :\n\n\`\`\`\n${body}${(j.content ?? '').length > 4000 ? '\n…' : ''}\n\`\`\`` : null
+            if (!body) {
+              atMissed.push(p)
+              return null
+            }
+            return `@${p} :\n\n\`\`\`\n${body}${(j.content ?? '').length > 4000 ? '\n…' : ''}\n\`\`\``
           } catch {
+            atMissed.push(p)
             return null
           }
         }),
       )
       const found = excerpts.filter(Boolean) as string[]
       if (found.length) atBlock = `Fichiers sandbox référencés (@) :\n\n${found.join('\n\n')}`
+      // Jamais silencieux : si un @fichier n'a pas pu être joint, l'utilisateur
+      // le sait (fichier absent, workspace non créé, hors sandbox).
+      if (atMissed.length) {
+        atBlock += `${atBlock ? '\n\n' : ''}(Fichiers introuvables dans la sandbox : ${atMissed.map((p) => `@${p}`).join(', ')}.)`
+      }
     }
     // Mode Plan (inspiré d'OpenCode) : lecture seule, l'agent propose sans modifier
     const readOnly = conv.planMode ?? false
@@ -594,7 +610,7 @@
           messages:
             agent !== 'nexus'
               ? [
-                  { role: 'system', content: systemPromptFor(agent, [settings.system, cardsBlock, projectBlock].filter(Boolean).join('\n\n'), delegationTask ? { task: delegationTask, from: delegationFrom } : undefined, readOnly, project) },
+                  { role: 'system', content: systemPromptFor(agent, [settings.system, cardsBlock, projectBlock].filter(Boolean).join('\n\n'), delegationTask ? { task: delegationTask, from: delegationFrom } : undefined, readOnly, project, activeConnectors) },
                   ...wires,
                   ...extra,
                 ]
@@ -604,7 +620,7 @@
           signal: controller.signal,
           customs,
           // En délégation, l'agent de travail reçoit aussi son outil de rapport
-          tools: delegationTask ? [...toolsFor(agent, readOnly, project?.id), reportToolFor(agent)] : toolsFor(agent, readOnly, project?.id),
+          tools: delegationTask ? [...toolsFor(agent, readOnly, project?.id, activeConnectors), reportToolFor(agent)] : toolsFor(agent, readOnly, project?.id, activeConnectors),
           onDelta: (d) => {
             phaseContent += d
             patchLive((m) => ({ ...m, content: m.content + d }))
@@ -770,6 +786,31 @@
     if (!currentId) return
     const convId = currentId
     void sendTo(convId, text)
+  }
+
+  /** Commandes / tapées dans le composer (exécutées localement, jamais au LLM). */
+  async function runSlash(cmd: string, cid: string): Promise<boolean> {
+    const c = conversations.find((x) => x.id === cid)
+    switch (cmd) {
+      case '/undo':
+        await undoSandbox(cid)
+        return true
+      case '/plan':
+        togglePlanMode(cid)
+        return true
+      case '/agents':
+        setAgents(c?.agents?.length ? [] : ['nexus', 'seeker'])
+        return true
+      case '/fichiers':
+        openHub('files')
+        return true
+      case '/terminal':
+        openHub('terminal')
+        return true
+      default:
+        // Commande inconnue : le texte partira au modèle tel quel.
+        return false
+    }
   }
 
   /**
@@ -996,6 +1037,19 @@
       return `Erreur outil : ${(e as Error).message}`
     }
   }
+
+  /** Cibles des panneaux hub (calculées une fois, utilisables dans le template). */
+  const filesFid = $derived(filesConvId ?? currentId)
+  const filesConv = $derived(filesFid ? conversations.find((x) => x.id === filesFid) : undefined)
+
+  /** Connecteurs actifs : intégrés (toujours) + HTTP déclarés dans les réglages. */
+  const activeConnectors = $derived.by(() => {
+    const http = (settings.connectors ?? []).filter((c) => c.enabled !== false && c.name && c.baseUrl)
+    return {
+      builtin: BUILTIN_CONNECTORS.map((b) => ({ name: b.name, desc: b.desc })),
+      http: http.map((h) => ({ name: h.name })),
+    }
+  })
 
   /** Réponse de la demande de permission outil en cours ('allow' | 'always' | 'deny'). */
   let permAnswer: 'allow' | 'always' | 'deny' | null = null
@@ -1483,6 +1537,7 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
           model={current.model}
           {customs}
           agents={current.agents ?? []}
+          agentsActive={Boolean(current.agents?.length)}
           cards={cardsOffer}
           cardsActive={current.cardsActive ?? []}
           onToggleCard={(id) => toggleCardForConv(current.id, id)}
@@ -1493,6 +1548,7 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
           onProvider={setProvider}
           onModel={setModel}
           onAgents={setAgents}
+          onSlash={(cmd) => void runSlash(cmd, current.id)}
         />
         {#if showTerminal && terminalConvId === current.id && (!showHub || hubActive !== 'terminal')}
           <div class="term-docked">
@@ -1747,50 +1803,60 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
     onClose={() => (showHub = false)}
     onDetach={detachHubTab}
   >
-    {#if hubActive === 'graph'}
+    <!-- Panneaux GARDÉS MONTÉS (display:none) : changer d'onglet est instantané
+         — pas de refetch d'arbre, pas de re-init terminal/preview à chaque clic. -->
+    <div hidden={hubActive !== 'graph'}>
       <GraphPanel {conversations} onOpen={(id) => selectChat(id)} onClose={() => (showHub = false)} />
-    {:else if hubActive === 'files'}
-      {@const fid = filesConvId ?? currentId}
-      {@const fc = conversations.find((x) => x.id === fid)}
-      {#if fc && fid}
-        <FilesPanel convId={fid} enabled={Boolean(fc.agents?.length)} onClose={() => (showHub = false)} />
+    </div>
+    <div hidden={hubActive !== 'files'}>
+      {#if filesFid && filesConv}
+        <FilesPanel convId={filesFid} enabled={Boolean(filesConv.agents?.length)} onClose={() => (showHub = false)} />
       {:else}
         <p class="hub-empty">Aucune conversation — crée-en une pour voir ses fichiers.</p>
       {/if}
-    {:else if hubActive === 'terminal'}
+    </div>
+    <div hidden={hubActive !== 'terminal'}>
       {#if terminalConvId}
         <TerminalPanel convId={terminalConvId} onClose={() => (showHub = false)} />
       {:else}
         <p class="hub-empty">Aucune conversation pour le terminal.</p>
       {/if}
-    {:else if hubActive === 'preview'}
+    </div>
+    <div hidden={hubActive !== 'preview'}>
       {#if previewConvId ?? currentId}
         <PreviewPanel convId={previewConvId ?? currentId!} onClose={() => (showHub = false)} />
       {:else}
         <p class="hub-empty">Aucune conversation pour la preview.</p>
       {/if}
-    {:else if hubActive === 'settings'}
-      <div class="hub-settings">
-        <SettingsPanel
-          {keys}
-          {settings}
-          {customs}
-          onKeys={(k) => (keys = k)}
-          onSettings={(s) => (settings = s)}
-          onAddCustom={() => {
-            const id = `custom:${Math.random().toString(36).slice(2, 7)}`
-            customs = [...customs, { id, name: 'Nouveau fournisseur', baseUrl: '', keyHeader: 'Authorization', models: [] }]
-          }}
-          onUpdateCustom={(p) => (customs = customs.map((x) => (x.id === p.id ? p : x)))}
-          onRemoveCustom={(id) => (customs = customs.filter((x) => x.id !== id))}
-          onClose={() => (showHub = false)}
-          onSendNote={send}
-          onReplayTour={() => (showTour = true)}
-        />
-      </div>
-    {:else if hubActive === 'deck'}
+    </div>
+    <div hidden={hubActive !== 'settings'} class="hub-settings">
+      <SettingsPanel
+        {keys}
+        {settings}
+        {customs}
+        onKeys={(k) => (keys = k)}
+        onSettings={(s) => (settings = s)}
+        onAddCustom={() => {
+          const id = `custom:${Math.random().toString(36).slice(2, 7)}`
+          customs = [...customs, { id, name: 'Nouveau fournisseur', baseUrl: '', keyHeader: 'Authorization', models: [] }]
+        }}
+        onUpdateCustom={(p) => (customs = customs.map((x) => (x.id === p.id ? p : x)))}
+        onRemoveCustom={(id) => (customs = customs.filter((x) => x.id !== id))}
+        onClose={() => (showHub = false)}
+        onSendNote={send}
+        onReplayTour={() => (showTour = true)}
+      />
+    </div>
+    <div hidden={hubActive !== 'deck'}>
       <DeckPanel onClose={() => (showHub = false)} onPopout={popoutDeck} />
-    {/if}
+    </div>
+    <div hidden={hubActive !== 'connecteurs'}>
+      <ConnectorsPanel
+        connectors={settings.connectors ?? []}
+        onConnectors={(list) => (settings = { ...settings, connectors: list })}
+        onClose={() => (showHub = false)}
+      />
+    </div>
   </HubWindow>
 {/if}
 

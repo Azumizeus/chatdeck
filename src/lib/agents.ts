@@ -129,8 +129,15 @@ const P = (name: string, type: string, description: string): { type: string; des
  * Outils disponibles pour un agent. `readOnly` (Mode Plan, inspiré d'OpenCode)
  * retire TOUT outil d'écriture : write_file, délégations et git_commit —
  * l'agent analyse et propose, il ne modifie jamais la sandbox.
+ * `connectors` : connecteurs actifs (locaux intégrés + HTTP façon MCP) —
+ * exposés via l'outil unique connector_call.
  */
-export function toolsFor(agent: AgentId, readOnly = false, projectId?: string): ToolDef[] {
+export function toolsFor(
+  agent: AgentId,
+  readOnly = false,
+  projectId?: string,
+  connectors?: { builtin: { name: string; desc: string }[]; http: { name: string }[] },
+): ToolDef[] {
   // Outils projet (workspace dédié + dossiers Mac autorisés en lecture) :
   // proposés à tous les agents quand la conversation est rattachée à un projet.
   const projectTools: ToolDef[] = projectId
@@ -364,6 +371,29 @@ export function toolsFor(agent: AgentId, readOnly = false, projectId?: string): 
       },
     },
   ]
+  // Connecteurs : intégrés (workspace/deck/horloge) + HTTP déclarés par l'utilisateur
+  if (connectors && (connectors.builtin.length || connectors.http.length)) {
+    const list = [
+      ...connectors.builtin.map((b) => `« ${b.name} » (${b.desc})`),
+      ...connectors.http.map((h) => `« ${h.name} » (source HTTP externe)`),
+    ].join(', ')
+    tools.push({
+      type: 'function',
+      function: {
+        name: 'connector_call',
+        description: `Interroge un connecteur de la liste : ${list}.`,
+        parameters: {
+          type: 'object',
+          properties: {
+            connector: P('connector', 'string', 'Nom du connecteur (ex. workspace, deck, horloge, ou un connecteur HTTP déclaré)'),
+            op: P('op', 'string', 'Opération : workspace → tree | file ; deck → search ; horloge → now ; connecteur HTTP → chemin libre (ex. /repos/owner/name)'),
+            path: P('path', 'string', 'Chemin ou paramètres : fichier pour workspace, requête pour deck, chemin URL pour HTTP'),
+          },
+          required: ['connector'],
+        },
+      },
+    })
+  }
   if (!readOnly) return tools
   // Mode Plan : lecture seule — les noms d'outils d'écriture sont filtrés
   const deny = new Set(['write_file', 'git_commit', 'delegate_to_seeker', 'delegate_to_deck', 'delegate_to_nexus'])
@@ -430,6 +460,7 @@ export interface FileNode {
 
 /** Exécute un appel d'outil. Renvoie le résultat à renvoyer au modèle (chaîne). */
 export async function execTool(convId: string, call: ToolCall): Promise<string> {
+  const callConvId = convId
   switch (call.name) {
     case 'list_tree': {
       const j = await api<{ exists: boolean; tree: FileNode[] }>('GET', convId, 'tree')
@@ -454,6 +485,50 @@ export async function execTool(convId: string, call: ToolCall): Promise<string> 
       const cmd = String(call.args.cmd ?? '')
       const j = await api<{ out: string }>('GET', convId, 'exec', undefined, `?cmd=${encodeURIComponent(cmd)}`)
       return j.out
+    }
+    case 'connector_call': {
+      const conn = String(call.args.connector ?? '').trim()
+      const op = String(call.args.op ?? '').trim()
+      const p = String(call.args.path ?? '').trim()
+      if (!conn) return '❌ connector_call : nom de connecteur manquant'
+      // Connecteurs intégrés : opérations servies par l'app (jamais de réseau)
+      const enc = encodeURIComponent
+      if (conn === 'workspace' || conn === 'horloge' || conn === 'deck') {
+        if (conn === 'horloge' || op === 'now') {
+          const r = await fetch(`/api/sandbox/connectors/clock`)
+          const j = (await r.json()) as { iso?: string; local?: string; tz?: string }
+          return `🕒 ${j.local ?? ''} (${j.tz ?? ''}) — ISO : ${j.iso ?? ''}`
+        }
+        if (conn === 'workspace') {
+          const cid = callConvId || ''
+          if (op === 'file' && p) {
+            const r = await fetch(`/api/sandbox/connectors/file?conv=${enc(cid)}&path=${enc(p)}`)
+            const j = (await r.json()) as { content?: string; error?: string }
+            if (j.error) return `❌ workspace file : ${j.error}`
+            return `📄 ${p}\n\n${(j.content ?? '').slice(0, 40_000)}`
+          }
+          const r = await fetch(`/api/sandbox/connectors/tree?conv=${enc(cid)}`)
+          const j = (await r.json()) as { tree?: FileNode[]; error?: string }
+          if (j.error) return `❌ workspace tree : ${j.error}`
+          const fmt = (nodes: FileNode[], d = 0): string =>
+            nodes.map((n) => `${'  '.repeat(d)}${n.type === 'dir' ? '📁' : '📄'} ${n.name}`).join('\n')
+          return fmt(j.tree ?? []) || '(workspace vide)'
+        }
+        if (conn === 'deck') {
+          const r = await fetch(`/api/sandbox/connectors/deck?q=${enc(p || 'toutes')}${op === 'search' ? '' : ''}`)
+          const j = (await r.json()) as { output?: string; error?: string }
+          if (j.error) return `❌ deck : ${j.error}`
+          return j.output ?? '(aucun résultat)'
+        }
+      }
+      // Connecteur HTTP externe : passerelle locale /api/connector/<nom>
+      const r = await fetch(`/api/connector/${enc(conn)}${p && !p.startsWith('/') ? '/' : ''}${p}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ op }),
+      })
+      const text = await r.text()
+      return `HTTP ${r.status} — ${conn}${p ? ` ${p}` : ''}\n\n${text.slice(0, 40_000)}`
     }
     case 'deck_search': {
       const q = String(call.args.query ?? '').slice(0, 300)
@@ -548,6 +623,7 @@ export function systemPromptFor(
   delegation?: { task: string; from?: AgentId },
   readOnly = false,
   project?: { id: string; name: string; instructions: string; folders: string[] },
+  connectors?: { builtin: { name: string; desc: string }[]; http: { name: string }[] },
 ): string {
   const persona = AGENTS[agent]
   const base = [persona.system, settingsSystem.trim()].filter(Boolean).join('\n\n')
@@ -565,7 +641,7 @@ Tu travailles dans ChatDeck, une app qui te donne un vrai poste de développemen
 - **Git intégré** : le workspace est un dépôt ; git_commit fait add+commit de tout avec un message obligatoire. Des checkpoints automatiques permettent à l'utilisateur d'annuler un tour (bouton ↩) — ne compte pas dessus pour corriger tes erreurs, committe proprement.
 - **Panneau Preview** : l'utilisateur voit en direct la première page .html du workspace (servie par /serve). Si ta tâche produit une interface, crée un index.html complet (HTML+CSS+JS inline) : la preview se mettra à jour dès l'écriture. Annonce explicitement « preview prête » quand tu écris une page.
 - **Délégation** : ${agent === 'nexus' ? 'delegate_to_seeker (recherche/analyse approfondie) et delegate_to_deck (conception de prompts/personas)' : agent === 'deck' ? 'delegate_to_nexus (orchestration et synthèse)' : 'tu peux recevoir des missions de Nexus et rendre ton rapport via report_to_deck'}.
-- **Fiches .CD actives** : si des fiches sont injectées ci-dessus (section « Fiches actives »), elles sont des méthodes/personas que tu DOIS appliquer pendant cette conversation.
+- **Fiches .CD actives** : si des fiches sont injectées ci-dessus (section « Fiches actives »), elles sont des méthodes/personas que tu DOIS appliquer pendant cette conversation.${connectors && (connectors.builtin.length || connectors.http.length) ? `\n- **Connecteurs** : ${[...connectors.builtin.map((b) => `${b.name} (${b.desc})`), ...connectors.http.map((h) => `${h.name} (HTTP externe)`)].join(', ')}. Utilise connector_call (connector, op, path) pour les interroger au lieu de deviner des données.` : ''}
 ${project ? `- **Projet « ${project.name} »** : cette conversation est rattachée à un projet. Un workspace partagé (~/.chatdeck/workspaces/p-${project.id}) regroupe TOUTES ses conversations, et l'utilisateur a autorisé la LECTURE de dossiers de son Mac (${project.folders.length ? project.folders.join(', ') : 'aucun'}) : utilise list_project_tree + read_project_file (params : path) pour explorer ce code AVANT de proposer quoi que ce soit — n'écris QUE dans ta sandbox (write_file).${project.instructions ? `\n- **Règles du projet (à respecter STRICTEMENT)** :\n\n${project.instructions}` : ''}` : ''}
 
 Réponds en français, agis avec les outils au lieu de spéculer, et dis toujours à l'utilisateur ce que tu as fait sur le disque.`

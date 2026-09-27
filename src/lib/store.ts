@@ -73,6 +73,9 @@ export interface Settings {
   showTour?: boolean
   /** Onglets affichés dans la fenêtre hub (outils) ; [] = bouton hub masqué */
   hubTabs?: HubTab[]
+  /** Connecteurs HTTP (façon MCP) : sources de données/outils externes que les
+   *  agents peuvent appeler via l'outil connector_call (passerelle locale). */
+  connectors?: ConnectorCfg[]
   /** Onglet hub actif à l'ouverture (si présent dans hubTabs) */
   hubDefault?: HubTab
   /** Permissions par outil (inspiré d'OpenCode) : 'allow' | 'ask' | 'deny'. Défaut : allow. */
@@ -81,6 +84,28 @@ export interface Settings {
   condenseThreshold?: number
   condenseModel?: string
 }
+
+/** Connecteur HTTP externe (façon MCP/Headroom) : une base URL + auth optionnelle.
+ *  Les appels des agents passent par la passerelle locale /api/connector (jamais
+ *  directs) : la clé reste sur la machine, la cible est validée côté serveur. */
+export interface ConnectorCfg {
+  /** Identifiant lisible utilisé par l'agent dans connector_call (ex. « github ») */
+  name: string
+  baseUrl: string
+  /** En-tête d'auth (« Authorization » par défaut) — vide si publique */
+  keyHeader?: string
+  /** Valeur d'auth (Bearer préfixé automatiquement pour Authorization) */
+  key?: string
+  /** Activé ? (désactivé = outil retiré du prompt) */
+  enabled?: boolean
+}
+
+/** Connecteurs locaux INTÉGRÉS (aucune clé, servis par l'app elle-même). */
+export const BUILTIN_CONNECTORS: { name: string; baseUrl: string; desc: string }[] = [
+  { name: 'workspace', baseUrl: 'local://workspace', desc: 'Fichiers de la sandbox courante (tree, read) — via les endpoints internes' },
+  { name: 'deck', baseUrl: 'local://deck', desc: 'Bibliothèque PromptDeck : fiches skills/agents (cards, card, search)' },
+  { name: 'horloge', baseUrl: 'local://clock', desc: 'Date/heure locale et fuseau — pour dater notes et rapports' },
+]
 
 /** Outils soumis aux permissions (les lectures restent toujours libres). */
 export const PERM_TOOLS = ['write_file', 'git_commit', 'switch_os', 'run_command'] as const
@@ -216,7 +241,7 @@ export function saveGraphLayout(g: GraphLayout): void {
 /* ── Hub : fenêtre outils déployable (Graphify, Fichiers, Terminal, Preview, Réglages) ── */
 
 /** Onglets affichables dans le hub, dans l'ordre des boutons. */
-export type HubTab = 'graph' | 'files' | 'terminal' | 'preview' | 'settings' | 'deck'
+export type HubTab = 'graph' | 'files' | 'terminal' | 'preview' | 'settings' | 'deck' | 'connecteurs'
 export const HUB_TABS: { id: HubTab; label: string; icon: string }[] = [
   { id: 'graph', label: 'Graphify', icon: '🕸' },
   { id: 'files', label: 'Fichiers', icon: '📁' },
@@ -224,6 +249,7 @@ export const HUB_TABS: { id: HubTab; label: string; icon: string }[] = [
   { id: 'preview', label: 'Preview', icon: '👁' },
   { id: 'settings', label: 'Réglages', icon: '⚙︎' },
   { id: 'deck', label: 'Skills & Agents', icon: '🃏' },
+  { id: 'connecteurs', label: 'Connecteurs', icon: '🔌' },
 ]
 
 /** Géométrie du hub, persistée entre sessions (même schéma que le flottant). */
@@ -365,8 +391,9 @@ export const defaultSettings = (): Settings => ({
   reduceMotion: false,
   arbitreDebate: false,
   showTour: true,
-  hubTabs: ['graph', 'files', 'terminal', 'preview', 'settings', 'deck'],
+  hubTabs: ['graph', 'files', 'terminal', 'preview', 'settings', 'deck', 'connecteurs'],
   hubDefault: 'graph',
+  connectors: [],
 })
 
 function readJson<T>(key: string, fallback: T): T {
