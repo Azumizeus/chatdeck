@@ -13,6 +13,7 @@
     active,
     onTab,
     onClose,
+    onDetach,
     children,
   }: {
     /** Onglets affichés (réglage hubTabs), déjà filtré */
@@ -20,6 +21,8 @@
     active: HubTab
     onTab: (t: HubTab) => void
     onClose: () => void
+    /** Onglet tiré hors de la barre → ouvrir en fenêtre dédiée (comme un IDE) */
+    onDetach?: (t: HubTab) => void
     children?: Snippet
   } = $props()
 
@@ -83,6 +86,25 @@
     startPoint = null
   }
 
+  /* Détachement d'onglet : un drag horizontal de ~40 px hors du bouton
+   * ouvre l'onglet en fenêtre dédiée (popout), comme un IDE. */
+  let tabDrag: { id: HubTab; x0: number; armed: boolean } | null = null
+  function tabDown(e: PointerEvent, id: HubTab): void {
+    tabDrag = { id, x0: e.clientX, armed: false }
+  }
+  function tabMove(e: PointerEvent): void {
+    if (!tabDrag) return
+    if (!tabDrag.armed && Math.abs(e.clientX - tabDrag.x0) > 40) tabDrag.armed = true
+    if (tabDrag.armed) {
+      const done = tabDrag
+      tabDrag = null
+      onDetach?.(done.id)
+    }
+  }
+  function tabUp(): void {
+    tabDrag = null
+  }
+
   const visible = $derived(HUB_TABS.filter((t) => tabs.includes(t.id)))
   const style = $derived(`left:${geo.x}px;top:${geo.y}px;width:${geo.w}px;height:${geo.h}px`)
 </script>
@@ -92,7 +114,15 @@
     <span class="grip">⠿</span>
     <nav aria-label="Outils du hub">
       {#each visible as t (t.id)}
-        <button class:active={active === t.id} onclick={() => onTab(t.id)} title={t.label}>
+        <button
+          class:active={active === t.id}
+          onclick={() => onTab(t.id)}
+          onpointerdown={(e) => tabDown(e, t.id)}
+          onpointermove={tabMove}
+          onpointerup={tabUp}
+          onpointercancel={tabUp}
+          title="{t.label} — glisser horizontalement pour détacher en fenêtre"
+        >
           <span class="ico">{t.icon}</span><span class="lbl">{t.label}</span>
         </button>
       {/each}

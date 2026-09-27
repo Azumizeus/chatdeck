@@ -1,0 +1,37 @@
+---
+name: demo-produit
+description: Démonstration de ChatDeck — présenter les 3 fenêtres (hub outils, terminal docké, deck Skills & Agents) lors d'une démo ou de la visite guidée.
+kind: skill
+tools: [read, list]
+---
+
+# demo-produit — les 3 fenêtres de ChatDeck
+
+## Quand
+
+Pour montrer ChatDeck à quelqu'un (ou se remettre en tête l'organisation des
+panneaux) : dérouler les 3 fenêtres dans l'ordre ci-dessous, chacune en ~30 s.
+
+## Procédure
+
+1. **La fenêtre outils (hub) 🗂** — bouton « Outils » de la barre (ou ⌘K →
+   « Fenêtre outils »). Montrer : la poignée ⠿ (déplacer), les poignées de
+   resize, la barre d'onglets (Graphify, Fichiers, Terminal, Preview,
+   Réglages, Skills & Agents), et surtout **le drag d'un onglet hors de la
+   barre** qui le détache en vraie fenêtre. Insister : le chat reste
+   entièrement visible derrière, jamais recouvert.
+2. **Le terminal docké ⌨︎** — bouton « Terminal ». Il s'ouvre SOUS le champ de
+   saisie, jamais devant le chat. Montrer la poignée en haut du panneau
+   (glisser vers le haut = agrandir, hauteur mémorisée) puis lancer
+   `node src/main.js` dans le workspace sandbox.
+3. **Le deck 🃏** — onglet « Skills & Agents » du hub. 335 fiches (pack
+   PromptDeck + projet + global). Activer « verification-lot » par clic,
+   montrer la pastille 🃏 du composer (fiches PAR conversation), envoyer un
+   message et montrer le badge 🃏 sous le message. Terminer : éditer une fiche
+   projet inline et enregistrer.
+
+## Vérification
+
+- Aucun panneau ne recouvre le chat pendant la démo.
+- La hauteur du terminal survit à un rechargement de page.
+- Le badge 🃏 du message liste bien la fiche dans son tooltip.

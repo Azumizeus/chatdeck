@@ -122,6 +122,17 @@
     }
     deckPopout = window.open('/#popout=deck', 'chatdeck-deck', 'popup=yes,width=620,height=680,left=160,top=100')
   }
+
+  /** Détache un onglet du hub en fenêtre dédiée (drag hors de la barre, comme un IDE). */
+  function detachHubTab(t: HubTab): void {
+    if (t === 'files' || t === 'terminal' || t === 'preview') {
+      // Ces panneaux dépendent d'une conversation : on garde le hub pour eux.
+      return
+    }
+    if (t === 'deck') popoutDeck()
+    else window.open(`/#popout=${t}`, `chatdeck-${t}`, 'popup=yes,width=760,height=620,left=180,top=120')
+    if (hubActive === t) showHub = false
+  }
   let showTerminal = $state(false)
   let showPreview = $state(false)
   /** Conversations épinglées à l'ouverture des panneaux (duel inclus) */
@@ -1149,6 +1160,7 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
                     msg={m}
                     isLast={i === current.messages.length - 1}
                     streaming={streamingIds.has(current.id)}
+                    cardsApplied={m.cards ?? []}
                     onRegenerate={() => regenerate(current.id, m.ts)}
                     onUseAsPrompt={(t) => send(t)}
                     onDelete={() => deleteFrom(current.id, m.ts)}
@@ -1409,6 +1421,7 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
     active={hubActive}
     onTab={(t) => (hubTab = t)}
     onClose={() => (showHub = false)}
+    onDetach={detachHubTab}
   >
     {#if hubActive === 'graph'}
       <GraphPanel {conversations} onOpen={(id) => selectChat(id)} onClose={() => (showHub = false)} />
@@ -1502,8 +1515,8 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
     position: static;
     width: 100%;
     max-width: none;
-    height: 260px;
-    max-height: none;
+    /* hauteur pilotée par la poignée du panneau (style inline), bornée ici */
+    max-height: 720px;
     border: none;
     border-top: 1px solid var(--border);
     border-radius: 0;

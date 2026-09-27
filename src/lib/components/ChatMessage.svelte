@@ -6,14 +6,6 @@
   let { msg }: { msg: Msg } = $props()
 
   const who = $derived(msg.agent ? AGENTS[msg.agent as AgentId] : null)
-
-  let copied = $state(false)
-
-  async function copy(): Promise<void> {
-    await navigator.clipboard.writeText(msg.content)
-    copied = true
-    setTimeout(() => (copied = false), 1200)
-  }
 </script>
 
 <div class="row" class:user={msg.role === 'user'} class:error={msg.error} class:agent-seeker={msg.agent === 'seeker'}>
@@ -27,9 +19,6 @@
         {@html renderMarkdown(msg.content)}
       {:else}
         <span class="cursor">▍</span>
-      {/if}
-      {#if msg.content && !msg.error}
-        <button class="copy" onclick={copy}>{copied ? '✓ copié' : 'copier'}</button>
       {/if}
     {:else}
       <span class="plain">{msg.content}</span>
@@ -94,24 +83,8 @@
       opacity: 0;
     }
   }
-  .copy {
-    position: absolute;
-    top: 6px;
-    right: 8px;
-    font-size: 11px;
-    color: var(--muted);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 2px 7px;
-    opacity: 0;
-    transition: 0.12s;
-  }
-  .row:hover .copy {
-    opacity: 1;
-  }
-  .copy:hover {
-    color: var(--text);
-  }
+  /* le bouton copier vit dans MessageActions (barre sous la réponse) —
+     ne pas remettre un doublon dans la bulle */
 
   /* rendu markdown */
   .bubble :global(p) {

@@ -202,6 +202,18 @@ export function saveHubGeometry(g: HubGeometry): void {
   writeJson(HUB_KEY, g)
 }
 
+/** Hauteur du terminal docké (px), mémorisée entre les sessions. */
+const TERM_KEY = 'chatdeck.term.v1'
+
+export function loadTermHeight(defaultH = 260): number {
+  const v = readJson<number>(TERM_KEY, defaultH)
+  return typeof v === 'number' && v >= 120 && v <= 720 ? v : defaultH
+}
+
+export function saveTermHeight(h: number): void {
+  writeJson(TERM_KEY, Math.max(120, Math.min(720, Math.round(h))))
+}
+
 /* ── Fiches .CD (skills & agents) : état activé + cache des contenus ──
  *
  * Le panneau deck (hub / popout) gère quels fiches sont ACTIVÉES ; au moment

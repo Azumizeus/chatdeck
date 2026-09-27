@@ -371,6 +371,81 @@ test.describe('deck : skills & agents (.CD)', () => {
   })
 })
 
+// Pastille fiches par conversation, éditeur PUT, badge MessageActions
+test.describe('fiches .CD avancé : pastille, éditeur, badge', () => {
+  test('pastille 🃏 du composer : toggle par conversation + état persisté', async () => {
+    // Prépare l'état deck : verification-lot en cache (comme après activation dans le deck)
+    await page.evaluate(async () => {
+      const r = await fetch('/api/deck/card?id=verification-lot')
+      const j = await r.json()
+      localStorage.setItem('chatdeck.cards.v1', JSON.stringify({ active: [], cache: { 'verification-lot': j.content } }))
+    })
+    await page.reload()
+    await expect(page.locator('.toolbar')).toBeVisible()
+
+    const pill = page.locator('.cards-btn')
+    await expect(pill).toBeVisible()
+    await pill.click()
+    const row = page.locator('.cards-pop button', { hasText: 'verification-lot' })
+    await row.click()
+
+    // État conversation persisté
+    const cards = await page.evaluate(
+      () => (JSON.parse(localStorage.getItem('chatdeck.conversations.v1') || '[]')[0]?.cardsActive ?? []),
+    )
+    expect(cards).toContain('verification-lot')
+    // Le compteur de la pastille affiche 1
+    await expect(pill).toContainText('1')
+
+    // Retire la fiche du fil
+    await row.click()
+    const after = await page.evaluate(
+      () => (JSON.parse(localStorage.getItem('chatdeck.conversations.v1') || '[]')[0]?.cardsActive ?? []),
+    )
+    expect(after).not.toContain('verification-lot')
+  })
+
+  test('éditeur de fiche projet : PUT /api/deck/card enregistre le corps', async ({ request }) => {
+    // Crée une fiche projet dédiée au test
+    const name = `e2e-edit-${Date.now()}`
+    await request.post('/api/deck/cards', { data: { name, kind: 'skill' } })
+
+    // Modifie son contenu via le PUT (frontmatter requis)
+    const put = await request.put('/api/deck/card', {
+      data: { id: name, content: `---\nname: ${name}\ndescription: fiche e2e modifiée\nkind: skill\n---\n\n# ${name}\n\nCorps mis à jour par le test.` },
+    })
+    expect((await put.json()).ok).toBe(true)
+
+    // Le contenu persiste (relecture)
+    const back = await (await request.get(`/api/deck/card?id=${name}`)).json()
+    expect(back.content).toContain('Corps mis à jour par le test.')
+
+    // Un PUT sans frontmatter est refusé
+    const bad = await request.put('/api/deck/card', { data: { id: name, content: 'pas de frontmatter' } })
+    expect(bad.status()).toBe(400)
+  })
+
+  test('badge 🃏 MessageActions : les fiches appliquées marquent le message', async () => {
+    // Active la fiche globalement (état du deck) avant d'envoyer
+    await page.evaluate(async () => {
+      const r = await fetch('/api/deck/card?id=verification-lot')
+      const j = await r.json()
+      localStorage.setItem('chatdeck.cards.v1', JSON.stringify({ active: ['verification-lot'], cache: { 'verification-lot': j.content } }))
+    })
+    await page.reload()
+    await expect(page.locator('.toolbar')).toBeVisible()
+
+    // Envoie un message (fournisseur réel) — le badge apparaît dès l'insertion du message user
+    await page.locator('.composer textarea').fill('test badge fiches')
+    await page.locator('.composer textarea').press('Enter')
+    const badge = page.locator('.msg .cards-badge').first()
+    await expect(badge).toBeVisible({ timeout: 15_000 })
+    await expect(badge).toContainText('🃏')
+    // Le badge porte les fiches en tooltip
+    expect(await badge.getAttribute('title')).toContain('verification-lot')
+  })
+})
+
 // Fenêtre outils (hub) : onglets, chat toujours visible, réglage quels panneaux afficher
 test.describe('fenêtre outils (hub)', () => {
   test('ouverture, switch d\'onglets, chat visible derrière, fermeture', async () => {

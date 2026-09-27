@@ -1,6 +1,8 @@
 <script lang="ts">
   // Terminal réel du workspace : exécution bornée côté serveur sandbox
   // (spawn sans shell, timeout 60 s, sortie stdout+stderr streamée).
+  import { loadTermHeight, saveTermHeight } from '../store'
+
   let {
     convId,
     onClose,
@@ -8,6 +10,28 @@
     convId: string
     onClose: () => void
   } = $props()
+
+  /* Redimensionnement : poignée en haut du panneau (docké sous le composer).
+   * On règle la hauteur du panneau, persistée entre les sessions. */
+  let termH = $state(loadTermHeight())
+  let resizing = $state(false)
+  let resizeY0 = 0
+  let resizeH0 = 0
+  function startResize(e: PointerEvent): void {
+    resizing = true
+    resizeY0 = e.clientY
+    resizeH0 = termH
+    ;(e.currentTarget as Element).setPointerCapture(e.pointerId)
+  }
+  function moveResize(e: PointerEvent): void {
+    if (!resizing) return
+    // Glisser vers le HAUT = agrandit (la poignée est au sommet du panneau)
+    termH = Math.max(120, Math.min(720, resizeH0 - (e.clientY - resizeY0)))
+  }
+  function endResize(): void {
+    if (resizing) saveTermHeight(termH)
+    resizing = false
+  }
 
   interface Line {
     text: string
@@ -93,7 +117,18 @@
   })
 </script>
 
-<aside class="term" aria-label="Terminal du workspace">
+<aside class="term" style="height:{termH}px" aria-label="Terminal du workspace">
+  <!-- Poignée de redimensionnement (haut du panneau quand docké sous le composer) -->
+  <div
+    class="grip"
+    role="separator"
+    aria-label="Redimensionner le terminal"
+    title="Glisser pour redimensionner"
+    onpointerdown={startResize}
+    onpointermove={moveResize}
+    onpointerup={endResize}
+    onpointercancel={endResize}
+  ></div>
   <header>
     <strong>⌨︎ Terminal</strong>
     <span class="mono">{convId.slice(0, 10)}…</span>
@@ -125,6 +160,7 @@
     left: 16px;
     bottom: 42px;
     width: min(560px, calc(100vw - 32px));
+    /* hauteur pilotée par la poignée (persistée) ; .term-docked la borne */
     height: 300px;
     display: flex;
     flex-direction: column;
@@ -134,6 +170,20 @@
     box-shadow: 0 18px 48px rgba(0, 0, 0, 0.5);
     z-index: 70;
     overflow: hidden;
+  }
+  .grip {
+    position: absolute;
+    top: -3px;
+    left: 12px;
+    right: 12px;
+    height: 7px;
+    cursor: ns-resize;
+    touch-action: none;
+    z-index: 3;
+  }
+  .grip:hover {
+    background: color-mix(in srgb, var(--accent) 35%, transparent);
+    border-radius: 4px;
   }
   header {
     display: flex;

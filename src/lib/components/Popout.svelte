@@ -5,6 +5,7 @@
   import ChatMessage from './ChatMessage.svelte'
   import SettingsPanel from './SettingsPanel.svelte'
   import DeckPanel from './DeckPanel.svelte'
+  import GraphPanel from './GraphPanel.svelte'
   import {
     loadConversations,
     loadKeys,
@@ -120,6 +121,10 @@
     <div class="deckpop">
       <DeckPanel onClose={() => window.close()} />
     </div>
+  {:else if panel === 'graph'}
+    <div class="graphpop">
+      <GraphPanel conversations={loadConversations()} onOpen={() => window.close()} onClose={() => window.close()} />
+    </div>
   {:else}
     <div class="chat">
       <div class="msgs">
@@ -171,6 +176,20 @@
     flex: 1;
     display: flex;
     min-height: 0;
+  }
+  .graphpop {
+    flex: 1;
+    display: flex;
+    min-height: 0;
+  }
+  .graphpop :global(.graphify) {
+    position: absolute;
+    inset: 0;
+    width: auto;
+    max-width: none;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
   }
   .deckpop :global(.deck) {
     position: absolute;
