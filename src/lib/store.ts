@@ -41,6 +41,8 @@ export interface Conversation {
   cardsActive?: string[]
   /** Mode Plan (inspiré d'OpenCode) : agents en lecture seule pour ce fil */
   planMode?: boolean
+  /** Projet rattaché : sandbox partagée p-<id> + règles + dossiers Mac autorisés */
+  projectId?: string
 }
 
 export interface Keys {
@@ -97,6 +99,42 @@ export interface PaneGeometry {
   y: number
   w: number
   h: number
+}
+
+/* ── Projets (inspiré Claude Desktop) : sandbox par projet + dossiers Mac + règles ── */
+
+/** Un projet ChatDeck : un workspace dédié partagé par ses conversations. */
+export interface Project {
+  id: string
+  name: string
+  /** Consignes du projet (injectées au prompt de chaque conversation liée) */
+  instructions: string
+  /** Dossiers du Mac autorisés en lecture par les agents (ex. ~/projects/chatdeck) */
+  folders: string[]
+  /** Conversations rattachées au projet */
+  conversations: string[]
+  createdAt: number
+}
+
+const PROJECTS_KEY = 'chatdeck.projects.v1'
+
+export function loadProjects(): Project[] {
+  return readJson<Project[]>(PROJECTS_KEY, [])
+}
+
+export function saveProjects(list: Project[]): void {
+  writeJson(PROJECTS_KEY, list)
+}
+
+export function newProject(name: string): Project {
+  return {
+    id: `p${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`,
+    name: name.trim() || 'Projet sans nom',
+    instructions: '',
+    folders: [],
+    conversations: [],
+    createdAt: Date.now(),
+  }
 }
 
 /** Mode d'affichage de la fenêtre principale. */

@@ -24,13 +24,28 @@
 import type { Plugin } from 'vite'
 import { spawn } from 'node:child_process'
 import { mkdir, readdir, readFile, writeFile, rm, stat } from 'node:fs/promises'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync, mkdirSync, realpathSync } from 'node:fs'
 import { homedir } from 'node:os'
 import path from 'node:path'
 
 const WORKSPACES_ROOT = path.join(homedir(), '.chatdeck', 'workspaces')
 /** Racine du projet (pour lancer une 2ᵈ instance : npm run app:multi). */
 const projectRoot = path.resolve(import.meta.dirname ?? '.')
+/** Registre des dossiers Mac autorisés en lecture (projects.local.json, gitigné,
+ *  écrit par PUT /api/sandbox/projects/:id/folders — jamais par le client direct). */
+const FOLDERS_FILE = path.join(homedir(), '.chatdeck', 'projects-folders.local.json')
+function allowedFolders(): string[] {
+  try {
+    const v = JSON.parse(readFileSync(FOLDERS_FILE, 'utf8')) as unknown
+    return Array.isArray(v) ? (v as string[]).filter((s) => typeof s === 'string' && s.startsWith('/') && s.length < 500).slice(0, 20) : []
+  } catch {
+    return []
+  }
+}
+function setAllowedFolders(list: string[]): void {
+  mkdirSync(path.dirname(FOLDERS_FILE), { recursive: true })
+  writeFileSync(FOLDERS_FILE, JSON.stringify(list.slice(0, 20), null, 2))
+}
 const MAX_FILE_BYTES = 1_000_000
 const MAX_TREE_ENTRIES = 500
 const MAX_RUN_OUTPUT = 200_000
@@ -631,6 +646,80 @@ export function sandboxServer(): Plugin {
               } catch (e) {
                 return json(res, 500, { ok: false, error: (e as Error).message })
               }
+            }
+
+            /* ── Projets : workspace dédié p-<id> + dossiers Mac autorisés ── */
+            // POST /api/sandbox/projects/:id/bootstrap → seed du workspace projet
+            // GET  /api/sandbox/projects/:id/file?path=… → lecture CONFINÉE : workspace projet
+            //   d'abord, puis dossiers Mac autorisés (lecture seule, cap 1 Mo, texte)
+            // GET  /api/sandbox/projects/:id/tree → arborescence projet + dossiers Mac
+            // PUT  /api/sandbox/projects/:id/folders → {folders:[…]} (dossiers du Mac)
+            // (Le routeur découpe convId/action : convId='projects', action=<id>,
+            //  le sous-action est le 3ᵉ segment du chemin.)
+            if (convId === 'projects') {
+              const projectId = action ?? ''
+              const subAction = (pathPart.split('/').slice(2).join('/') || '').replace(/^\//, '')
+              if (!/^[a-z0-9][a-z0-9_-]{0,63}$/i.test(projectId)) return json(res, 400, { error: 'id de projet invalide' })
+              const pbase = path.join(WORKSPACES_ROOT, `p-${projectId}`)
+              if (subAction === 'bootstrap' && req.method === 'POST') {
+                await mkdir(path.join(pbase, 'src'), { recursive: true })
+                await writeFile(
+                  path.join(pbase, 'NOTES.md'),
+                  `# Projet ${projectId}\n\nWorkspace partagé par les conversations de ce projet.\n`,
+                  'utf8',
+                )
+                return json(res, 200, { ok: true, base: pbase })
+              }
+              if (subAction === 'folders' && req.method === 'PUT') {
+                // Liste de dossiers du Mac (chemins absolus) — validation stricte :
+                // existant, dossier, pas de symlink qui remonte trop loin (on confine
+                // par realpath au moment de la lecture).
+                const body = JSON.parse(await readBody(req)) as { folders?: unknown }
+                const list = Array.isArray(body.folders)
+                  ? (body.folders as unknown[])
+                      .filter((s): s is string => typeof s === 'string')
+                      .map((s) => s.trim().replace(/^~(?=\/|$)/, homedir()))
+                      .filter(Boolean)
+                      .slice(0, 20)
+                  : []
+                for (const f of list) {
+                  if (!path.isAbsolute(f)) return json(res, 400, { error: `chemin relatif interdit : ${f}` })
+                  if (!existsSync(f)) return json(res, 400, { error: `dossier inexistant : ${f}` })
+                  if (!(await stat(f)).isDirectory()) return json(res, 400, { error: `pas un dossier : ${f}` })
+                }
+                setAllowedFolders(list)
+                return json(res, 200, { ok: true, folders: list })
+              }
+              if (subAction === 'file' && req.method === 'GET') {
+                const rel = query.get('path') ?? ''
+                // 1) fichier du workspace projet (prioritaire)
+                const t = safeResolve(`p-${projectId}`, rel)
+                if (t && existsSync(t.target) && (await stat(t.target)).isFile()) {
+                  const info = await stat(t.target)
+                  if (info.size > MAX_FILE_BYTES) return json(res, 413, { error: 'fichier trop volumineux (> 1 Mo)' })
+                  return json(res, 200, { path: rel, content: await readFile(t.target, 'utf8'), scope: 'workspace' })
+                }
+                // 2) dossier Mac autorisé : /ABS//rel → lecture seule, texte, borné
+                for (const folder of allowedFolders()) {
+                  const real = realpathSync.native(folder)
+                  const target = path.resolve(folder, rel.replace(/^[/\\]+/, ''))
+                  const realTarget = realpathSync.native(target)
+                  if (realTarget !== real && !realTarget.startsWith(real + path.sep)) continue // hors dossier autorisé
+                  const info = await stat(realTarget).catch(() => null)
+                  if (!info?.isFile()) continue
+                  if (info.size > MAX_FILE_BYTES) return json(res, 413, { error: 'fichier trop volumineux (> 1 Mo)' })
+                  const content = await readFile(realTarget, 'utf8')
+                  return json(res, 200, { path: rel, content, scope: folder })
+                }
+                return json(res, 404, { error: `fichier introuvable ni dans le workspace projet ni dans les ${allowedFolders().length} dossier(s) Mac autorisé(s)` })
+              }
+              if (subAction === 'tree' && req.method === 'GET') {
+                const budget = { n: MAX_TREE_ENTRIES }
+                const tree = (existsSync(pbase) ? await walk(pbase, 0, budget) : null) ?? []
+                const folders = allowedFolders().map((f) => ({ name: `Mac : ${f}`, type: 'dir' as const }))
+                return json(res, 200, { exists: existsSync(pbase), tree: [...tree, ...folders] })
+              }
+              return json(res, 404, { error: 'route projet inconnue' })
             }
 
             // git-commit : endpoint sécurisé pour les agents — git add -A + commit.

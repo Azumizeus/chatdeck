@@ -5,10 +5,11 @@
 // avec focus sur la fenêtre existante ; --multi (ou CHATDECK_MULTI=1)
 // autorise plusieurs instances indépendantes (localStorage séparés par
 // partition dédiée).
-import { app, BrowserWindow, shell, ipcMain } from 'electron'
+import { app, BrowserWindow, shell, ipcMain, screen } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
+import { readFileSync, writeFileSync } from 'node:fs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -33,10 +34,44 @@ if (!MULTI && !app.requestSingleInstanceLock()) {
 
   const PARTITION = MULTI ? `persist:chatdeck-${process.pid}` : 'persist:chatdeck'
 
+  /* Géométrie de fenêtre persistée (chatdeck-window.json) : position/taille
+   * réouvertes au lancement, re-clampées à l'écran courant (écran changé,
+   * fenêtre fermée sur un moniteur débranché…). Les instances --multi partagent
+   * le fichier : tant pis, la dernière fermée gagne — pas critique. */
+  const stateFile = () => {
+    try {
+      return path.join(app.getPath('userData'), 'chatdeck-window.json')
+    } catch {
+      return null // app pas prêt (jamais le cas dans createWindow)
+    }
+  }
+  const loadWinState = () => {
+    const f = stateFile()
+    if (!f) return null
+    try {
+      const s = JSON.parse(readFileSync(f, 'utf8'))
+      if (typeof s.x === 'number' && typeof s.y === 'number' && typeof s.width === 'number' && typeof s.height === 'number') return s
+    } catch {}
+    return null
+  }
+  const saveWinState = (win) => {
+    const f = stateFile()
+    if (!f || win.isDestroyed() || win.isMinimized() || win.isFullScreen()) return
+    try {
+      writeFileSync(f, JSON.stringify(win.getNormalBounds()))
+    } catch {}
+  }
+
   const createWindow = () => {
+    const st = loadWinState()
+    const work = screen.getPrimaryDisplay().workArea
     const win = new BrowserWindow({
-      width: 1280,
-      height: 840,
+      // Bounds persistés re-clampés dans la zone de travail (jamais hors écran) ;
+      // sinon défaut : 1280×840 centré-haut.
+      width: Math.min(st?.width ?? 1280, work.width),
+      height: Math.min(st?.height ?? 840, work.height),
+      x: st ? Math.max(work.x, Math.min(st.x, work.x + work.width - 200)) : undefined,
+      y: st ? Math.max(work.y, Math.min(st.y, work.y + work.height - 100)) : undefined,
       minWidth: 780,
       minHeight: 560,
       title: 'ChatDeck',
@@ -51,6 +86,11 @@ if (!MULTI && !app.requestSingleInstanceLock()) {
         preload: path.join(__dirname, 'preload.cjs'),
       },
     })
+    // Sauvegarde de la géométrie (débounce léger) + à la fermeture.
+    const persist = () => saveWinState(win)
+    win.on('resize', persist)
+    win.on('move', persist)
+    win.on('close', persist)
 
     // Les liens externes vont au navigateur, jamais dans la fenêtre app.
     win.webContents.setWindowOpenHandler(({ url }) => {

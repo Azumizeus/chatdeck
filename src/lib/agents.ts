@@ -130,7 +130,37 @@ const P = (name: string, type: string, description: string): { type: string; des
  * retire TOUT outil d'écriture : write_file, délégations et git_commit —
  * l'agent analyse et propose, il ne modifie jamais la sandbox.
  */
-export function toolsFor(agent: AgentId, readOnly = false): ToolDef[] {
+export function toolsFor(agent: AgentId, readOnly = false, projectId?: string): ToolDef[] {
+  // Outils projet (workspace dédié + dossiers Mac autorisés en lecture) :
+  // proposés à tous les agents quand la conversation est rattachée à un projet.
+  const projectTools: ToolDef[] = projectId
+    ? [
+        {
+          type: 'function',
+          function: {
+            name: 'list_project_tree',
+            description:
+              'Liste l\'arborescence du PROJET (workspace partagé par toutes ses conversations) + les dossiers du Mac autorisés par l\'utilisateur.',
+            parameters: { type: 'object', properties: {} },
+          },
+        },
+        {
+          type: 'function',
+          function: {
+            name: 'read_project_file',
+            description:
+              'Lit un fichier du PROJET : d\'abord le workspace partagé, sinon dans les dossiers du Mac que l\'utilisateur a autorisés (LECTURE SEULE — l\'écriture va dans la sandbox).',
+            parameters: {
+              type: 'object',
+              properties: {
+                path: P('path', 'string', 'Chemin relatif au workspace projet, ou au dossier Mac autorisé (ex. src/app.ts, README.md)'),
+              },
+              required: ['path'],
+            },
+          },
+        },
+      ]
+    : []
   // write_file : Nexus et PromptDeck (collaboration au même workspace) ; Seeker reste lecture
   const write: ToolDef[] =
     agent === 'nexus' || agent === 'deck'
@@ -220,6 +250,7 @@ export function toolsFor(agent: AgentId, readOnly = false): ToolDef[] {
         ]
       : []
   const tools: ToolDef[] = [
+    ...projectTools,
     ...extra,
     ...delegate,
     ...write,
@@ -430,6 +461,27 @@ export async function execTool(convId: string, call: ToolCall): Promise<string> 
       if (j.error) return `❌ switch_os refusé : ${j.error}`
       return `✅ environnement basculé sur ${j.os} — platform/ purgé des autres profils, arborescence à jour (list_tree pour la voir)`
     }
+    case 'read_project_file': {
+      // Lecture : workspace du projet PUIS dossiers Mac autorisés (lecture seule).
+      // Le projet vient du convId routé (p-<id>) ou de l'argument explicite.
+      const projectId = convId.startsWith('p-') ? convId.slice(2) : String(call.args.project ?? '')
+      const p = String(call.args.path ?? '')
+      if (!projectId) return '❌ read_project_file : identifiant de projet manquant'
+      const r = await fetch(`/api/sandbox/projects/${encodeURIComponent(projectId)}/file?path=${encodeURIComponent(p)}`)
+      const j = (await r.json()) as { content?: string; scope?: string; error?: string }
+      if (j.error) return `❌ read_project_file : ${j.error}`
+      return `📄 ${p} (${j.scope === 'workspace' ? 'workspace projet' : `dossier Mac ${j.scope}`})\n\n${(j.content ?? '').slice(0, 50_000)}`
+    }
+    case 'list_project_tree': {
+      const projectId = convId.startsWith('p-') ? convId.slice(2) : String(call.args.project ?? '')
+      if (!projectId) return '❌ list_project_tree : identifiant de projet manquant'
+      const r = await fetch(`/api/sandbox/projects/${encodeURIComponent(projectId)}/tree`)
+      const j = (await r.json()) as { exists?: boolean; tree?: FileNode[]; error?: string }
+      if (j.error) return `❌ list_project_tree : ${j.error}`
+      const fmt = (nodes: FileNode[], d = 0): string =>
+        nodes.map((n) => `${'  '.repeat(d)}${n.type === 'dir' ? '📁' : '📄'} ${n.name}`).join('\n')
+      return j.exists ? fmt(j.tree ?? []) : '(workspace projet vide — il sera créé au premier message)'
+    }
     default:
       throw new Error(`outil inconnu : ${call.name}`)
   }
@@ -437,7 +489,13 @@ export async function execTool(convId: string, call: ToolCall): Promise<string> 
 
 /* ---------- prompts système avec contexte sandbox ---------- */
 
-export function systemPromptFor(agent: AgentId, settingsSystem: string, delegation?: { task: string; from?: AgentId }, readOnly = false): string {
+export function systemPromptFor(
+  agent: AgentId,
+  settingsSystem: string,
+  delegation?: { task: string; from?: AgentId },
+  readOnly = false,
+  project?: { id: string; name: string; instructions: string; folders: string[] },
+): string {
   const persona = AGENTS[agent]
   const base = [persona.system, settingsSystem.trim()].filter(Boolean).join('\n\n')
   const writeTools = readOnly ? '' : "write_file (créer/modifier un fichier), git_commit (sauvegarder l'état), switch_os (basculer mac|windows|linux),"
@@ -455,6 +513,7 @@ Tu travailles dans ChatDeck, une app qui te donne un vrai poste de développemen
 - **Panneau Preview** : l'utilisateur voit en direct la première page .html du workspace (servie par /serve). Si ta tâche produit une interface, crée un index.html complet (HTML+CSS+JS inline) : la preview se mettra à jour dès l'écriture. Annonce explicitement « preview prête » quand tu écris une page.
 - **Délégation** : ${agent === 'nexus' ? 'delegate_to_seeker (recherche/analyse approfondie) et delegate_to_deck (conception de prompts/personas)' : agent === 'deck' ? 'delegate_to_nexus (orchestration et synthèse)' : 'tu peux recevoir des missions de Nexus et rendre ton rapport via report_to_deck'}.
 - **Fiches .CD actives** : si des fiches sont injectées ci-dessus (section « Fiches actives »), elles sont des méthodes/personas que tu DOIS appliquer pendant cette conversation.
+${project ? `- **Projet « ${project.name} »** : cette conversation est rattachée à un projet. Un workspace partagé (~/.chatdeck/workspaces/p-${project.id}) regroupe TOUTES ses conversations, et l'utilisateur a autorisé la LECTURE de dossiers de son Mac (${project.folders.length ? project.folders.join(', ') : 'aucun'}) : utilise list_project_tree + read_project_file (params : path) pour explorer ce code AVANT de proposer quoi que ce soit — n'écris QUE dans ta sandbox (write_file).${project.instructions ? `\n- **Règles du projet (à respecter STRICTEMENT)** :\n\n${project.instructions}` : ''}` : ''}
 
 Réponds en français, agis avec les outils au lieu de spéculer, et dis toujours à l'utilisateur ce que tu as fait sur le disque.`
   if (delegation) {

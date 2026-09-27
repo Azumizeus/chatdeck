@@ -23,6 +23,9 @@
     saveIncognitoId,
     loadHubGeometry,
     saveHubGeometry,
+    loadProjects,
+    saveProjects,
+    newProject,
     appendToolLog,
     newConversation,
     newIncognitoConversation,
@@ -36,6 +39,7 @@
     type CustomProvider,
     type Keys,
     type Msg,
+    type Project,
     type Settings,
   } from './lib/store'
   import { layout, type PanelId } from './lib/layout.svelte'
@@ -64,6 +68,7 @@
   /* ---------- état ---------- */
 
   let conversations = $state<Conversation[]>(loadConversations())
+  let projects = $state<Project[]>(loadProjects())
   let currentId = $state<string | null>(loadIncognitoId())
   let keys = $state<Keys>(loadKeys())
   let settings = $state<Settings>(loadSettings())
@@ -521,9 +526,24 @@
     // Mode Plan (inspiré d'OpenCode) : lecture seule, l'agent propose sans modifier
     const readOnly = conv.planMode ?? false
     const cardsBlock = activeCardsSystem(convId, text)
+    // Projet lié : règles du projet injectées, outils projet (workspace partagé
+    // + dossiers Mac autorisés) disponibles pour les agents.
+    const project = projectOf(conv.projectId)
+    if (project && multi) {
+      try {
+        await fetch(`/api/sandbox/projects/${project.id}/bootstrap`, { method: 'POST' })
+      } catch {
+        /* le workspace projet se créera au prochain tour */
+      }
+    }
+    const projectBlock = project?.instructions
+      ? `## Règles du projet « ${project.name} »\n\n${project.instructions}`
+      : ''
     const systemWire: WireMsg = {
       role: 'system',
-      content: multi ? systemPromptFor('nexus', [settings.system, cardsBlock, atBlock].filter(Boolean).join('\n\n'), undefined, readOnly) : [settings.system.trim(), cardsBlock, atBlock].filter(Boolean).join('\n\n'),
+      content: multi
+        ? systemPromptFor('nexus', [settings.system, cardsBlock, atBlock, projectBlock].filter(Boolean).join('\n\n'), undefined, readOnly, project)
+        : [settings.system.trim(), cardsBlock, atBlock, projectBlock].filter(Boolean).join('\n\n'),
     }
     const baseMessagesPre: WireMsg[] = systemWire.content ? [systemWire, ...wires] : wires
     // Condenseur de contexte (OpenHands) : au-delà du seuil, l'historique ancien
@@ -574,7 +594,7 @@
           messages:
             agent !== 'nexus'
               ? [
-                  { role: 'system', content: systemPromptFor(agent, [settings.system, cardsBlock].filter(Boolean).join('\n\n'), delegationTask ? { task: delegationTask, from: delegationFrom } : undefined, readOnly) },
+                  { role: 'system', content: systemPromptFor(agent, [settings.system, cardsBlock, projectBlock].filter(Boolean).join('\n\n'), delegationTask ? { task: delegationTask, from: delegationFrom } : undefined, readOnly, project) },
                   ...wires,
                   ...extra,
                 ]
@@ -584,7 +604,7 @@
           signal: controller.signal,
           customs,
           // En délégation, l'agent de travail reçoit aussi son outil de rapport
-          tools: delegationTask ? [...toolsFor(agent, readOnly), reportToolFor(agent)] : toolsFor(agent, readOnly),
+          tools: delegationTask ? [...toolsFor(agent, readOnly, project?.id), reportToolFor(agent)] : toolsFor(agent, readOnly, project?.id),
           onDelta: (d) => {
             phaseContent += d
             patchLive((m) => ({ ...m, content: m.content + d }))
@@ -962,9 +982,15 @@
     showTerminal = !showTerminal
   }
 
-  /** Exécution d'outil avec erreur capturée (utilisé par la gate de permissions). */
+  /** Exécution d'outil avec erreur capturée (utilisé par la gate de permissions).
+   *  Les outils projet (read_project_file / list_project_tree) routent vers le
+   *  workspace dédié p-<projectId> + dossiers Mac autorisés. */
   async function runToolSafe(convId: string, call: ToolCall): Promise<string> {
     try {
+      if (call.name === 'read_project_file' || call.name === 'list_project_tree') {
+        const projectId = String(call.args.project ?? current?.projectId ?? '')
+        return await execTool(`p-${projectId}`, call)
+      }
       return await execTool(convId, call)
     } catch (e) {
       return `Erreur outil : ${(e as Error).message}`
@@ -1240,6 +1266,50 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
     }
   }
 
+  /* ---------- projets (sandbox partagée + dossiers Mac + règles) ---------- */
+
+  function createProject(name: string): void {
+    const p = newProject(name)
+    projects = [...projects, p]
+    saveProjects(projects)
+  }
+  function deleteProject(id: string): void {
+    // Les conversations liées sont détachées (jamais supprimées)
+    projects = projects.filter((p) => p.id !== id)
+    conversations = conversations.map((c) => (c.projectId === id ? { ...c, projectId: undefined } : c))
+    saveConversations(conversations)
+    saveProjects(projects)
+  }
+  function updateProject(id: string, patch: Partial<Project>): void {
+    projects = projects.map((p) => (p.id === id ? { ...p, ...patch } : p))
+    saveProjects(projects)
+  }
+  function attachToProject(convId: string, projectId: string | null): void {
+    conversations = conversations.map((c) => (c.id === convId ? { ...c, projectId: projectId ?? undefined } : c))
+    projects = projects.map((p) => ({ ...p, conversations: p.conversations.filter((x) => x !== convId) }))
+    if (projectId) projects = projects.map((p) => (p.id === projectId ? { ...p, conversations: [...p.conversations, convId] } : p))
+    saveConversations(conversations)
+    saveProjects(projects)
+  }
+  const projectOf = (id: string | undefined): Project | undefined => (id ? projects.find((p) => p.id === id) : undefined)
+
+  /** Dossiers Mac autorisés : GET via /api/sandbox/projects-folders (registre disque). */
+  async function setProjectFolders(id: string, folders: string[]): Promise<string | null> {
+    try {
+      const r = await fetch(`/api/sandbox/projects/${id}/folders`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ folders }),
+      })
+      const j = (await r.json()) as { ok?: boolean; error?: string }
+      if (j.error) return j.error
+      updateProject(id, { folders })
+      return null
+    } catch (e) {
+      return (e as Error).message
+    }
+  }
+
   /* ---------- palette ---------- */
 
   /** Notification éphémère (coin bas) — sert au retour de « + instance ». */
@@ -1271,7 +1341,7 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
   }
 
   const commands = $derived<Command[]>([
-    { id: 'new-instance', label: '+ instance : ouvrir une 2ᵈ ChatDeck indépendante', hint: '⚡', run: () => void launchInstance() },
+    { id: 'new-instance', label: '+ instance', hint: '⚡ 2ᵈ ChatDeck indépendante', run: () => void launchInstance() },
     { id: 'new', label: 'Nouvelle conversation', hint: '⌘N', run: () => newChat() },
     { id: 'incognito', label: 'Nouvelle conversation incognito 👻', hint: '⌘⇧N', run: () => newChat(true) },
     { id: 'theme', label: `Basculer en thème ${settings.theme === 'dark' ? 'clair' : 'sombre'}`, run: () => (settings = { ...settings, theme: settings.theme === 'dark' ? 'light' : 'dark' }) },
@@ -1336,6 +1406,12 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
           {conversations}
           {currentId}
           {customs}
+          {projects}
+          onCreateProject={createProject}
+          onDeleteProject={deleteProject}
+          onUpdateProject={updateProject}
+          onAttachProject={attachToProject}
+          onSetProjectFolders={setProjectFolders}
           onNew={() => newChat()}
           onNewIncognito={() => newChat(true)}
           onSelect={selectChat}
@@ -1418,7 +1494,7 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
           onModel={setModel}
           onAgents={setAgents}
         />
-        {#if showTerminal && terminalConvId === current.id}
+        {#if showTerminal && terminalConvId === current.id && (!showHub || hubActive !== 'terminal')}
           <div class="term-docked">
             <TerminalPanel convId={terminalConvId} onClose={() => (showTerminal = false)} />
           </div>
@@ -1525,7 +1601,7 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
       onAgents={(l) => setAgentsFor(convId, l)}
       onSendBoth={sendBoth}
     />
-    {#if showTerminal && terminalConvId === convId}
+    {#if showTerminal && terminalConvId === convId && (!showHub || hubActive !== 'terminal')}
       <div class="term-docked">
         <TerminalPanel convId={terminalConvId} onClose={() => (showTerminal = false)} />
       </div>
@@ -1763,7 +1839,8 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
     box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
     font-size: 13px;
   }
-  /* Terminal docké sous le composer : le panneau (fixed chez lui) s'y déplie */
+  /* Terminal docké sous le composer : le panneau (fixed chez lui) s'y déplie.
+   * La règle :global(.hubbed) du hub l'ancre aussi quand il vit dans le hub. */
   .term-docked {
     position: relative;
     flex-shrink: 0;

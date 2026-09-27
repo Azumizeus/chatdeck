@@ -117,7 +117,7 @@
   })
 </script>
 
-<aside class="term" style="height:{termH}px" aria-label="Terminal du workspace">
+<aside class="term hubbed" style="height:{termH}px" aria-label="Terminal du workspace">
   <!-- Poignée de redimensionnement (haut du panneau quand docké sous le composer) -->
   <div
     class="grip"
