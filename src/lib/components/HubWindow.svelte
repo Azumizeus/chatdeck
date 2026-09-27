@@ -52,9 +52,10 @@
   }
 
   function down(e: PointerEvent): void {
-    // On ne drague que depuis la surface de l'en-tête : presser un bouton
-    // d'onglet (ou la croix) doit rester un clic, pas capturer le pointeur.
-    if (e.target !== e.currentTarget) return
+    // Toute la barre de titre est une surface de drag SAUF les boutons :
+    // presser un onglet (ou la croix) reste un clic, le reste déplace la
+    // fenêtre — comme la barre de titre d'un IDE.
+    if ((e.target as Element).closest('button')) return
     dragging = true
     grab = { dx: e.clientX - geo.x, dy: e.clientY - geo.y }
     ;(e.currentTarget as Element).setPointerCapture(e.pointerId)

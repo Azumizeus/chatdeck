@@ -3,6 +3,65 @@
 // Chaque agent expose des outils OpenAI-compatible (function calling) qui agissent
 // sur la sandbox de la conversation (~/.chatdeck/workspaces/<conv-id>, endpoints
 // /api/sandbox). Nexus peut déléguer à Seeker dans le même fil (délégation multi-agents).
+import { streamChat, type WireMsg } from './llm'
+import type { CustomProvider } from './store'
+
+/* ---------- Condenseur de contexte (inspiré d'OpenHands) ----------
+ *
+ * Quand le fil dépasse CONTEXT_LIMIT messages, la partie ancienne de
+ * l'historique est remplacée par un résumé LLM borné — le fil reste léger
+ * sans perdre le fil narratif. Échec LLM → repli transparent : on renvoie
+ * l'historique complet (jamais de conversation cassée pour un résumé).
+ */
+
+/** Seuil : au-delà de N messages (hors système), on condense l'historique ancien. */
+export const CONTEXT_LIMIT = 40
+/** Nombre de messages récents conservés tels quels autour du résumé. */
+const CONTEXT_KEEP = 12
+
+/**
+ * Condense l'historique si nécessaire. `summarizer` désigne le modèle qui
+ * résume (provider/model/key de la conversation courante). Renvoie les wires
+ * prêt à envoyer — soit l'original, soit [résumé + récents].
+ */
+export async function condenseHistory(
+  wires: WireMsg[],
+  summarizer: { providerId: string; model: string; apiKey: string; customs?: CustomProvider[]; temperature?: number; maxTokens?: number },
+): Promise<WireMsg[]> {
+  const convo = wires.filter((w) => w.role !== 'system' && w.role !== 'tool' && !w.tool_calls)
+  if (convo.length <= CONTEXT_LIMIT) return wires
+  const cut = convo.length - CONTEXT_KEEP
+  if (cut <= 0) return wires
+  const old = convo.slice(0, cut)
+  const transcript = old
+    .map((w) => `${w.role.toUpperCase()} : ${typeof w.content === 'string' ? w.content.slice(0, 1500) : '(contenu structuré)'}`)
+    .join('\n\n')
+  const SYS = "Tu condenses l'historique d'une conversation technique pour qu'un agent puisse continuer à travailler sans le revoir en entier. Produis une synthèse factuelle et compacte (max ~300 mots) : sujet courant, décisions prises, fichiers créés/modifiés, outils utilisés et résultats, tâches restantes. Aucune invention, aucun commentaire — juste la synthèse."
+  try {
+    let summary = ''
+    await streamChat({
+      providerId: summarizer.providerId as never,
+      apiKey: summarizer.apiKey,
+      model: summarizer.model,
+      temperature: 0.2,
+      maxTokens: summarizer.maxTokens ?? 600,
+      signal: AbortSignal.timeout(20_000),
+      customs: summarizer.customs,
+      messages: [
+        { role: 'system', content: SYS },
+        { role: 'user', content: `Historique à condenser (du plus ancien au plus récent) :\n\n${transcript.slice(0, 60_000)}` },
+      ],
+      onDelta: (t) => {
+        summary += t
+      },
+    })
+    if (!summary.trim()) return wires
+    const head: WireMsg[] = wires.slice(0, wires.length - convo.length)
+    return [...head, { role: 'system', content: `[Résumé des ${cut} premiers messages de la conversation] ${summary.trim()}` }, ...convo.slice(cut)]
+  } catch {
+    return wires
+  }
+}
 
 export type AgentId = 'nexus' | 'seeker' | 'deck'
 
@@ -222,6 +281,19 @@ export function toolsFor(agent: AgentId, readOnly = false): ToolDef[] {
         },
       },
     },
+    {
+      type: 'function',
+      function: {
+        name: 'switch_os',
+        description:
+          'Change l\'environnement de développement de la sandbox : mac, windows ou linux. Purge les fichiers platform/ de l\'ancien profil et écrit celui choisi — l\'arborescence reflète le nouvel OS après l\'appel.',
+        parameters: {
+          type: 'object',
+          properties: { os: P('os', 'string', 'Profil visé : mac | windows | linux') },
+          required: ['os'],
+        },
+      },
+    },
   ]
   if (!readOnly) return tools
   // Mode Plan : lecture seule — les noms d'outils d'écriture sont filtrés
@@ -344,6 +416,18 @@ export async function execTool(convId: string, call: ToolCall): Promise<string> 
       if (j.error) return `❌ commit refusé : ${j.error}`
       return `✅ commit ${j.hash} — « ${j.subject} » (${j.files} fichiers)`
     }
+    case 'switch_os': {
+      const os = String(call.args.os ?? '')
+      if (os !== 'mac' && os !== 'windows' && os !== 'linux') return `❌ os invalide : « ${os} » (mac | windows | linux)`
+      const r = await fetch(`/api/sandbox/${convId}/os`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ os }),
+      })
+      const j = (await r.json()) as { ok?: boolean; os?: string; error?: string }
+      if (j.error) return `❌ switch_os refusé : ${j.error}`
+      return `✅ environnement basculé sur ${j.os} — platform/ purgé des autres profils, arborescence à jour (list_tree pour la voir)`
+    }
     default:
       throw new Error(`outil inconnu : ${call.name}`)
   }
@@ -354,13 +438,26 @@ export async function execTool(convId: string, call: ToolCall): Promise<string> 
 export function systemPromptFor(agent: AgentId, settingsSystem: string, delegation?: { task: string; from?: AgentId }, readOnly = false): string {
   const persona = AGENTS[agent]
   const base = [persona.system, settingsSystem.trim()].filter(Boolean).join('\n\n')
+  const writeTools = readOnly ? '' : "write_file (créer/modifier un fichier), git_commit (sauvegarder l'état), switch_os (basculer mac|windows|linux),"
   const sandbox = readOnly
     ? `Tu disposes d'une sandbox disque partagée par conversation, en MODE PLAN (lecture seule) : tu peux lister et lire les fichiers, exécuter des commandes d'inspection et consulter le web, mais tu ne dois PAS modifier la sandbox. Analyse, propose un plan d'implémentation en étapes concrètes, indique les fichiers à créer/modifier et les risques — sans rien écrire. Les chemins sont relatifs au workspace.`
-    : `Tu disposes d'une sandbox disque partagée par conversation. Outils : list_tree, read_file, run_command, web_fetch, git_commit${agent === 'nexus' ? ', write_file, delegate_to_seeker, delegate_to_deck' : agent === 'deck' ? ', write_file, delegate_to_nexus' : ', write_file'}. Les chemins sont relatifs au workspace. En mode collaboratif, l'autre agent écrit dans le MÊME workspace : liste l'arbre avant d'écrire pour éviter d'écraser ses fichiers.`
+    : `Tu disposes d'une sandbox disque partagée par conversation. Les chemins sont relatifs au workspace. En mode collaboratif, l'autre agent écrit dans le MÊME workspace : liste l'arbre avant d'écrire pour éviter d'écraser ses fichiers.`
+  const capabilities = `## Environnement ChatDeck
+
+Tu travailles dans ChatDeck, une app qui te donne un vrai poste de développement virtuel :
+
+- **Sandbox disque persistante** par conversation (~/.chatdeck/workspaces/<id>). Tes fichiers survivent entre les tours et sont visibles par l'utilisateur dans le panneau Fichiers (hub « Outils »).
+- **Trois environnements de développement simulés** : mac, windows, linux. Le profil actif détermine les fichiers platform/ du workspace (ex. Info.plist sous mac, app.config.json sous windows). Utilise switch_os pour changer — le disque est purgé de l'ancien profil automatiquement. L'utilisateur voit le même arbre que toi : annonce le changement si tu le fais.
+- **Outils disponibles** : list_tree (arborescence), read_file, run_command (ls, cat, pwd, node -v, npm -v… liste blanche), ${writeTools} web_fetch (télécharger une page web), promptdeck_browse (catalogue de 190 agents + 133 skills pour personas et méthodes).
+- **Git intégré** : le workspace est un dépôt ; git_commit fait add+commit de tout avec un message obligatoire. Des checkpoints automatiques permettent à l'utilisateur d'annuler un tour (bouton ↩) — ne compte pas dessus pour corriger tes erreurs, committe proprement.
+- **Délégation** : ${agent === 'nexus' ? 'delegate_to_seeker (recherche/analyse approfondie) et delegate_to_deck (conception de prompts/personas)' : agent === 'deck' ? 'delegate_to_nexus (orchestration et synthèse)' : 'tu peux recevoir des missions de Nexus et rendre ton rapport via report_to_deck'}.
+- **Fiches .CD actives** : si des fiches sont injectées ci-dessus (section « Fiches actives »), elles sont des méthodes/personas que tu DOIS appliquer pendant cette conversation.
+
+Réponds en français, agis avec les outils au lieu de spéculer, et dis toujours à l'utilisateur ce que tu as fait sur le disque.`
   if (delegation) {
     const from = delegation.from === 'nexus' ? 'Nexus' : delegation.from === 'deck' ? 'PromptDeck' : 'Nexus'
     const reportTool = reportToolNameFor(agent)
-    return `${base}\n\n${sandbox}\n\nMission transmise par ${from} : « ${delegation.task} »\nTravaille, puis appelle ${reportTool} avec ton rapport final.`
+    return `${base}\n\n${capabilities}\n\n${sandbox}\n\nMission transmise par ${from} : « ${delegation.task} »\nTravaille, puis appelle ${reportTool} avec ton rapport final.`
   }
-  return `${base}\n\n${sandbox}`
+  return `${base}\n\n${capabilities}\n\n${sandbox}`
 }

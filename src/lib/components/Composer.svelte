@@ -21,6 +21,7 @@
     onModel,
     onAgents,
     onSendBoth,
+    convId = undefined,
   }: {
     streaming: boolean
     providerId: ProviderId
@@ -43,6 +44,8 @@
     onAgents: (list: AgentId[]) => void
     /** Présent en mode duel : envoie le même texte aux deux conversations */
     onSendBoth?: (text: string) => void
+    /** Id de conversation : active l'autocomplétion @fichier (arbre sandbox) */
+    convId?: string
   } = $props()
 
   let cardsOpen = $state(false)
@@ -53,6 +56,81 @@
   const providers = $derived(allProviders(customs))
   const hint = $derived(providers.find((p) => p.id === providerId)?.docs ?? '')
   const isCatalog = $derived(providerId === 'openrouter')
+
+  /* ── Autocomplétion @fichier (inspiré d'OpenCode) ──
+   * Quand l'utilisateur tape @, l'arbre de la sandbox est proposé en menu
+   * (flèches + Entrée/Tab, ou clic). Entrée = envoyer reste prioritaire
+   * quand aucun @ n'est en cours de frappe. */
+  let atOpen = $state(false)
+  let atItems = $state<string[]>([])
+  let atIndex = $state(0)
+  let atStart = -1
+  let treeCache: { conv: string; at: number; paths: string[] } | null = null
+
+  async function sandboxPaths(): Promise<string[]> {
+    if (!convId) return []
+    if (treeCache && treeCache.conv === convId && Date.now() - treeCache.at < 5000) return treeCache.paths
+    try {
+      const r = await fetch(`/api/sandbox/${convId}/tree`)
+      const j = (await r.json()) as { exists?: boolean; tree?: AtNode[] }
+      const paths: string[] = []
+      const walk = (nodes: AtNode[] | undefined, prefix: string): void => {
+        for (const n of nodes ?? []) {
+          const p = prefix + n.name
+          if (n.type === 'dir') {
+            paths.push(`${p}/`)
+            walk(n.children, `${p}/`)
+          } else paths.push(p)
+        }
+      }
+      walk(j.tree, '')
+      treeCache = { conv: convId, at: Date.now(), paths }
+      return paths
+    } catch {
+      return []
+    }
+  }
+
+  interface AtNode {
+    name: string
+    type: string
+    children?: AtNode[]
+  }
+
+  function closeAt(): void {
+    atOpen = false
+    atItems = []
+    atIndex = 0
+    atStart = -1
+  }
+
+  async function updateAt(): Promise<void> {
+    if (!convId || !ta) return closeAt()
+    const pos = ta.selectionStart ?? text.length
+    const upto = text.slice(0, pos)
+    const m = upto.match(/(^|\s)@([\w./-]*)$/)
+    if (!m) return closeAt()
+    atStart = pos - m[2].length - 1
+    const paths = await sandboxPaths()
+    const q = m[2].toLowerCase()
+    atItems = paths.filter((p) => p.toLowerCase().includes(q)).slice(0, 8)
+    atIndex = 0
+    atOpen = atItems.length > 0
+  }
+
+  function applyAt(path: string): void {
+    const start = atStart
+    if (!ta || start < 0) return closeAt()
+    const pos = ta.selectionStart ?? text.length
+    const insert = `@${path.replace(/\/$/, '')} `
+    text = text.slice(0, start) + insert + text.slice(pos)
+    closeAt()
+    requestAnimationFrame(() => {
+      ta?.focus()
+      ta?.setSelectionRange(start + insert.length, start + insert.length)
+      autosize()
+    })
+  }
 
   function autosize(): void {
     if (!ta) return
@@ -150,11 +228,54 @@
     <span class="hint">{hint}</span>
   </div>
   <div class="inputrow">
+    {#if atOpen && atItems.length}
+      <ul class="at-menu" role="listbox" aria-label="Fichiers sandbox">
+        {#each atItems as p, i (p)}
+          <li>
+            <button
+              type="button"
+              class:sel={i === atIndex}
+              onmouseenter={() => (atIndex = i)}
+              onclick={() => applyAt(p)}
+            >
+              <span class="at-ico">{p.endsWith('/') ? '📁' : '📄'}</span> {p}
+            </button>
+          </li>
+        {/each}
+        <li class="at-hint">↑↓ naviguer · Entrée/Tab insérer · Échap fermer — l'extrait sera joint au prompt</li>
+      </ul>
+    {/if}
     <textarea
       bind:this={ta}
       bind:value={text}
-      oninput={autosize}
+      oninput={() => {
+        autosize()
+        void updateAt()
+      }}
       onkeydown={(e) => {
+        // Menu @fichier ouvert : navigation clavier prioritaire
+        if (atOpen && atItems.length) {
+          if (e.key === 'ArrowDown') {
+            e.preventDefault()
+            atIndex = (atIndex + 1) % atItems.length
+            return
+          }
+          if (e.key === 'ArrowUp') {
+            e.preventDefault()
+            atIndex = (atIndex - 1 + atItems.length) % atItems.length
+            return
+          }
+          if (e.key === 'Enter' || e.key === 'Tab') {
+            e.preventDefault()
+            applyAt(atItems[atIndex])
+            return
+          }
+          if (e.key === 'Escape') {
+            e.preventDefault()
+            closeAt()
+            return
+          }
+        }
         // Tab = bascule Mode Plan (OpenCode), tant qu'aucune suggestion @ n'est active
         if (e.key === 'Tab' && onTogglePlan && !text.startsWith('@')) {
           e.preventDefault()
@@ -287,9 +408,56 @@
     border-radius: 16px;
     padding: 10px 12px;
     transition: border-color 0.15s;
+    position: relative;
   }
   .inputrow:focus-within {
     border-color: var(--accent);
+  }
+  /* Menu @fichier */
+  .at-menu {
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 0;
+    right: 0;
+    z-index: 30;
+    margin: 0;
+    padding: 4px;
+    list-style: none;
+    background: var(--panel2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: 0 -8px 24px #00000066;
+    max-height: 240px;
+    overflow-y: auto;
+  }
+  .at-menu button {
+    display: block;
+    width: 100%;
+    text-align: left;
+    border: 0;
+    background: transparent;
+    color: var(--fg);
+    font-size: 12.5px;
+    padding: 5px 8px;
+    border-radius: 7px;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .at-menu button.sel {
+    background: #818cf82c;
+    color: #c7d2fe;
+  }
+  .at-ico {
+    margin-right: 4px;
+  }
+  .at-hint {
+    font-size: 10.5px;
+    color: var(--muted);
+    padding: 4px 8px 2px;
+    border-top: 1px dashed var(--border);
+    margin-top: 2px;
   }
   textarea {
     flex: 1;

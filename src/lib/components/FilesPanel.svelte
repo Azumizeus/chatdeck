@@ -38,7 +38,7 @@
   // Recherche dans l'arbre
   let filter = $state('')
 
-  const expanded = $state<Set<string>>(new Set(['src']))
+  let expanded = $state<Set<string>>(new Set(['src']))
 
   async function refresh(): Promise<void> {
     loading = true
@@ -77,19 +77,28 @@
   const visibleTree = $derived(filterTree(tree ?? [], filter.trim()))
 
   function toggleDir(p: string): void {
-    if (expanded.has(p)) expanded.delete(p)
-    else expanded.add(p)
+    // Réassignation obligatoire : une mutation seule (add/delete) du Set ne
+    // déclenche pas le re-render du snippet en Svelte 5 → dossiers incliquables.
+    const next = new Set(expanded)
+    if (next.has(p)) next.delete(p)
+    else next.add(p)
+    expanded = next
   }
 
   /** Déplie récursivement tous les dossiers (arborescence complète). */
   function expandAll(nodes: FileNode[], prefix = ''): void {
-    for (const n of nodes) {
-      if (n.type === 'dir') {
-        const p = prefix ? `${prefix}/${n.name}` : n.name
-        expanded.add(p)
-        if (n.children) expandAll(n.children, p)
+    const next = new Set(expanded)
+    const walk = (ns: FileNode[], pre: string): void => {
+      for (const n of ns) {
+        if (n.type === 'dir') {
+          const p = pre ? `${pre}/${n.name}` : n.name
+          next.add(p)
+          if (n.children) walk(n.children, p)
+        }
       }
     }
+    walk(nodes, prefix)
+    expanded = next
   }
 
   function openFile(path: string): void {
@@ -430,7 +439,7 @@
     <input placeholder="filtrer l'arbre…" bind:value={filter} />
     {#if tree?.length}
       <button class="mini" onclick={() => (tree ? expandAll(tree) : undefined)} title="Tout déplier">⇕</button>
-      <button class="mini" onclick={() => expanded.clear()} title="Tout replier">⇥</button>
+      <button class="mini" onclick={() => (expanded = new Set())} title="Tout replier">⇥</button>
     {/if}
   </div>
 

@@ -622,3 +622,68 @@ test.describe('graphify : export PNG', () => {
     expect(exported.size).toBeGreaterThan(10_000)
   })
 })
+
+// Mode Plan (OpenCode) : lecture seule par fil, bouton 📋 Plan du composer
+test.describe('mode plan (lecture seule)', () => {
+  test('toggle 📋 Plan → planMode persisté par conversation', async () => {
+    const btn = page.locator('.composer .plan-btn')
+    await expect(btn).toBeVisible()
+    await btn.click()
+    await expect(btn).toHaveClass(/on/)
+    const id = await convId()
+    const mode = await page.evaluate((cid) => {
+      const convs = JSON.parse(localStorage.getItem('chatdeck.conversations.v1') || '[]')
+      return convs.find((c) => c.id === cid)?.planMode
+    }, id)
+    expect(mode).toBe(true)
+    // Toggle retour : l'état repasse à false
+    await btn.click()
+    await expect(btn).not.toHaveClass(/on/)
+  })
+})
+
+// @fichier : endpoint d'extrait + menu d'autocomplétion du composer
+test.describe('@fichier : attachement + autocomplétion', () => {
+  test('extrait sandbox joint au prompt (endpoint + logique de bloc)', async ({ request }) => {
+    const id = await convId()
+    await request.post(`/api/sandbox/${id}/bootstrap`)
+    await request.put(`/api/sandbox/${id}/file`, { data: { path: 'atref.md', content: 'CONTENU-ATREF-12345' } })
+    const r = await request.get(`/api/sandbox/${id}/file?path=atref.md`)
+    expect(r.ok()).toBe(true)
+    const j = (await r.json()) as { content?: string }
+    // Le bloc injecté dans send() suit ce format :
+    const block = `@atref.md :\n\n\`\`\`\n${(j.content ?? '').slice(0, 4000)}\n\`\`\``
+    expect(block).toContain('CONTENU-ATREF-12345')
+  })
+
+  test('autocomplétion : taper @ propose les fichiers sandbox, clic insère le chemin', async ({ request }) => {
+    const id = await convId()
+    await request.post(`/api/sandbox/${id}/bootstrap`)
+    await request.put(`/api/sandbox/${id}/file`, { data: { path: 'demo-at.md', content: 'x' } })
+    const ta = page.locator('.composer textarea')
+    await ta.click()
+    await ta.pressSequentially('@', { delay: 40 })
+    const menu = page.locator('.composer .at-menu')
+    await expect(menu).toBeVisible({ timeout: 8000 })
+    await expect(menu.locator('button', { hasText: 'demo-at.md' }).first()).toBeVisible()
+    await menu.locator('button', { hasText: 'demo-at.md' }).first().click()
+    await expect(ta).toHaveValue(/@demo-at.md/)
+  })
+})
+
+// switch_os exposé comme outil agent (purge platform/ + retour succès)
+test.describe('outil switch_os', () => {
+  test('bascule windows → linux avec purge du profil précédent', async ({ request }) => {
+    const id = await convId()
+    await request.post(`/api/sandbox/${id}/bootstrap?os=windows`)
+    await request.post(`/api/sandbox/${id}/os`, { data: { os: 'windows' } })
+    let tree = (await (await request.get(`/api/sandbox/${id}/tree`)).json()) as { tree: { name: string; children?: { name: string }[] }[] }
+    const plat = tree.tree.find((n) => n.name === 'platform')
+    expect(plat?.children?.some((c) => c.name === 'app.config.json')).toBe(true)
+    await request.post(`/api/sandbox/${id}/os`, { data: { os: 'linux' } })
+    tree = (await (await request.get(`/api/sandbox/${id}/tree`)).json()) as typeof tree
+    const plat2 = tree.tree.find((n) => n.name === 'platform')
+    expect(plat2?.children?.some((c) => c.name === 'app.config.json')).toBeFalsy()
+    expect(plat2?.children?.length).toBeGreaterThan(0)
+  })
+})

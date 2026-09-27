@@ -71,7 +71,12 @@ export interface Settings {
   hubTabs?: HubTab[]
   /** Onglet hub actif à l'ouverture (si présent dans hubTabs) */
   hubDefault?: HubTab
+  /** Permissions par outil (inspiré d'OpenCode) : 'allow' | 'ask' | 'deny'. Défaut : allow. */
+  toolPerms?: Record<string, 'allow' | 'ask' | 'deny'>
 }
+
+/** Outils soumis aux permissions (les lectures restent toujours libres). */
+export const PERM_TOOLS = ['write_file', 'git_commit', 'switch_os', 'run_command'] as const
 
 /** Fournisseur personnalisé OpenAI-compatible (proxifié via /api/custom/:id). */
 export interface CustomProvider {

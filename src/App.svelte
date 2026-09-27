@@ -2,7 +2,7 @@
   // ChatDeck — orchestrateur « IDE premium » : châssis macOS, onglets, panneaux
   // dockables, popouts synchronisés, palette ⌘K, incognito, import/export.
   import { streamChat, isCustom, providerOf, type ProviderId, type WireMsg } from './lib/llm'
-  import { AGENTS, toolsFor, systemPromptFor, execTool, reportToolFor, type AgentId, type ToolCall } from './lib/agents'
+  import { AGENTS, toolsFor, systemPromptFor, execTool, reportToolFor, condenseHistory, type AgentId, type ToolCall } from './lib/agents'
   import FilesPanel from './lib/components/FilesPanel.svelte'
   import GraphPanel from './lib/components/GraphPanel.svelte'
   import NetworkBanner from './lib/components/NetworkBanner.svelte'
@@ -480,7 +480,17 @@
       role: 'system',
       content: multi ? systemPromptFor('nexus', [settings.system, cardsBlock, atBlock].filter(Boolean).join('\n\n'), undefined, readOnly) : [settings.system.trim(), cardsBlock, atBlock].filter(Boolean).join('\n\n'),
     }
-    const baseMessages: WireMsg[] = systemWire.content ? [systemWire, ...wires] : wires
+    const baseMessagesPre: WireMsg[] = systemWire.content ? [systemWire, ...wires] : wires
+    // Condenseur de contexte (OpenHands) : au-delà du seuil, l'historique ancien
+    // est remplacé par un résumé LLM (échec → historique intégral, jamais cassé).
+    const baseMessages = await condenseHistory(baseMessagesPre, {
+      providerId: convProvider,
+      model: convModel,
+      apiKey,
+      customs,
+      temperature: settings.temperature,
+      maxTokens: settings.maxTokens,
+    })
 
     /** Un tour d'agent : stream + exécution des outils, jusqu'à réponse finale ou délégation. */
     async function runTurns(
@@ -568,10 +578,20 @@
             report = String(call.args.report ?? '')
             result = 'Rapport reçu.'
           } else {
-            try {
-              result = await execTool(convId, call)
-            } catch (e) {
-              result = `Erreur outil : ${(e as Error).message}`
+            // Permissions par outil (OpenCode) : deny → refus immédiat,
+            // ask → l'utilisateur autorise/refuse dans le fil avant l'exécution.
+            const perm = settings.toolPerms?.[call.name] ?? 'allow'
+            if (perm === 'deny') {
+              result = `❌ refusé : l'outil ${call.name} est interdit par les réglages (permissions).`
+            } else if (perm === 'ask') {
+              const answer = await askToolPerm(call.name, call.args)
+              if (!answer) result = `❌ refusé par l'utilisateur : ${call.name} n'a pas été exécuté.`
+              else if (permAnswer === 'always') {
+                settings.toolPerms = { ...(settings.toolPerms ?? {}), [call.name]: 'allow' }
+                result = await runToolSafe(convId, call)
+              } else result = await runToolSafe(convId, call)
+            } else {
+              result = await runToolSafe(convId, call)
             }
             const detail = result.slice(0, 80)
             patchLive((m) => ({ ...m, toolEvents: [...(m.toolEvents ?? []), { tool: call.name, detail }] }))
@@ -892,17 +912,44 @@
     showTerminal = !showTerminal
   }
 
+  /** Exécution d'outil avec erreur capturée (utilisé par la gate de permissions). */
+  async function runToolSafe(convId: string, call: ToolCall): Promise<string> {
+    try {
+      return await execTool(convId, call)
+    } catch (e) {
+      return `Erreur outil : ${(e as Error).message}`
+    }
+  }
+
+  /** Réponse de la demande de permission outil en cours ('allow' | 'always' | 'deny'). */
+  let permAnswer: 'allow' | 'always' | 'deny' | null = null
+  /** Demande pending affichée dans le fil (message outil + boutons). */
+  let pendingPerm = $state<{ name: string; args: Record<string, unknown>; resolve: (a: 'allow' | 'always' | 'deny') => void } | null>(null)
+
+  /** Pause le tour d'agent et demande à l'utilisateur d'autoriser l'outil. */
+  function askToolPerm(name: string, args: Record<string, unknown>): Promise<'allow' | 'always' | 'deny'> {
+    return new Promise((resolve) => {
+      pendingPerm = { name, args, resolve }
+    })
+  }
+
+  function answerPerm(a: 'allow' | 'always' | 'deny'): void {
+    permAnswer = a
+    pendingPerm?.resolve(a)
+    pendingPerm = null
+  }
+
   /** Fichiers : s'ouvre TOUJOURS dans la fenêtre outils (hub), jamais en overlay. */
   function toggleFiles(convId?: string): void {
     filesConvId = convId ?? currentId
     showFiles = !showFiles
     openHub('files')
   }
-
-  /** Preview : overlay centré discret sous le chat (inchangé). */
+  /** Preview : s'ouvre TOUJOURS dans la fenêtre outils (hub), jamais en overlay. */
   function togglePreview(convId?: string): void {
-    if (!showPreview || convId) previewConvId = convId ?? currentId
+    previewConvId = convId ?? currentId
     showPreview = !showPreview
+    openHub('preview')
   }
 
   /** Commit auto : git add -A + commit de la sandbox via l'endpoint sécurisé. */
@@ -1276,6 +1323,7 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
         </div>
         <Composer
           streaming={streamingIds.has(current.id)}
+          convId={current.id}
           providerId={current.providerId}
           model={current.model}
           {customs}
@@ -1370,8 +1418,18 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
         </div>
       {/each}
     </div>
+    {#if pendingPerm}
+      <div class="perm-ask" role="alertdialog" aria-label="Permission outil">
+        <span class="perm-ico">🔐</span>
+        <span class="perm-txt">L'agent demande à exécuter <code>{pendingPerm.name}</code>{Object.keys(pendingPerm.args).length ? ` (${Object.entries(pendingPerm.args).map(([k, v]) => `${k}: ${String(v).slice(0, 40)}`).join(', ')})` : ''}</span>
+        <button class="perm-btn allow" onclick={() => answerPerm('allow')}>Autoriser</button>
+        <button class="perm-btn always" onclick={() => answerPerm('always')}>Toujours</button>
+        <button class="perm-btn deny" onclick={() => answerPerm('deny')}>Refuser</button>
+      </div>
+    {/if}
     <Composer
       streaming={streamingIds.has(convId)}
+      convId={convId}
       providerId={c.providerId}
       model={c.model}
       {customs}
@@ -1578,8 +1636,8 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
   </HubWindow>
 {/if}
 
-{#if showPreview && !showHub && (previewConvId ?? currentId)}
-  <PreviewPanel convId={previewConvId ?? currentId!} onClose={() => (showPreview = false)} />
+{#if showPreview && showHub && hubInView.includes('preview') && (previewConvId ?? currentId)}
+  <PreviewPanel convId={previewConvId ?? currentId!} onClose={() => (showHub = false)} />
 {/if}
 
 {#if showPalette}
@@ -1877,5 +1935,57 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
     50% {
       opacity: 0;
     }
+  }
+
+  /* Demande de permission outil (permissions par outil, inspiré d'OpenCode) */
+  .perm-ask {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 14px 6px;
+    padding: 8px 12px;
+    border: 1px solid #f59e0b55;
+    border-radius: 10px;
+    background: #f59e0b14;
+    font-size: 12.5px;
+    color: #fcd34d;
+  }
+  .perm-ask code {
+    color: #fbbf24;
+    background: #f59e0b1c;
+    padding: 1px 5px;
+    border-radius: 5px;
+    font-size: 11.5px;
+  }
+  .perm-txt {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .perm-btn {
+    border: 1px solid #ffffff22;
+    background: #ffffff10;
+    color: #e8e8f0;
+    border-radius: 7px;
+    padding: 3px 10px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .perm-btn.allow {
+    border-color: #27c93f66;
+    color: #7ee88f;
+  }
+  .perm-btn.always {
+    border-color: #818cf866;
+    color: #a5b4fc;
+  }
+  .perm-btn.deny {
+    border-color: #ff6b6b66;
+    color: #ff9b9b;
+  }
+  .perm-btn:hover {
+    background: #ffffff1c;
   }
 </style>

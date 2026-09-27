@@ -3,7 +3,7 @@
   // fournisseurs personnalisés OpenAI-compatible, préférences IDE, effacement des données.
   import { PROVIDERS, isCustom } from '../llm'
   import { groupNotes, vaultSummary } from '../organize'
-  import { HUB_TABS } from '../store'
+  import { HUB_TABS, PERM_TOOLS } from '../store'
   import {
     defaultSettings,
     type CustomProvider,
@@ -119,7 +119,7 @@
 
   /* ---------- sections dépliables ---------- */
 
-  type SectionId = 'keys' | 'customs' | 'generation' | 'sandbox' | 'obsidian' | 'promptdeck' | 'appearance' | 'data'
+  type SectionId = 'keys' | 'customs' | 'generation' | 'sandbox' | 'perms' | 'obsidian' | 'promptdeck' | 'appearance' | 'data'
   let open = $state<Set<SectionId>>(new Set(['keys']))
 
   function toggleSection(id: SectionId): void {
@@ -529,6 +529,31 @@
     </div>
     {/if}
 
+    {@render head('perms', 'Permissions des outils')}
+    {#if open.has('perms')}
+    <div class="hubtabs">
+      <span class="hubtabs-label">Ce que les agents peuvent faire sans te demander (inspiré d'OpenCode)</span>
+      <div class="perms">
+        {#each PERM_TOOLS as t (t)}
+          <div class="perm-row">
+            <code>{t}</code>
+            <div class="perm-seg" role="radiogroup" aria-label="Permission {t}">
+              {#each ['allow', 'ask', 'deny'] as p (p)}
+                <button
+                  class:active={(settings.toolPerms?.[t] ?? 'allow') === p}
+                  title={p === 'allow' ? 'Exécuter sans demander' : p === 'ask' ? 'Demander à chaque fois' : 'Refuser systématiquement'}
+                  onclick={() => setSetting('toolPerms', { ...(settings.toolPerms ?? {}), [t]: p as 'allow' | 'ask' | 'deny' })}
+                >
+                  {p === 'allow' ? '✓ libre' : p === 'ask' ? '? demander' : '✗ interdit'}
+                </button>
+              {/each}
+            </div>
+          </div>
+        {/each}
+      </div>
+    </div>
+    {/if}
+
     {@render head('data', 'Données')}
     {#if open.has('data')}
     <div class="gen">
@@ -872,5 +897,46 @@
   .pd-child {
     color: var(--muted);
     padding-left: 16px;
+  }
+
+  /* Permissions par outil (allow / ask / deny) */
+  .perms {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .perm-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .perm-row code {
+    font-size: 12px;
+    color: var(--fg);
+    background: #ffffff10;
+    padding: 2px 7px;
+    border-radius: 6px;
+  }
+  .perm-seg {
+    display: inline-flex;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .perm-seg button {
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    font-size: 11.5px;
+    padding: 4px 10px;
+    cursor: pointer;
+  }
+  .perm-seg button + button {
+    border-left: 1px solid var(--border);
+  }
+  .perm-seg button.active {
+    background: #818cf82c;
+    color: #c7d2fe;
   }
 </style>
