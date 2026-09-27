@@ -14,12 +14,30 @@
     "test": "vitest run",
     "test:e2e": "playwright test",
     "check": "svelte-check --output summary",
-    "check:ci": "svelte-check --output summary"
+    "check:ci": "svelte-check --output summary",
+    "app": "npm run build && electron electron/main.mjs",
+    "app:dev": "CHATDECK_DEV_URL=http://localhost:5199 electron electron/main.mjs",
+    "app:multi": "npm run build && electron electron/main.mjs --multi",
+    "dmg": "npm run build && electron-builder --mac dmg"
+  },
+  "main": "electron/main.mjs",
+  "build": {
+    "appId": "com.chatdeck.app",
+    "productName": "ChatDeck",
+    "directories": { "output": "release" },
+    "files": ["dist/**", "electron/**"],
+    "mac": {
+      "target": [{ "target": "dmg", "arch": ["arm64", "x64"] }],
+      "category": "public.app-category.developer-tools",
+      "identity": null
+    }
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",
     "@sveltejs/vite-plugin-svelte": "^5.0.3",
     "@types/node": "^26.6.2",
+    "electron": "^44.4.5",
+    "electron-builder": "^26.15.3",
     "happy-dom": "20.14.5",
     "svelte": "^5.16.0",
     "svelte-check": "^4.1.0",

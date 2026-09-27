@@ -11,3 +11,4 @@ playwright-report/
 blob-report/
 
 .vite-dev.pid
+release/

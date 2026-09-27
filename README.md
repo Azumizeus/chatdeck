@@ -37,6 +37,22 @@ npm run dev:bg       # Vite en tâche de fond (port 5199) — arrêt : npm run d
 
 `dev:bg` détache Vite du terminal : `dev:bg:status` vérifie, `dev:bg:log` suit le log (`vite-dev.log`), `dev:bg:stop` arrête proprement le pid enregistré.
 
+## App de bureau (DMG) et multi-instances
+
+ChatDeck existe aussi en vraie app macOS (Electron, fenêtre cadre native) :
+
+```bash
+npm run app            # build + ouvre l'app de bureau
+npm run app:dev        # app de bureau branchée sur le serveur Vite (hot reload)
+npm run app:multi      # instance SUPPLÉMENTAIRE indépendante (localStorage séparé)
+npm run dmg            # fabrique release/ChatDeck-<version>.dmg (arm64 + x64)
+```
+
+Par défaut une seule instance tourne : relancer l'app focus la fenêtre existante.
+`npm run app:multi` (ou `--multi`) ouvre des instances indépendantes — utile pour
+comparer deux conversations côte à côte. Le DMG n'est pas signé (usage local) :
+au premier lancement, clic droit → Ouvrir.
+
 Les clés se saisissent aussi dans **⚙︎ Réglages** (⌘K → « Réglages ») : test en direct par fournisseur, stockage `localStorage`, jamais envoyées ailleurs qu'au fournisseur choisi (via le proxy Vite). Fournisseurs custom : `custom-providers.local.json` (gitignore) alimente le proxy générique.
 
 ```bash
