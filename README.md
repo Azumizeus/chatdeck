@@ -67,7 +67,7 @@ npm run build        # bundle production (~72 kB gzip)
 - **Barre d'état** : fournisseur, modèle, latence, **tokens réels** (usage renvoyé par l'API quand disponible, estimation sinon) et **coût estimé par conversation** (tarifs du catalogue OpenRouter, repli indicatif)
 - **Palette de commandes ⌘K** : toutes les actions au clavier, dont snap zone suivante (⌘⌥S)
 - **Barre d'outils permanente** : Agents · Duel · Fichiers · Terminal · Preview · Graphify · Outils · Chercher · Réglages, présente dans tous les modes (docké, duel, flottant), états actifs surlignés
-- **Fenêtre outils (hub)** 🗂 : une fenêtre déployable et déplaçable qui regroupe Graphify, Fichiers, Terminal, Preview et Réglages — le chat reste entièrement visible et utilisable derrière ; géométrie persistée, et réglage « quels panneaux afficher » dans ⚙︎ Réglages → Apparence
+- **Fenêtre outils (hub)** 🗂 : une fenêtre déployable et déplaçable qui regroupe Graphify, Fichiers, Terminal, Preview, Réglages et **Skills & Agents** — le chat reste entièrement visible et utilisable derrière ; géométrie persistée, onglet actif mémorisé entre les sessions, réglage « quels panneaux afficher » dans ⚙︎ Réglages → Apparence, et extraction de chaque onglet en popout dédié
 
 ### Agents & sandbox (Nexus & Seeker)
 - **Nexus** 🧠, super agent orchestrateur multidisciplinaire : il écrit le brief dans `NOTES.md`, crée les fichiers, délègue à **Seeker** 🔎 (exploratrice : recherche, analyse) puis conclut d'après son rapport — délégation multi-agents dans le même fil
@@ -77,6 +77,8 @@ npm run build        # bundle production (~72 kB gzip)
 - **Terminal intégré** ⌨︎ : exécution réelle dans le workspace — `node`, `npm`, `npx`, `git`, `ls`, `cat`… — spawn sans shell, timeout 60 s, sortie streamée, historique ↑/↓
 - **Panneau Fichiers** 📁 (mode gestionnaire, élargissable ⤢) : arborescence complète filtrable, renommer/dupliquer/supprimer, import glisser-déposer (≤ 20 fichiers texte), téléchargement, preview live HTML/CSS/JS, **historique Git avec diff par commit** (+/−), commit auto annoté, **switcher d'OS sécurisé** (mac / windows / linux)
 - **Santé sandbox** dans les réglages : racine, nombre de workspaces, tailles, suppression unitaire ou générale
+- **Profil OS total** : changer d'OS (mac/windows/linux) **purge les fichiers platform/ des autres profils** — plus de dossier windows qui traîne sous mac/linux
+- **Skills & Agents (.CD)** 🃏 : panneau deck (hub ou popout) qui liste les 335+ fiches (pack PromptDeck, projet ./.cd, global ~/.chatdeck) ; **activation par clic** — une fiche activée est injectée dans le prompt système des agents (même mécanisme que `deck run`, plafond 12 fiches) ; création de fiche intégrée (équivalent `deck cd --new`)
 
 ### Mode duel
 - **Deux conversations côte à côte** (⚔︎ dans la barre d'outils ou ⌘K) avec splitter redimensionnable (20–80 %, double-clic = 50)
@@ -138,6 +140,7 @@ src/
         ├── Toolbar.svelte        # barre d'outils permanente (agents, duel, fichiers, terminal…)
         ├── FloatingWindow.svelte # fenêtre flottante : drag, resize 8 dirs, snap + ghost 150 ms
         ├── HubWindow.svelte      # fenêtre outils à onglets (drag/resize, géométrie persistée)
+        ├── DeckPanel.svelte      # skills & agents .CD : activation par clic, création, aperçu
         ├── TaskbarPill.svelte    # pastille barre de tâches (état live, restaurable)
         ├── TabBar.svelte         # onglets réordonnables
         ├── Sidebar.svelte        # historique + import/export + incognito

@@ -3,7 +3,7 @@ import { svelte } from '@sveltejs/vite-plugin-svelte'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { sandboxServer } from './sandbox-server'
+import { sandboxServer, deckServer } from './sandbox-server'
 
 const root = fileURLToPath(new URL('.', import.meta.url))
 
@@ -176,7 +176,7 @@ function customProxy(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [svelte(), localKeys(), customProxy(), sandboxServer(), healthEndpoint()],
+  plugins: [svelte(), localKeys(), customProxy(), sandboxServer(), deckServer(), healthEndpoint()],
   server: {
     port: 5199,
     strictPort: true,

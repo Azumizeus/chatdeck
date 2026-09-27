@@ -18,6 +18,7 @@
     saveSettings,
     loadCustomProviders,
     saveCustomProviders,
+    loadDeckState,
     loadIncognitoId,
     saveIncognitoId,
     newConversation,
@@ -44,6 +45,7 @@
   import WindowFrame from './lib/components/WindowFrame.svelte'
   import FloatingWindow from './lib/components/FloatingWindow.svelte'
   import HubWindow from './lib/components/HubWindow.svelte'
+  import DeckPanel from './lib/components/DeckPanel.svelte'
   import type { HubTab } from './lib/store'
   import TaskbarPill from './lib/components/TaskbarPill.svelte'
   import CommandPalette from './lib/components/CommandPalette.svelte'
@@ -73,7 +75,10 @@
   // Fenêtre outils (hub) : regroupe Graphify/Fichiers/Terminal/Preview/Réglages
   // dans une fenêtre déployable — le chat reste visible derrière.
   let showHub = $state(false)
-  let hubTab = $state<HubTab>('graph')
+  // svelte-ignore state_referenced_locally (valeur initiale voulue : dernier onglet de la session précédente)
+  let hubTab = $state<HubTab>(settings.hubDefault ?? 'graph')
+  /** Popout dédié au panneau deck (fenêtre window.open, état via localStorage) */
+  let deckPopout = $state<Window | null>(null)
   let showSearch = $state(false)
   /** Mode d'emploi interactif : 1ʳᵉ visite (réglage showTour actif et jamais complété) */
   let showTour = $state(false)
@@ -104,6 +109,19 @@
   const hubInView = $derived((settings.hubTabs ?? []).slice())
   /** Onglet réellement affiché : retombe sur le premier visible si le réglage change pendant l'ouverture. */
   const hubActive = $derived(hubInView.includes(hubTab) ? hubTab : (hubInView[0] ?? 'graph'))
+  // L'onglet actif est mémorisé entre les sessions (hubDefault mis à jour au switch)
+  $effect(() => {
+    if (showHub && hubActive !== settings.hubDefault) settings = { ...settings, hubDefault: hubActive }
+  })
+
+  /** Ouvre (ou focus) le popout dédié au panneau deck. */
+  function popoutDeck(): void {
+    if (deckPopout && !deckPopout.closed) {
+      deckPopout.focus()
+      return
+    }
+    deckPopout = window.open('/#popout=deck', 'chatdeck-deck', 'popup=yes,width=620,height=680,left=160,top=100')
+  }
   let showTerminal = $state(false)
   let showPreview = $state(false)
   /** Conversations épinglées à l'ouverture des panneaux (duel inclus) */
@@ -422,9 +440,10 @@
           ...conv.messages.filter((m) => !m.error && m.content).map((mm) => ({ role: mm.role, content: mm.content })),
           { role: 'user' as const, content: text },
         ]
+    const cardsBlock = activeCardsSystem()
     const systemWire: WireMsg = {
       role: 'system',
-      content: multi ? systemPromptFor('nexus', settings.system) : settings.system.trim(),
+      content: multi ? systemPromptFor('nexus', [settings.system, cardsBlock].filter(Boolean).join('\n\n')) : [settings.system.trim(), cardsBlock].filter(Boolean).join('\n\n'),
     }
     const baseMessages: WireMsg[] = systemWire.content ? [systemWire, ...wires] : wires
 
@@ -452,7 +471,7 @@
           messages:
             agent !== 'nexus'
               ? [
-                  { role: 'system', content: systemPromptFor(agent, settings.system, delegationTask ? { task: delegationTask, from: delegationFrom } : undefined) },
+                  { role: 'system', content: systemPromptFor(agent, [settings.system, cardsBlock].filter(Boolean).join('\n\n'), delegationTask ? { task: delegationTask, from: delegationFrom } : undefined) },
                   ...wires,
                   ...extra,
                 ]
@@ -617,6 +636,18 @@
     if (!currentId) return
     const convId = currentId
     void sendTo(convId, text)
+  }
+
+  /** Fiches .CD activées (panneau deck) : injectées dans le prompt système, comme `deck run`. */
+  function activeCardsSystem(): string {
+    const st = loadDeckState()
+    if (!st.active.length) return ''
+    const loaded = st.active
+      .map((id) => st.cache[id])
+      .filter(Boolean)
+      .map((raw) => raw!.slice(0, 6000))
+    if (!loaded.length) return ''
+    return `Fiches de méthode activées par l'utilisateur — suis leurs instructions :\n\n${loaded.join('\n\n---\n\n')}`
   }
 
   /** Saut depuis la recherche : ouvre le fil, scrolle au message et le flashe. */
@@ -1384,6 +1415,8 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
           onReplayTour={() => (showTour = true)}
         />
       </div>
+    {:else if hubActive === 'deck'}
+      <DeckPanel onClose={() => (showHub = false)} onPopout={popoutDeck} />
     {/if}
   </HubWindow>
 {/if}

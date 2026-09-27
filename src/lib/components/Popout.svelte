@@ -4,6 +4,7 @@
   // synchronisé bidirectionnellement via BroadcastChannel.
   import ChatMessage from './ChatMessage.svelte'
   import SettingsPanel from './SettingsPanel.svelte'
+  import DeckPanel from './DeckPanel.svelte'
   import {
     loadConversations,
     loadKeys,
@@ -18,7 +19,7 @@
     type Settings,
   } from '../store'
 
-  const panel = new URLSearchParams(location.hash.slice(1)).get('popout') === 'settings' ? 'settings' : 'chat'
+  const panel = new URLSearchParams(location.hash.slice(1)).get('popout') ?? 'chat'
 
   let conversations = $state<Conversation[]>([])
   let activeId = $state<string | null>(null)
@@ -47,14 +48,14 @@
     }
   }
   // Enregistrement auprès de l'app principale (elle poussera la conversation active)
-  channel.postMessage({ type: 'popout-registered', payload: panel === 'settings' ? 'settings' : 'chat' })
+  channel.postMessage({ type: 'popout-registered', payload: panel })
 
   // Persistance de la géométrie de la fenêtre (poll léger : pas d'événement de déplacement)
   const geoTimer = setInterval(() => {
     channel.postMessage({
       type: 'popout-geometry',
       payload: {
-        panel: panel === 'settings' ? 'settings' : 'chat',
+        panel,
         geo: { x: window.screenX, y: window.screenY, w: window.innerWidth, h: window.innerHeight },
       },
     })
@@ -62,7 +63,7 @@
 
   window.addEventListener('beforeunload', () => {
     clearInterval(geoTimer)
-    channel.postMessage({ type: 'popout-closed', payload: panel === 'settings' ? 'settings' : 'chat' })
+    channel.postMessage({ type: 'popout-closed', payload: panel })
     channel.close()
   })
 
@@ -115,6 +116,10 @@
       onRemoveCustom={removeCustom}
       onClose={() => window.close()}
     />
+  {:else if panel === 'deck'}
+    <div class="deckpop">
+      <DeckPanel onClose={() => window.close()} />
+    </div>
   {:else}
     <div class="chat">
       <div class="msgs">
@@ -161,6 +166,20 @@
     display: flex;
     flex-direction: column;
     min-height: 0;
+  }
+  .deckpop {
+    flex: 1;
+    display: flex;
+    min-height: 0;
+  }
+  .deckpop :global(.deck) {
+    position: absolute;
+    inset: 0;
+    width: auto;
+    max-height: none;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
   }
   .msgs {
     flex: 1;

@@ -559,6 +559,16 @@ export function sandboxServer(): Plugin {
                 if (!existsSync(base)) await seedWorkspace(convId, os)
                 await mkdir(path.join(base, '.chatdeck'), { recursive: true })
                 await writeFile(path.join(base, '.chatdeck', 'os.txt'), os, 'utf8')
+                // Le changement d'environnement doit être TOTAL : on retire les
+                // fichiers platform/ des AUTRES profils avant d'écrire celui-ci,
+                // sinon l'ancien profil (ex. windows) traîne sous mac/linux.
+                const otherOses = (['mac', 'windows', 'linux'] as OsProfile[]).filter((o) => o !== os)
+                for (const o of otherOses) {
+                  for (const p of Object.keys(OS_FILES[o])) {
+                    const t = safeResolve(convId, p)
+                    if (t && existsSync(t.target)) await rm(t.target, { force: true })
+                  }
+                }
                 // écrit les fichiers du profil s'ils manquent
                 for (const [p, content] of Object.entries(OS_FILES[os])) {
                   const t = safeResolve(convId, p)
@@ -567,7 +577,7 @@ export function sandboxServer(): Plugin {
                     await writeFile(t.target, content, 'utf8')
                   }
                 }
-                return json(res, 200, { ok: true, os, note: 'chroot/AES-256 simulés dans le workspace (fichiers platform/), exécutions bornées par la liste blanche du terminal' })
+                return json(res, 200, { ok: true, os, note: 'profil actif : platform/ purgé des autres OS ; chroot/AES-256 simulés, exécutions bornées par la liste blanche du terminal' })
               }
             }
 
@@ -719,6 +729,112 @@ export function sandboxServer(): Plugin {
             }
 
             return json(res, 404, { error: 'route inconnue' })
+          } catch (e) {
+            return json(res, 500, { error: (e as Error).message })
+          }
+        })()
+      })
+    },
+  }
+}
+
+/**
+ * Plugin Vite : endpoints /api/deck pour le panneau Skills & Agents du hub.
+ *
+ *   GET  /api/deck/cards            → liste des fiches .CD (library + ./.cd + ~/.chatdeck)
+ *   GET  /api/deck/card?id=…        → contenu complet d'une fiche (frontmatter + corps)
+ *   POST /api/deck/cards            → crée une fiche {name, kind, dir?} (équivalent deck cd --new)
+ *
+ * Lecture seule sur promptdeck/library (artefact généré) ; les créations vont
+ * dans ./.cd/skills|agents du projet. Aucune exécution, aucun accès réseau.
+ */
+export function deckServer(): Plugin {
+  type Card = { id: string; kind: 'skill' | 'agent'; source: 'library' | 'project' | 'global'; path: string; description: string }
+  const parseFrontmatter = (src: string): { name: string; description: string; kind: string } => {
+    const m = /^---\r?\n([\s\S]*?)\r?\n---/.exec(src)
+    const pick = (k: string): string => {
+      const v = m?.[1].match(new RegExp(`^${k}:(.*)$`, 'm'))
+      return (v?.[1] ?? '').trim().replace(/^["']|["']$/g, '')
+    }
+    return { name: pick('name'), description: pick('description'), kind: pick('kind') || 'skill' }
+  }
+
+  return {
+    name: 'chatdeck-deck-server',
+    configureServer(server) {
+      server.middlewares.use('/api/deck', (req, res) => {
+        void (async () => {
+          const url = (req.url ?? '').replace(/^\//, '')
+          const [pathPart, queryPart] = url.split('?')
+          const query = new URLSearchParams(queryPart ?? '')
+
+          try {
+            const roots: { dir: string; source: Card['source'] }[] = [
+              { dir: path.join(process.cwd(), 'promptdeck', 'library'), source: 'library' },
+              { dir: path.join(process.cwd(), '.cd'), source: 'project' },
+              { dir: path.join(homedir(), '.chatdeck'), source: 'global' },
+            ]
+
+            // Liste des fiches
+            if ((pathPart === 'cards' || pathPart === '') && req.method === 'GET') {
+              const cards: Card[] = []
+              const seen = new Set<string>()
+              for (const { dir, source } of roots) {
+                for (const kindDir of ['skills', 'agents']) {
+                  const full = path.join(dir, kindDir)
+                  if (!existsSync(full)) continue
+                  for (const f of await readdir(full)) {
+                    if (!f.endsWith('.md') && !f.endsWith('.cd')) continue
+                    const p = path.join(full, f)
+                    try {
+                      const fm = parseFrontmatter(await readFile(p, 'utf8'))
+                      if (!fm.name || seen.has(fm.name)) continue
+                      seen.add(fm.name)
+                      cards.push({ id: fm.name, kind: fm.kind === 'agent' ? 'agent' : 'skill', source, path: p, description: fm.description })
+                    } catch {
+                      /* fiche illisible : ignorée */
+                    }
+                  }
+                }
+              }
+              cards.sort((a, b) => a.id.localeCompare(b.id))
+              return json(res, 200, { cards })
+            }
+
+            // Contenu d'une fiche
+            if (pathPart === 'card' && req.method === 'GET') {
+              const id = query.get('id') ?? ''
+              if (!id || /[\\/\0]/.test(id)) return json(res, 400, { error: 'id invalide' })
+              for (const { dir, source } of roots) {
+                for (const kindDir of ['skills', 'agents']) {
+                  for (const ext of ['.cd', '.md']) {
+                    const p = path.join(dir, kindDir, `${id}${ext}`)
+                    if (existsSync(p)) return json(res, 200, { id, source, content: await readFile(p, 'utf8') })
+                  }
+                }
+              }
+              return json(res, 404, { error: `fiche inconnue : ${id}` })
+            }
+
+            // Création (équivalent deck cd --new)
+            if (pathPart === 'cards' && req.method === 'POST') {
+              const body = JSON.parse(await readBody(req)) as { name?: string; kind?: string; description?: string }
+              const slug = String(body.name ?? '').toLowerCase().replace(/[^a-z0-9-]+/g, '-')
+              if (!slug || slug === '-') return json(res, 400, { error: 'nom invalide (a-z, 0-9, tirets)' })
+              const kind = body.kind === 'agent' ? 'agents' : 'skills'
+              const dir = path.join(process.cwd(), '.cd', kind)
+              const file = path.join(dir, `${slug}.cd`)
+              if (existsSync(file)) return json(res, 409, { error: `existe déjà : .cd/${kind}/${slug}.cd` })
+              await mkdir(dir, { recursive: true })
+              await writeFile(
+                file,
+                `---\nname: ${slug}\ndescription: ${body.description ?? 'Décris ici QUAND utiliser cette fiche (déclencheurs concrets).'}\nkind: ${kind === 'agents' ? 'agent' : 'skill'}\ntools: [read, list, bash]\n---\n\n# ${slug}\n\n## Quand\n\n## Procédure\n\n1. \n\n## Vérification\n\n`,
+                'utf8',
+              )
+              return json(res, 200, { ok: true, path: `.cd/${kind}/${slug}.cd` })
+            }
+
+            return json(res, 404, { error: 'route deck inconnue' })
           } catch (e) {
             return json(res, 500, { error: (e as Error).message })
           }

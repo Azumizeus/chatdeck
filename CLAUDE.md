@@ -64,13 +64,26 @@ arrêt via `npm run dev:bg:stop` — indispensable après un redémarrage de mac
 - **WelcomeTour.svelte** : visite guidée 6 étapes au premier lancement ;
   réglage `Settings.showTour` (Réglages → Apparence), rejouable via ⌘K « tour ».
 - **HubWindow.svelte** : fenêtre outils à onglets (graph/files/terminal/preview/
-  settings) ; réglage `Settings.hubTabs`/`hubDefault`, géométrie
-  `chatdeck.hub.v1` ; les panneaux y sont re-ancrés via la classe `.hubbed`
-  (ils sont `position: fixed` chez eux) ; quand le hub affiche un onglet, le
-  panneau docké équivalent est masqué (`!showHub || hubActive !== …`).
+  settings/deck) ; réglage `Settings.hubTabs`/`hubDefault` (l'onglet actif est
+  réécrit dans `hubDefault` au switch), géométrie `chatdeck.hub.v1` ; les
+  panneaux y sont re-ancrés via la classe `.hubbed` (ils sont
+  `position: fixed` chez eux) ; quand le hub affiche un onglet, le panneau
+  docké équivalent est masqué (`!showHub || hubActive !== …`). Chaque onglet
+  peut être extrait en popout dédié (`/#popout=<panel>`, canal
+  `chatdeck-sync-v1`).
 - **CLI `deck`** (travail d'un autre agent, non commité à ce jour) : lit les
   fiches `.CD` dans `promptdeck/library/`, `./.cd/` et `~/.chatdeck/`.
   Première fiche projet : `.cd/skills/verification-lot.cd`.
+- **DeckPanel.svelte** (onglet deck du hub, popout `#popout=deck`) : liste les
+  fiches via `/api/deck/cards` (plugin `deckServer` de sandbox-server.ts),
+  active par clic — état `chatdeck.cards.v1` (`{active, cache}` via
+  `loadDeckState/saveDeckState`) — et crée des fiches (POST `/api/deck/cards`)
+  dans `./.cd/`. L'injection dans le prompt se fait dans `App.send()` via
+  `activeCardsSystem()` (plafond 12 fiches actives, cache rempli à
+  l'activation — ne pas appeler `/api/deck/card` dans send()).
+- **Profil OS (sandbox-server.ts)** : le POST `/api/sandbox/:id/os` purge les
+  `platform/` des autres profils avant d'écrire celui choisi — un switch
+  mac→windows→mac ne laisse plus de fichiers résiduels.
 - **Rangement Obsidian** : SettingsPanel regroupe les notes par dossier
   (`groupNotes`, `vaultSummary` dans organize.ts).
 

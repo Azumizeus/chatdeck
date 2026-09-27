@@ -1,0 +1,41 @@
+---
+name: verification-lot
+description: Avant de committer un lot de modifications ChatDeck — vérifier types, tests et e2e, analyser chaque échec, puis committer sans toucher au travail des autres agents.
+kind: skill
+tools: [read, list, bash]
+---
+
+# verification-lot
+
+## Quand
+
+Dès qu'un lot de modifications (features, corrections, refactor) est terminé et
+doit être validé ou commité dans ChatDeck. À lancer AVANT tout `git commit`.
+
+## Procédure
+
+1. Types d'abord : `npm run check` — vise 0 erreur ET 0 warning. Chaque erreur
+   est analysée (fichier + ligne) avant tout correctif, jamais aveuglément.
+2. Tests unitaires : `npm test` — tout doit passer ; un test qui échoue à cause
+   d'un flottant se corrige avec un epsilon, pas en l'assouplissant.
+3. E2E : `npm run test:e2e` (le serveur Vite démarre seul). Un échec collectif
+   « backdrop intercepts pointer events » = visite guidée → poser
+   `showTour:false` dans le localStorage de `beforeEach`.
+4. Serveur dev : `npm run dev:bg` (ou vérifier `dev:bg:status`), puis curl
+   `/` et `/api/health` — 4 providers attendus.
+5. Inventaire git : `git status --porcelain` + lecture des diffs. Ne jamais
+   stage en masse : vérifier chaque fichier, y compris les modifications d'un
+   AUTRE agent (devs concurrents sur le même checkout). En cas de fichier
+   partagé (package.json, .gitignore), réduire le hunk au strict nécessaire
+   (backup dans /tmp avant chirurgie).
+6. Anti-fuite : grep du diff final pour `sk-or-`, `nvapi-`, tout contenu de
+   `keys.local.json`. Zéro tolérance.
+7. Commit : message en français, verbe à l'infinitif, corps à puces expliquant
+   le POURQUOI, footer Codebuff. Jamais de `git push` sans demande explicite.
+
+## Vérification
+
+- `git log --oneline -1` montre le commit attendu.
+- `git status` ne contient plus aucun fichier du lot (seul le travail des
+  autres agents peut rester).
+- Les trois suites (check, vitest, e2e) sont vertes sur le commit final.

@@ -315,6 +315,58 @@ test.describe('profils OS sécurisés (Secure AI Multi-OS)', () => {
   }
 })
 
+// Panneau deck (Skills & Agents .CD) : liste, activation par clic, création
+test.describe('deck : skills & agents (.CD)', () => {
+  test('onglet deck : liste des fiches, activation persistée, désactivation', async () => {
+    await page.locator('.toolbar .tb', { hasText: 'Outils' }).click()
+    const hub = page.locator('.hub')
+    await expect(hub).toBeVisible()
+    await hub.locator('nav button', { hasText: 'Skills' }).click()
+    const deck = hub.locator('.deck')
+    await expect(deck).toBeVisible()
+
+    // La bibliothèque est chargée (335 fiches minimum : pack + verification-lot)
+    await expect(deck.locator('.cardrow').first()).toBeVisible()
+    const row = deck.locator('.cardrow', { hasText: 'verification-lot' }).first()
+    await expect(row).toBeVisible()
+
+    // Activation par clic → état persisté + contenu en cache
+    await row.locator('.main').click()
+    await expect(deck.locator('.note')).toContainText('verification-lot activée')
+    const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('chatdeck.cards.v1') || '{}'))
+    expect(stored.active).toContain('verification-lot')
+    expect(stored.cache['verification-lot']).toContain('name: verification-lot')
+
+    // Désactivation → état vidé
+    await row.locator('.main').click()
+    const after = await page.evaluate(() => JSON.parse(localStorage.getItem('chatdeck.cards.v1') || '{}'))
+    expect(after.active ?? []).not.toContain('verification-lot')
+  })
+
+  test('endpoint /api/deck/cards : liste pack + projet, contenu complet', async ({ request }) => {
+    const list = await (await request.get('/api/deck/cards')).json()
+    expect(list.cards.length).toBeGreaterThan(300)
+    const lot = list.cards.find((c: { id: string }) => c.id === 'verification-lot')
+    expect(lot.source).toBe('project')
+    const card = await (await request.get('/api/deck/card?id=verification-lot')).json()
+    expect(card.content).toContain('name: verification-lot')
+  })
+
+  test('création de fiche via le panneau (POST /api/deck/cards)', async ({ request }) => {
+    const { rmSync } = await import('node:fs')
+    const name = `e2e-creatrice-${Date.now()}`
+    const r = await request.post('/api/deck/cards', { data: { name, kind: 'agent' } })
+    expect((await r.json()).ok).toBe(true)
+    // La fiche créée apparaît dans la liste (source project, kind agent)
+    const list = await (await request.get('/api/deck/cards')).json()
+    const created = list.cards.find((c: { id: string }) => c.id === name)
+    expect(created?.kind).toBe('agent')
+    expect(created?.source).toBe('project')
+    // Nettoyage (la création passe par ./.cd/agents du projet)
+    rmSync(`.cd/agents/${name}.cd`, { force: true })
+  })
+})
+
 // Fenêtre outils (hub) : onglets, chat toujours visible, réglage quels panneaux afficher
 test.describe('fenêtre outils (hub)', () => {
   test('ouverture, switch d\'onglets, chat visible derrière, fermeture', async () => {
@@ -351,7 +403,7 @@ test.describe('fenêtre outils (hub)', () => {
     const stored = await page.evaluate(
       () => JSON.parse(localStorage.getItem('chatdeck.settings.v1') || '{}').hubTabs,
     )
-    expect(stored).toEqual(['graph', 'files', 'settings'])
+    expect(stored).toEqual(['graph', 'files', 'settings', 'deck'])
 
     // Le hub n'affiche plus ces onglets
     await page.locator('.toolbar .tb', { hasText: 'Réglages' }).click() // referme le dock

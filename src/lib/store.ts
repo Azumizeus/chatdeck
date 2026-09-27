@@ -162,13 +162,14 @@ export function saveGraphLayout(g: GraphLayout): void {
 /* ── Hub : fenêtre outils déployable (Graphify, Fichiers, Terminal, Preview, Réglages) ── */
 
 /** Onglets affichables dans le hub, dans l'ordre des boutons. */
-export type HubTab = 'graph' | 'files' | 'terminal' | 'preview' | 'settings'
+export type HubTab = 'graph' | 'files' | 'terminal' | 'preview' | 'settings' | 'deck'
 export const HUB_TABS: { id: HubTab; label: string; icon: string }[] = [
   { id: 'graph', label: 'Graphify', icon: '🕸' },
   { id: 'files', label: 'Fichiers', icon: '📁' },
   { id: 'terminal', label: 'Terminal', icon: '⌨︎' },
   { id: 'preview', label: 'Preview', icon: '👁' },
   { id: 'settings', label: 'Réglages', icon: '⚙︎' },
+  { id: 'deck', label: 'Skills & Agents', icon: '🃏' },
 ]
 
 /** Géométrie du hub, persistée entre sessions (même schéma que le flottant). */
@@ -195,6 +196,38 @@ export function loadHubGeometry(): HubGeometry {
 
 export function saveHubGeometry(g: HubGeometry): void {
   writeJson(HUB_KEY, g)
+}
+
+/* ── Fiches .CD (skills & agents) : état activé + cache des contenus ──
+ *
+ * Le panneau deck (hub / popout) gère quels fiches sont ACTIVÉES ; au moment
+ * d'envoyer un message, l'app lit cet état et injecte les fiches dans le
+ * prompt système (même mécanisme que `deck run`). Le cache des contenus est
+ * rempli par le panneau au moment de l'activation — ainsi send() reste
+ * synchrone et fonctionne hors-ligne tant que les fiches n'ont pas changé.
+ */
+export interface DeckState {
+  /** Ids des fiches activées (name du frontmatter) */
+  active: string[]
+  /** Contenu (frontmatter inclus) par id, rempli à l'activation */
+  cache: Record<string, string>
+}
+
+export function defaultDeckState(): DeckState {
+  return { active: [], cache: {} }
+}
+
+const CARDS_KEY = 'chatdeck.cards.v1'
+
+export function loadDeckState(): DeckState {
+  const s = readJson<DeckState>(CARDS_KEY, defaultDeckState())
+  if (!Array.isArray(s.active)) s.active = []
+  if (!s.cache || typeof s.cache !== 'object') s.cache = {}
+  return s
+}
+
+export function saveDeckState(s: DeckState): void {
+  writeJson(CARDS_KEY, s)
 }
 
 /** Le tour n'a-t-il déjà été complété une fois ? (indépendant du réglage) */
@@ -231,7 +264,7 @@ export const defaultSettings = (): Settings => ({
   reduceMotion: false,
   arbitreDebate: false,
   showTour: true,
-  hubTabs: ['graph', 'files', 'terminal', 'preview', 'settings'],
+  hubTabs: ['graph', 'files', 'terminal', 'preview', 'settings', 'deck'],
   hubDefault: 'graph',
 })
 
