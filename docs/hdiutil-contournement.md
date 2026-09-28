@@ -42,6 +42,26 @@ rm -rf /Applications/ChatDeck.app && cp -R release/mac/ChatDeck.app /Application
 
 Le bundle `release/mac/` et la DMG ont exactement le même contenu (même run).
 
+## Mise à jour 2026-09-28 (v0.4.8) — DMG créée sans montage
+
+Le blocage a aussi touché **`hdiutil create`** (electron-builder en mourait à
+l'étape DMG, `zip -qry` du .app de 371 Mo timeout également). Contournement
+prouvé pour **générer** la DMG :
+
+```bash
+hdiutil create -volname "ChatDeck" -srcfolder release/mac/ChatDeck.app \
+  -ov -format UDZO release/ChatDeck-0.4.8.dmg
+```
+
+`-format UDZO` avec `-srcfolder` **ne monte jamais l'image** : diskarbitrationd
+n'est pas sollicité. Résultat : `ChatDeck-0.4.8.dmg` (172 Mo, ratio 0.45,
+`hdiutil verify` CRC32 VALID). Pour le zip du .app, `ditto -c -k --keepParent`
+passe là où `zip -qry` bloquait (152 Mo).
+
+Une sonde `hdiutil create` de 5 Mo qui répond = diskimages est de nouveau
+opérationnel ; un `swift-frontend` figé (compilation bloquée même famille) a dû
+être tué avant que la sonde repasse.
+
 ## Remèdes à essayer (non testés ici, nécessitent un redémarrage)
 
 1. **Redémarrer la machine** — relance diskarbitrationd proprement (le stub
