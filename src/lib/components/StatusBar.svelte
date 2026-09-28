@@ -104,9 +104,19 @@
     gap: 8px;
     min-width: 0;
   }
+  /* La droite (tokens/coût/UTF-8) garde une largeur naturelle : les compteurs
+   * ne se font plus manger par le bord (« 0.00… », « UT… ») — c'est la gauche
+   * (longs labels fournisseur/modèle) qui cède la place en rétrécissant. */
+  .right {
+    flex-shrink: 0;
+    max-width: 60%;
+    overflow: hidden;
+  }
   .mono {
     font-family: var(--mono);
     white-space: nowrap;
+  }
+  .left .mono {
     overflow: hidden;
     text-overflow: ellipsis;
   }

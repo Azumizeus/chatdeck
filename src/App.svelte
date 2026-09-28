@@ -1793,6 +1793,12 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
         onSearch={() => (showSearch = true)}
         onSettings={() => layout.toggleSettings()}
       />
+      <!-- Bannières réseau + nettoyage sandbox visibles AUSSI en duel :
+           le duel court-circuite ideShell, les bannières y étaient perdues. -->
+      <NetworkBanner />
+      {#if showCleanup}
+        <CleanupBanner onDone={() => (showCleanup = false)} />
+      {/if}
       <div class="shell">
         <div class="duel-col" data-conv={layout.duel.left} style="width:{layout.duelSplit}%">
           {@render convPane(layout.duel.left)}

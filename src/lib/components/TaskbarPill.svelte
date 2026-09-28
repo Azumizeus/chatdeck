@@ -85,7 +85,7 @@
   }
   .pill:hover {
     border-color: var(--accent);
-    transform: translateY(-1px);
+    /* Pas de translateY : même bug d'oscillation du curseur qu'ailleurs. */
   }
   .bolt {
     font-size: 16px;

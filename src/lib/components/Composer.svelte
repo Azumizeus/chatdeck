@@ -161,8 +161,13 @@
     const q = m[2].toLowerCase()
     atItems = paths.filter((p) => p.toLowerCase().includes(q)).slice(0, 8)
     atIndex = 0
-    atOpen = atItems.length > 0
+    atOpen = true
   }
+
+  /** La frappe @ a quitté le champ ou le token @ a disparu → referme le menu.
+   *  (atOpen seul ne suffit pas : il faut distinguer « ouvert avec items » et
+   *  « ouvert, sandbox vide » pour afficher l'état vide explicite.) */
+  const atHasItems = $derived(atItems.length > 0)
 
   function applyAt(path: string): void {
     const start = atStart
@@ -295,7 +300,7 @@
     <span class="hint">{hint}</span>
   </div>
   <div class="inputrow">
-    {#if atOpen && atItems.length}
+    {#if atOpen && atHasItems}
       <ul class="at-menu" role="listbox" aria-label="Fichiers sandbox">
         {#each atItems as p, i (p)}
           <li>
@@ -310,6 +315,18 @@
           </li>
         {/each}
         <li class="at-hint">↑↓ naviguer · Entrée/Tab insérer · Échap fermer — l'extrait sera joint au prompt</li>
+      </ul>
+    {:else if atOpen}
+      <ul class="at-menu" role="listbox" aria-label="Fichiers sandbox">
+        <li class="at-empty">
+          <span class="at-ico">🗂</span>
+          {atHintSandbox
+            ? atHintSandbox
+            : convId
+              ? 'Aucun fichier dans la sandbox de ce fil — il sera créé au premier tour d\'agent'
+              : 'Ouvre un fil agents pour joindre des fichiers'}
+        </li>
+        <li class="at-hint">Échap fermer</li>
       </ul>
     {/if}
     {#if slashOpen && slashItems.length}
@@ -382,6 +399,12 @@
             closeAt()
             return
           }
+        }
+        // Menu @ ouvert SANS candidat (sandbox vide) : Échap referme quand même
+        if (atOpen && e.key === 'Escape') {
+          e.preventDefault()
+          closeAt()
+          return
         }
         // Tab = bascule Mode Plan (OpenCode), tant qu'aucune suggestion @ n'est active
         if (e.key === 'Tab' && onTogglePlan && !text.startsWith('@')) {
@@ -572,6 +595,15 @@
     padding: 4px 8px 2px;
     border-top: 1px dashed var(--border);
     margin-top: 2px;
+  }
+  /* État vide du menu @ : sandbox sans fichiers — explicite plutôt que muet */
+  .at-empty {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 8px;
+    font-size: 12.5px;
+    color: var(--muted);
   }
   textarea {
     flex: 1;

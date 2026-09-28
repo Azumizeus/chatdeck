@@ -71,7 +71,7 @@
         onclick={onToggleDuel}
         title={duelActive ? 'Quitter le mode duel' : 'Mode duel : deux conversations côte à côte'}
       >
-        <span aria-hidden="true">⚔︎</span> {#if !compact}<span>Duel</span>{/if}
+        <span aria-hidden="true">⚔️</span> {#if !compact}<span>Duel</span>{/if}
       </button>
     {/if}
   </div>

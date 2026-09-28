@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.4.4
+
+### Corrigé
+- **Onglets du hub invisibles** : la nav du hub défilait (7 onglets > largeur)
+  sans jamais révéler l'onglet actif — le hub semblait « désynchronisé » du
+  contenu affiché (Réglages ouvert, marque « Terminal »). L'onglet actif est
+  maintenant auto-scrollé dans le champ, scrollbar masquée.
+- **Clignotement au survol** : les boutons d'action de message et la pill
+  barre de tâches se déplaçaient de 1 px au survol — le curseur oscillait
+  au bord (rentre/sort en boucle). Le survol ne déplace plus les boutons.
+- **Barre d'état tronquée à droite** : « 0.00… », « UT… » — les compteurs
+  tokens/coût/UTF-8 gardent leur largeur ; c'est le bloc de gauche (fournisseur
+  + modèle) qui cède la place.
+- **Bouton « suppr… » tronqué** (Réglages → Sandbox) : libellé complet
+  « supprimer », non compressible.
+- **Label « x Duel » illisible** : le caractère ⚔︎ (texte) se rendait en « x »
+  dans la nav — remplacé par le vrai emoji ⚔️ (comme les autres onglets).
+
+### Ajouté
+- **Bannières visibles en mode duel** : NetworkBanner et CleanupBanner (🧹
+  nettoyage sandbox) manquaient en duel — le mode court-circuitait le shell
+  principal. Les orphelins sont visibles dans les deux colonnes.
+- **Menu @fichier explicite** : taper @ avec une sandbox vide ouvrait… rien.
+  Le menu affiche maintenant l'état (sandbox vide / agents requis / pas de
+  fil agents) au lieu de rester muet — le menu avec fichiers est inchangé.
+
 ## 0.4.3
 
 ### Corrigé

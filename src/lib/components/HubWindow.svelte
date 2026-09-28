@@ -168,6 +168,17 @@
     window.addEventListener('chatdeck-hub-expand', expand)
     return () => window.removeEventListener('chatdeck-hub-expand', expand)
   })
+
+  /* L'onglet actif doit rester VISIBLE : la barre défile (overflow-x) et la
+   * nav est plus étroite que les 7 onglets — sans scroll auto, l'onglet affiché
+   * peut être hors champ (le hub semble « désynchronisé » du contenu). */
+  let navEl: HTMLElement | undefined = $state()
+  $effect(() => {
+    void active
+    navEl
+      ?.querySelector<HTMLButtonElement>('button.active')
+      ?.scrollIntoView({ inline: 'nearest', block: 'nearest', behavior: 'smooth' })
+  })
 </script>
 
 <section class="hub" class:dragging class:resizing class:collapsed {style} aria-label="Fenêtre outils">
@@ -180,7 +191,7 @@
     ondblclick={toggleCollapse}
   >
     <span class="grip">⠿</span>
-    <nav aria-label="Outils du hub">
+    <nav bind:this={navEl} aria-label="Outils du hub">
       {#each visible as t (t.id)}
         <button
           class:active={active === t.id}
@@ -287,6 +298,11 @@
     flex: 1;
     min-width: 0;
     overflow-x: auto;
+    scroll-behavior: smooth;
+  }
+  /* Scrollbar discrète : la barre défile mais ne double pas la hauteur du header */
+  nav::-webkit-scrollbar {
+    height: 0;
   }
   nav button {
     display: inline-flex;

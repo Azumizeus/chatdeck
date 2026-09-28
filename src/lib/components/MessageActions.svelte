@@ -124,7 +124,9 @@
   .act:hover {
     color: var(--text);
     border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
-    transform: translateY(-1px);
+    /* Pas de translateY ici : le déplacement au survol fait osciller le curseur
+       au bord du bouton (rentre → le bouton bouge → sort → le bouton revient…)
+       = le « clignotement » signalé au survol des actions de message. */
   }
   .act .act-tip {
     position: absolute;

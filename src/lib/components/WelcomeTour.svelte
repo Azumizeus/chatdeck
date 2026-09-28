@@ -18,7 +18,7 @@
       action: { label: 'Activer les agents', cmd: 'agents' },
     },
     {
-      emoji: '⚔︎',
+      emoji: '⚔️',
       title: 'Duel & débat en 2 tours',
       body: 'Le duel compare deux modèles côte à côte sur la même question. Lance la Synthèse : l\'arbitre tranche. Coche « débat 2 tours » pour que A et B répliquent au verdict avant le verdict final.',
       action: { label: 'Ouvrir le duel', cmd: 'duel' },

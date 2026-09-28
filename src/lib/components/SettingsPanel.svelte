@@ -462,7 +462,7 @@
         <div class="wsrow">
           <code class="mono">{w.id.slice(0, 14)}{w.id.length > 14 ? '…' : ''}</code>
           <span class="ws-meta">{w.files} fichiers · {fmtBytes(w.sizeBytes)}</span>
-          <button class="ghost danger" onclick={() => removeWs(w.id)} title="Supprimer ce workspace (base + espaces OS)">suppr.</button>
+          <button class="ghost danger ws-del" onclick={() => removeWs(w.id)} title="Supprimer ce workspace (base + espaces OS)">supprimer</button>
         </div>
       {/each}
       {#if health.workspaces.length > 40}
@@ -859,6 +859,10 @@
     color: var(--muted);
     font-size: 11.5px;
     white-space: nowrap;
+  }
+  .ws-del {
+    white-space: nowrap;
+    flex-shrink: 0;
   }
   .sb-empty {
     color: var(--muted);
