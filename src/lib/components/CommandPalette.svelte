@@ -50,11 +50,13 @@
   }
 </script>
 
+<!-- Clavier UNIQUEMENT sur l'input (qui a le focus) : posé aussi sur le
+     backdrop, l'event bouillonnait et exécutait chaque commande DEUX FOIS
+     (toggleDuel démarrait puis annulait le duel immédiatement). -->
 <div
   class="backdrop"
   role="presentation"
   onclick={(e) => e.target === e.currentTarget && onClose()}
-  onkeydown={key}
 >
   <div class="palette">
     <input bind:this={input} bind:value={query} onkeydown={key} placeholder="Tape une commande…" spellcheck="false" />
@@ -84,15 +86,19 @@
 </div>
 
 <style>
+  /* Ancrée à la FENÊTRE qui la rend (WindowFrame/FloatingWindow .body, en
+   * position:relative) — pas un overlay fixed sur tout l'écran : le hub et
+   * les fenêtres détachées restent visibles et cliquables à côté. */
   .backdrop {
-    position: fixed;
+    position: absolute;
     inset: 0;
     background: rgba(0, 0, 0, 0.45);
     display: flex;
     justify-content: center;
     align-items: flex-start;
-    padding-top: 12vh;
+    padding-top: 8vh;
     z-index: 90;
+    border-radius: inherit;
   }
   .palette {
     width: min(520px, 92vw);

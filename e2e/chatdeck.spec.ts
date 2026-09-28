@@ -78,14 +78,19 @@ test.describe('parcours critiques', () => {
 
   test('duel : deux colonnes, envoi simultané, synthèse disponible', async () => {
     // Vérifie d'abord l'API (sans consommer de quota LLM : messages pré-remplis)
-    await page.locator('.toolbar .tb', { hasText: 'Duel' }).click()
+    // La barre principale est FUSIONNÉE dans les colonnes en duel : on entre
+    // via ⌘K (palette ancrée à la fenêtre IDE).
+    await page.keyboard.press('Meta+k')
+    await page.locator('.palette input').fill('duel')
+    await page.keyboard.press('Enter')
+    await expect(page.locator('.duel-col')).toHaveCount(2)
     await expect(page.locator('.duel-col')).toHaveCount(2)
     await expect(page.locator('.verdictbar')).toBeVisible()
     await expect(page.locator('.verdictbar button', { hasText: 'Synthèse' })).toBeVisible()
     // Les deux colonnes ont leur mini-toolbar par conversation
     await expect(page.locator('.duel-col .toolbar')).toHaveCount(2)
-    // Quitte le duel
-    await page.locator('.toolbar .tb', { hasText: 'Duel' }).click()
+    // Quitte le duel : bouton dédié dans la verdictbar (plus de double barre)
+    await page.locator('.verdictbar button.quit').click()
     await expect(page.locator('.duel-col')).toHaveCount(0)
   })
 
@@ -234,7 +239,9 @@ test.describe('fonctionnalités agents avancées', () => {
   })
 
   test('débat 2 tours : case à cocher dans la verdictbar du duel', async () => {
-    await page.locator('.toolbar .tb', { hasText: 'Duel' }).click()
+    await page.keyboard.press('Meta+k')
+    await page.locator('.palette input').fill('duel')
+    await page.keyboard.press('Enter')
     const debate = page.locator('.verdictbar label.debate')
     await expect(debate).toBeVisible()
     // Active le débat — persisté dans les réglages
@@ -243,7 +250,7 @@ test.describe('fonctionnalités agents avancées', () => {
     expect(flag).toBe(true)
     // Le bouton passe en mode débat
     await expect(page.locator('.verdictbar button', { hasText: 'Débat' })).toBeVisible()
-    await page.locator('.toolbar .tb', { hasText: 'Duel' }).click()
+    await page.locator('.verdictbar button.quit').click()
   })
 
   test('commit auto depuis le panneau Fichiers', async () => {

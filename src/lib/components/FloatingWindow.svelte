@@ -302,6 +302,7 @@
     min-width: 52px;
   }
   .body {
+    position: relative; /* ancre des overlays internes (palette ⌘K) */
     flex: 1;
     min-height: 0;
     display: flex;

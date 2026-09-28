@@ -1670,6 +1670,11 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
         {/if}
       </div>
     {/if}
+    {#if showPalette}
+      <!-- Palette ⌘K ancrée à la fenêtre IDE (absolute dans .body), pas un
+           overlay fixed sur tout l'écran — le hub reste visible à côté. -->
+      <CommandPalette {commands} onClose={() => (showPalette = false)} />
+    {/if}
   </div>
 {/snippet}
 
@@ -1777,24 +1782,9 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
       onMaximize={() => document.documentElement.requestFullscreen?.().catch(() => {})}
       onClose={() => layout.stopDuel()}
     >
-      <Toolbar
-        conv={current}
-        streaming={anyStreaming}
-        duelActive={Boolean(layout.duel)}
-        agentsActive={Boolean(current?.agents?.length)}
-        filesOpen={showFiles}
-        terminalOpen={showTerminal}
-        graphOpen={showGraph}
-        onToggleAgents={() => setAgents(current?.agents?.length ? [] : ['nexus', 'seeker'])}
-        onToggleDuel={toggleDuel}
-        onToggleFiles={() => (showFiles = !showFiles)}
-        onToggleTerminal={toggleTerminal}
-        onToggleGraph={() => openHub('graph')}
-        onSearch={() => (showSearch = true)}
-        onSettings={() => layout.toggleSettings()}
-      />
-      <!-- Bannières réseau + nettoyage sandbox visibles AUSSI en duel :
-           le duel court-circuite ideShell, les bannières y étaient perdues. -->
+      <!-- PAS de Toolbar principale ici : les colonnes ont chacune la leur
+           (variante perConv). Chercher (⌘⇧F), Réglages (⌘,) et Graphify
+           (verdictbar 🕸) restent accessibles sans double barre. -->
       <NetworkBanner />
       {#if showCleanup}
         <CleanupBanner onDone={() => (showCleanup = false)} />
@@ -1832,6 +1822,7 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
           {commitBusy ? '…' : '⑂ commit auto'}
         </button>
         <button class="ghost" class:active={showGraph} onclick={() => openHub('graph')} title="Graphe des conversations et workspaces (fenêtre outils)">🕸</button>
+        <button class="ghost quit" onclick={toggleDuel} title="Quitter le mode duel (la barre principale est fusionnée dans les colonnes)">✕ quitter le duel</button>
       </div>
       {#if verdict}
         <div class="verdict">
@@ -1841,6 +1832,10 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
           </header>
           <div class="vbody">{verdict.text}<span class="cursor">{arbitreBusy ? '▍' : ''}</span></div>
         </div>
+      {/if}
+      {#if showPalette}
+        <!-- Palette ⌘K ancrée à la fenêtre duel (absolute, pas fixed page) -->
+        <CommandPalette {commands} onClose={() => (showPalette = false)} />
       {/if}
     </WindowFrame>
 
@@ -1953,7 +1948,8 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
   </HubWindow>
 {/if}
 
-{#if showPalette}
+{#if showPalette && layout.appMode === 'pill'}
+  <!-- Mode pill : pas de fenêtre IDE où ancrer la palette → overlay global -->
   <CommandPalette {commands} onClose={() => (showPalette = false)} />
 {/if}
 
@@ -2222,6 +2218,11 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
   .verdictbar .ghost.active {
     color: var(--text);
     border-color: var(--accent);
+  }
+  /* Sortie de duel : rouge discret au survol (action de fermeture) */
+  .verdictbar .ghost.quit:hover {
+    color: var(--danger, #ff6b6b);
+    border-color: var(--danger, #ff6b6b);
   }
   .verdictbar .debate {
     display: flex;

@@ -215,7 +215,7 @@
     flex: 1;
     min-height: 0;
     overflow-y: auto;
-    padding: 10px 12px;
+    padding: 10px 12px 14px;
     display: flex;
     flex-direction: column;
     gap: 10px;
@@ -307,6 +307,17 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 8px;
+  }
+  /* Les chemins et longues listes d'outils passent à la ligne au lieu de
+     déborder (chemin ~/.chatdeck/mcp-servers.local.json coupé, badge tronqué) */
+  .note code,
+  .intro code {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+  .desc {
+    overflow-wrap: anywhere;
   }
   .ws-meta {
     font-size: 11px;
