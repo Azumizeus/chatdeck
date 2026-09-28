@@ -1,0 +1,367 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ChatDeck — Guide interactif : agents, skills & outils</title>
+<style>
+  :root {
+    --bg: #0d0f14; --panel: #161923; --panel2: #1e2230; --border: #2a2f3e;
+    --text: #e8eaf0; --muted: #9aa2b5; --accent: #4f8cff; --ok: #27c93f;
+    --nexus: #4f8cff; --seeker: #27c93f; --deck: #b06bff; --warn: #fbbf24; --danger: #ff6b6b;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.55 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+  .wrap { max-width: 1060px; margin: 0 auto; padding: 24px 20px 80px; }
+  header.top { position: sticky; top: 0; z-index: 10; background: color-mix(in srgb, var(--bg) 92%, transparent);
+    backdrop-filter: blur(10px); border-bottom: 1px solid var(--border); margin: -24px -20px 24px; padding: 14px 20px 12px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  h1 .bolt { color: var(--warn); }
+  .sub { color: var(--muted); font-size: 13px; }
+  #q { width: 100%; margin-top: 10px; padding: 10px 14px; font-size: 14px; color: var(--text);
+    background: var(--panel2); border: 1px solid var(--border); border-radius: 10px; outline: none; }
+  #q:focus { border-color: var(--accent); }
+  nav.toc { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 0; }
+  nav.toc a { font-size: 12.5px; color: var(--muted); text-decoration: none; border: 1px solid var(--border);
+    border-radius: 999px; padding: 3px 10px; }
+  nav.toc a:hover { color: var(--text); border-color: var(--accent); }
+  h2 { font-size: 16px; margin: 34px 0 12px; display: flex; align-items: center; gap: 8px;
+    border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+  .count { color: var(--muted); font-weight: 400; font-size: 12.5px; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(310px, 1fr)); gap: 12px; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 14px 16px; }
+  .card h3 { margin: 0 0 2px; font-size: 14.5px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .card .role { color: var(--muted); font-size: 12.5px; margin: 0 0 8px; }
+  .card p { margin: 6px 0; font-size: 13.5px; }
+  .who { font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; border: 1px solid var(--border);
+    border-radius: 5px; padding: 1px 6px; color: var(--muted); }
+  .who.nexus { color: var(--nexus); border-color: color-mix(in srgb, var(--nexus) 50%, var(--border)); }
+  .who.seeker { color: var(--seeker); border-color: color-mix(in srgb, var(--seeker) 50%, var(--border)); }
+  .who.deck { color: var(--deck); border-color: color-mix(in srgb, var(--deck) 50%, var(--border)); }
+  .who.all { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 50%, var(--border)); }
+  code, .mono { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 12.5px; }
+  code.inline { background: var(--panel2); border: 1px solid var(--border); border-radius: 5px; padding: 0 5px; }
+  details { margin-top: 8px; }
+  summary { cursor: pointer; font-size: 12.5px; color: var(--accent); user-select: none; }
+  pre { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px;
+    overflow-x: auto; font-size: 12.5px; line-height: 1.5; margin: 8px 0 0; }
+  .tip { border-left: 3px solid var(--warn); background: color-mix(in srgb, var(--warn) 8%, transparent);
+    padding: 8px 12px; border-radius: 0 8px 8px 0; font-size: 13px; margin: 10px 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+  tr:hover td { background: color-mix(in srgb, var(--panel2) 60%, transparent); }
+  kbd { font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; color: var(--text);
+    border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 5px; padding: 1px 6px; background: var(--panel2); }
+  .hidden { display: none !important; }
+  footer { margin-top: 44px; color: var(--muted); font-size: 12px; border-top: 1px solid var(--border); padding-top: 14px; }
+  mark { background: color-mix(in srgb, var(--warn) 35%, transparent); color: inherit; border-radius: 3px; padding: 0 2px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="top">
+  <h1><span class="bolt">⚡</span> ChatDeck — Guide interactif : agents, skills & outils</h1>
+  <div class="sub">Tout ce que les agents peuvent faire, avec un exemple pour chacun. Tape pour filtrer (les fiches non concernées disparaissent).</div>
+  <input id="q" type="search" placeholder="Filtrer : write_file, délégation, git_commit, @fichier, ⌘K…" autofocus />
+  <nav class="toc">
+    <a href="#agents">🧠 Agents</a>
+    <a href="#outils-sandbox">🧰 Outils sandbox</a>
+    <a href="#outils-projet">📦 Outils projet</a>
+    <a href="#deck">🃏 Skills & bibliothèque</a>
+    <a href="#connecteurs">🔌 Connecteurs & MCP</a>
+    <a href="#commandes">⌨︎ Commandes composer</a>
+    <a href="#modes">⚔︎ Duel & collab</a>
+    <a href="#raccourcis">Raccourcis</a>
+  </nav>
+</header>
+
+<h2 id="agents">🧠 Les 3 agents <span class="count">— activés par le bouton 🧠 ou ⌘K « agents »</span></h2>
+<div class="cards">
+  <div class="card" data-k="nexus orchestrateur architecte notes.md délègue write_file code">
+    <h3>🧠 Nexus <span class="who nexus">écrit & orchestre</span></h3>
+    <p class="role">Orchestrateur multidisciplinaire — architecte logiciel, sécurité, données, produit.</p>
+    <p>Écrit le brief dans <code class="inline">NOTES.md</code>, crée les fichiers, exécute les commandes, puis <strong>délègue</strong> à Seeker ou PromptDeck quand c'est utile. Seul agent (avec PromptDeck) à pouvoir écrire et committer.</p>
+    <details><summary>Exemple d'utilisation</summary>
+      <pre>Activer : bouton 🧠 Agents (ou sélecteur « 🧠 Nexus + 🔎 Seeker »)
+
+Toi : « Crée une API Express minimale dans src/server.js
+        avec un endpoint /health, puis committe. »
+
+Nexus : écrit src/server.js → vérifie avec run_command
+        (node -v, ls) → git_commit "Add minimal Express API"
+        → résume ce qu'il a écrit.</pre>
+    </details>
+  </div>
+  <div class="card" data-k="seeker exploratrice recherche analyse lecture ls cat search hypothèses">
+    <h3>🔎 Seeker <span class="who seeker">lecture & analyse</span></h3>
+    <p class="role">Exploratrice — recherche, analyse, hypothèses testables.</p>
+    <p><strong>Lecture seule</strong> (pas de write_file) : elle explore la sandbox (ls, cat, search), croise les informations et rédige ses conclusions — dans le fil ou dans un fichier si Nexus le lui demande via délégation.</p>
+    <details><summary>Exemple d'utilisation</summary>
+      <pre>Délegation typique (Nexus décide) :
+  Nexus → delegate_to_seeker
+          task: "Analyse package.json et src/ :
+                 dépendances obsolètes ? risques ?"
+  Seeker : ls → cat → rapport
+  Nexus  : reçoit report_to_nexus et conclut
+
+À la main : sélecteur « Nexus + Seeker » puis
+« Liste les fichiers et résume l'architecture ».</pre>
+    </details>
+  </div>
+  <div class="card" data-k="promptdeck deck stratège prompts personas skills méga-pack collab deck-">
+    <h3>🃏 PromptDeck <span class="who deck">prompts & collab</span></h3>
+    <p class="role">Stratège prompts issu du MEGA PACK (190 agents, 133 skills). Peut écrire + déléguer vers Nexus.</p>
+    <p>Conçoit/améliore les prompts système, décompose les tâches complexes, propose personas & skills. En <strong>mode collab</strong> il travaille EN PARALLÈLE avec Nexus dans le MÊME workspace : fichiers préfixés <code class="inline">deck-</code>, lit les <code class="inline">nexus-</code>.</p>
+    <details><summary>Exemple d'utilisation</summary>
+      <pre>Collab : sélecteur « 🧠 Nexus + 🃏 PromptDeck (collab) »
+
+Toi : « Concevez ensemble le prompt système d'un
+       agent de support client, puis écrivez-le. »
+
+Nexus  → nexus-brief.md (besoin, contraintes)
+PromptDeck → deck-prompts.md (prompt conçu,
+       personas, skills retenus) en parallèle
+       → si besoin delegate_to_nexus pour
+       l'implémentation, puis report_to_deck.</pre>
+    </details>
+  </div>
+</div>
+<div class="tip">🧭 <strong>Délégation bidirectionnelle</strong> : Nexus ⇄ Seeker et Nexus ⇄ PromptDeck, rapport garanti (<code class="inline">report_to_*</code>) injecté dans le fil d'origine — plafonné à 6 sauts. Le rapport apparaît comme « (X a rendu son rapport à Y) ».</div>
+
+<h2 id="outils-sandbox">🧰 Outils sandbox <span class="count">— agents actifs, agissent sur ~/.chatdeck/workspaces/&lt;conv&gt;</span></h2>
+<div class="cards">
+  <div class="card" data-k="list_tree arborescence fichiers dossiers">
+    <h3>list_tree <span class="who all">tous</span></h3>
+    <p>Liste l'arborescence de la sandbox (fichiers + dossiers).</p>
+    <details><summary>Exemple</summary><pre>Toi : « Montre-moi la structure du workspace »
+Agent → list_tree() → arbre complet dans le fil</pre></details>
+  </div>
+  <div class="card" data-k="read_file lire contenu fichier cat">
+    <h3>read_file <span class="who all">tous</span></h3>
+    <p>Lit le contenu d'un fichier de la sandbox.</p>
+    <details><summary>Exemple</summary><pre>Toi : « Que contient NOTES.md ? »
+Agent → read_file path:"NOTES.md"</pre></details>
+  </div>
+  <div class="card" data-k="write_file écrire créer fichier livrable nexus deck">
+    <h3>write_file <span class="who nexus">Nexus · Deck</span></h3>
+    <p>Écrit/écrase un fichier (dossiers parents créés). Seeker n'y a pas droit.</p>
+    <details><summary>Exemple</summary><pre>Toi : « Écris src/utils/date.js avec fmt(iso) »
+Agent → write_file path:"src/utils/date.js"
+        content:"export const fmt = …"</pre></details>
+  </div>
+  <div class="card" data-k="run_command commande ls cat pwd node npm liste blanche">
+    <h3>run_command <span class="who all">tous</span></h3>
+    <p>Commandes en liste blanche : <code class="inline">ls</code>, <code class="inline">cat</code>, <code class="inline">pwd</code>, <code class="inline">node -v</code>, <code class="inline">npm -v</code>. (Le terminal ⌨︎, lui, exécute node/npm/npx/git… en vrai.)</p>
+    <details><summary>Exemple</summary><pre>Toi : « Vérifie la version de node dispo »
+Agent → run_command cmd:"node -v"</pre></details>
+  </div>
+  <div class="card" data-k="web_fetch web page url documenter source">
+    <h3>web_fetch <span class="who all">tous</span></h3>
+    <p>Télécharge une page http(s) et renvoie son texte brut (200 ko max) — documenter, vérifier une API, citer une source.</p>
+    <details><summary>Exemple</summary><pre>Toi : « Cite la doc officielle de Svelte 5 runes »
+Agent → web_fetch url:"https://svelte.dev/docs/svelte"
+        → résume + cite l'URL</pre></details>
+  </div>
+  <div class="card" data-k="git_commit commit versionner historique">
+    <h3>git_commit <span class="who nexus">Nexus · Deck</span></h3>
+    <p>git add + commit de TOUT le workspace (endpoint sécurisé, branche par défaut). Visible ensuite dans 📁 Fichiers → Arbre Git avec diff par commit.</p>
+    <details><summary>Exemple</summary><pre>Toi : « Sauvegarde ce state dans git »
+Agent → git_commit message:"Add deck state module"
+Puis 📁 Fichiers → 🕘 Arbre Git → clic sur le
+commit → diff +/− du fichier.</pre></details>
+  </div>
+  <div class="card" data-k="switch_os mac windows linux profil purge platform">
+    <h3>switch_os <span class="who all">tous</span></h3>
+    <p>Bascule la sandbox vers mac / windows / linux — purge les fichiers platform/ de l'ancien profil. Aussi dispo à la main (📁 Fichiers → switcher d'OS).</p>
+    <details><summary>Exemple</summary><pre>Toi : « Prépare la sandbox pour un build Windows »
+Agent → switch_os os:"windows"
+Retour à mac : les fichiers de chaque profil
+sont retrouvés intacts.</pre></details>
+  </div>
+  <div class="card" data-k="delegate_to_seeker delegate_to_deck delegate_to_nexus délégation sous-tâche">
+    <h3>delegate_to_* <span class="who nexus">Nexus→S·D · Deck→N</span></h3>
+    <p>Délègue une sous-tâche (Seeker = exploration, Deck = prompts, Nexus = code/ architecture). L'agent cible travaille puis rend son rapport.</p>
+    <details><summary>Exemple</summary><pre>Automatique : Nexus juge la tâche et délègue.
+Forcé : « Demande à Seeker d'analyser les
+imports de src/ et de te faire un rapport. »
+→ delegate_to_seeker → rapport dans le fil.</pre></details>
+  </div>
+  <div class="card" data-k="report_to_nexus report_to_deck rapport clôture boucle">
+    <h3>report_to_* <span class="who seeker">S→N · D→N · N→D</span></h3>
+    <p>Outil de clôture d'une délégation : l'agent qui a travaillé rend son rapport (découvertes, fichiers produits). Le message « (X a rendu son rapport à Y) » apparaît dans le fil d'origine.</p>
+    <details><summary>Exemple</summary><pre>Seeker finit son exploration →
+report_to_nexus report:"3 doublons détectés
+dans src/utils, voir notes/analyse.md"</pre></details>
+  </div>
+</div>
+
+<h2 id="outils-projet">📦 Outils projet <span class="count">— conversation rattachée à un projet (sidebar ▸ Projets)</span></h2>
+<div class="cards">
+  <div class="card" data-k="write_project_file workspace partagé livrable projet confirmation">
+    <h3>write_project_file <span class="who all">tous</span></h3>
+    <p>Écrit dans le workspace PARTAGÉ du projet (<code class="inline">~/.chatdeck/workspaces/p-&lt;id&gt;</code>) — visible par toutes les conversations du projet. Chaque écriture demande confirmation.</p>
+    <details><summary>Exemple</summary><pre>Toi : « Pose ce README dans le projet »
+Agent → write_project_file path:"docs/README.md"</pre></details>
+  </div>
+  <div class="card" data-k="read_project_file lire dossiers mac autorisés lecture seule">
+    <h3>read_project_file <span class="who all">tous</span></h3>
+    <p>Lit le workspace projet, sinon les dossiers Mac autorisés par l'utilisateur (LECTURE SEULE — ex. <code class="inline">~/projects/chatdeck</code>).</p>
+    <details><summary>Exemple</summary><pre>Toi : « Lis vite.config.ts du vrai projet »
+Agent → read_project_file path:"vite.config.ts"</pre></details>
+  </div>
+  <div class="card" data-k="list_project_tree arborescence projet mac autorisés">
+    <h3>list_project_tree <span class="who all">tous</span></h3>
+    <p>Liste l'arborescence du projet + les dossiers Mac autorisés.</p>
+    <details><summary>Exemple</summary><pre>Toi : « Que vois-tu du projet et du Mac ? »
+Agent → list_project_tree()</pre></details>
+  </div>
+</div>
+<div class="tip">🔐 Dossiers Mac : ▸ Projets → projet → « Dossiers autorisés ». Les agents y lisent, jamais n'écrivent ; toute écriture passe par la confirmation (gate de permission 🔐 dans le fil).</div>
+
+<h2 id="deck">🃏 Skills & bibliothèque PromptDeck <span class="count">— 636 fiches FR/EN</span></h2>
+<div class="cards">
+  <div class="card" data-k="deck_search bibliothèque fiche méthode chercher">
+    <h3>deck_search <span class="who all">tous</span></h3>
+    <p>Cherche la méthode/persona adapté dans la bibliothèque (recherche bilingue) AVANT d'inventer une méthode.</p>
+    <details><summary>Exemple</summary><pre>Toi : « Fais une revue de code rigoureuse »
+Agent → deck_search query:"revue de code"
+→ liste les fiches (id + résumé + score)</pre></details>
+  </div>
+  <div class="card" data-k="deck_load charger fiche méthode appliquer">
+    <h3>deck_load <span class="who all">tous</span></h3>
+    <p>Charge une fiche par son id — elle devient LA méthode à appliquer jusqu'au bout.</p>
+    <details><summary>Exemple</summary><pre>Agent → deck_load id:"verification-lot"
+→ applique le protocole de vérification
+  de la fiche à la tâche en cours.</pre></details>
+  </div>
+  <div class="card" data-k="promptdeck_browse méga pack explorer personas">
+    <h3>promptdeck_browse <span class="who deck">PromptDeck</span></h3>
+    <p>Explore l'arborescence complète du MEGA PACK (agents + skills) pour choisir personas et skills.</p>
+    <details><summary>Exemple</summary><pre>Toi (à PromptDeck) : « Quel persona pour un
+  agent de veille concurrentielle ? »
+→ promptdeck_browse() puis recommandation</pre></details>
+  </div>
+  <div class="card" data-k="fiches cd activation deck panel frontmatter kind tools triggers">
+    <h3>Fiches .CD (activation) <span class="who all">UI</span></h3>
+    <p>Markdown + frontmatter (<code class="inline">name</code>, <code class="inline">description</code>, <code class="inline">kind: skill|agent</code>, <code class="inline">tools</code>, <code class="inline">triggers:</code>). 3 sources : pack (lecture seule), <code class="inline">./.cd/</code> (projet, éditable dans le panneau), <code class="inline">~/.chatdeck/</code> (global).</p>
+    <details><summary>Exemple</summary>
+      <pre>🃏 Skills & Agents (hub) → clic = active la fiche
+   (globale) ; pastille 🃏 du composer = activation
+   POUR CE FIL. Plafond 12 fiches actives.
+Créer : bouton créer du panneau (ou CLI :
+   deck cd --new ma-methode), remplir le
+   frontmatter, utiliser au prochain tour.
+Microagents : triggers: "revue,audit" déclenche
+   la fiche quand ces mots apparaissent.</pre>
+    </details>
+  </div>
+  <div class="card" data-k="cli deck run ask search doctor terminal command line">
+    <h3>CLI <code class="inline">deck</code> <span class="who all">terminal</span></h3>
+    <p>Le même moteur en ligne de commande : <code class="inline">deck search</code>, <code class="inline">deck ask</code>, <code class="inline">deck run</code> (agent avec outils, confirmations), <code class="inline">deck doctor</code>.</p>
+    <details><summary>Exemple</summary><pre>deck search "revue de code"
+deck run "Corrige le test qui échoue"   # confirme bash/write
+deck ask "Pourquoi SSE plutôt que WS ?" --provider nvidia</pre></details>
+  </div>
+</div>
+
+<h2 id="connecteurs">🔌 Connecteurs & MCP <span class="count">— l'outil unique connector_call</span></h2>
+<div class="cards">
+  <div class="card" data-k="connector_call workspace tree file horloge deck connecteur http">
+    <h3>connector_call <span class="who all">tous</span></h3>
+    <p>Interroge les connecteurs : intégrés (<code class="inline">workspace</code> tree|file, <code class="inline">deck</code> search, <code class="inline">horloge</code> now) + HTTP déclarés dans ⚙︎ Réglages (la clé reste sur la machine).</p>
+    <details><summary>Exemple</summary><pre>Toi : « Quelle heure est-il, au fait ? »
+Agent → connector_call connector:"horloge" op:"now"
+HTTP : « Liste les repos publiques de l'API
+  GitHub que j'ai branchée » → connector_call
+  connector:"github" op:"/repos/owner/name"</pre></details>
+  </div>
+  <div class="card" data-k="mcp stdio serveurs cognee mémoire remember recall outils">
+    <h3>Serveurs MCP stdio <span class="who all">tous</span></h3>
+    <p>Déclarés dans <code class="inline">~/.chatdeck/mcp-servers.local.json</code> — leurs tools sont exposés via connector_call (op: tools|call). Ex. cognee : <code class="inline">remember</code>, <code class="inline">recall</code>, <code class="inline">cognify_file</code>… (11 outils).</p>
+    <details><summary>Exemple</summary><pre>{"name":"cognee","command":"npx",
+ "args":["-y","cognitive-backend","stdio"]}
+
+Panneau 🔌 Connecteurs liste les tools détectés.
+Toi : « Retiens que je préfère les réponses
+  concises » → l'agent appelle l'outil
+  remember du serveur cognee.</pre></details>
+  </div>
+</div>
+
+<h2 id="commandes">⌨︎ Commandes du composer <span class="count">— / commandes · @ fichiers</span></h2>
+<table>
+  <tr><th>Commande</th><th>Effet</th><th>Exemple</th></tr>
+  <tr data-k="undo annule checkpoint sandbox retour arrière"><td><code class="inline">/undo</code></td><td>Annule le dernier tour d'agent (revert vers le commit checkpoint — jamais tes commits).</td><td>Tape <code class="inline">/undo</code> après un write_file raté</td></tr>
+  <tr data-k="plan lecture seule tab analyse propose"><td><code class="inline">/plan</code></td><td>Mode Plan : agents en lecture seule (write_file, délégations et git_commit retirés). Toggle aussi via 📋 Plan ou Tab.</td><td><code class="inline">/plan</code> puis « Analyse src/ et propose un refactoring »</td></tr>
+  <tr data-k="agents nexus seeker active désactive"><td><code class="inline">/agents</code></td><td>Active/désactive Nexus + Seeker dans le fil.</td><td><code class="inline">/agents</code></td></tr>
+  <tr data-k="fichiers panneau arbre"><td><code class="inline">/fichiers</code></td><td>Ouvre le panneau Fichiers (hub).</td><td><code class="inline">/fichiers</code></td></tr>
+  <tr data-k="terminal workspace console"><td><code class="inline">/terminal</code></td><td>Ouvre le terminal du workspace (node, npm, git…).</td><td><code class="inline">/terminal</code> puis <code class="inline">npm test</code></td></tr>
+  <tr data-k="@fichier joint extrait sandbox prompt 4ko regex"><td><code class="inline">@fichier</code></td><td>Joint l'extrait (4 ko) d'un fichier sandbox au prompt. Menu d'autocomplétion à la frappe de <code class="inline">@</code> (flèches + Entrée/Tab).</td><td><code class="inline">@src/app.ts explique ce fichier</code></td></tr>
+</table>
+<div class="tip">💡 Si le menu <code class="inline">@</code> affiche « Active les agents… », c'est que le fil n'a pas de sandbox : active 🧠 d'abord (ou rattache à un projet).</div>
+
+<h2 id="modes">⚔︎ Duel & collaboration</h2>
+<div class="cards">
+  <div class="card" data-k="duel deux colonnes comparer modèles verdict arbitre synthèse ⇉">
+    <h3>⚔︎ Duel <span class="who all">⌘K « duel »</span></h3>
+    <p>Deux conversations côte à côte, streaming concurrent, bouton <code class="inline">⇉</code> = même message aux deux. Arbitre : ⚖︎ Synthèse (ou débat 2 tours) tranche « Verdict : A / B / égalité ». Sortie : « ✕ quitter le duel » dans la verdictbar.</p>
+    <details><summary>Exemple</summary><pre>⌘K → « duel » → ⇉ « Explique les runes Svelte 5 »
+→ compare → ⚖︎ Synthèse → verdict affiché.</pre></details>
+  </div>
+  <div class="card" data-k="collab nexus promptdeck parallèle workspace partagé préfixes">
+    <h3>🃏 Collab <span class="who all">verdictbar duel</span></h3>
+    <p>Nexus + PromptDeck en parallèle, workspace partagé (préfixes <code class="inline">nexus-</code> / <code class="inline">deck-</code>). Bootstrap garanti du workspace hôte.</p>
+    <details><summary>Exemple</summary><pre>Duel ouvert → 🃏 Collab → « Rédigez le cahier
+des charges de la v2 » → chacun écrit ses
+fichiers, se mentionnent, rapport final.</pre></details>
+  </div>
+</div>
+
+<h2 id="raccourcis">⌨︎ Raccourcis</h2>
+<table>
+  <tr><th>Raccourci</th><th>Action</th></tr>
+  <tr><td><kbd>⌘K</kbd></td><td>Palette de commandes (ancrée à la fenêtre IDE)</td></tr>
+  <tr><td><kbd>⌘N</kbd> / <kbd>⌘⇧N</kbd></td><td>Nouvelle conversation / incognito 👻</td></tr>
+  <tr><td><kbd>⌘⇧F</kbd></td><td>Recherche globale (saut au message avec flash)</td></tr>
+  <tr><td><kbd>⌘W</kbd> / <kbd>⌘E</kbd> / <kbd>⌘I</kbd></td><td>Fermer l'onglet / exporter / importer</td></tr>
+  <tr><td><kbd>⌘\</kbd></td><td>Toggle panneau latéral</td></tr>
+  <tr><td><kbd>⌘⌥F</kbd></td><td>Sortir la conversation en fenêtre (popout)</td></tr>
+  <tr><td><kbd>⌘⌥S</kbd></td><td>Snap fenêtre flottante : zone suivante (quarter → moitié → plein écran)</td></tr>
+  <tr><td><kbd>Tab</kbd></td><td>Toggle Mode Plan (composer)</td></tr>
+  <tr><td><kbd>Échap</kbd></td><td>Fermer palette / recherche / menus</td></tr>
+</table>
+
+<footer>
+  Généré pour ChatDeck v0.4.4 — sources : src/lib/agents.ts (personas + toolsFor), store.ts (HUB_TABS), README.md, CHANGELOG.md.
+  Fiche mise à jour le 28/09/2026. Ouvrir dans ChatDeck : 📁 Fichiers → docs/guide-interactif.html → preview 👁.
+</footer>
+</div>
+<script>
+  const q = document.getElementById('q');
+  const cards = [...document.querySelectorAll('.card, table tr[data-k]')];
+  function norm(s){ return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''); }
+  q.addEventListener('input', () => {
+    const v = norm(q.value.trim());
+    let empty = true;
+    for (const el of cards) {
+      const hay = norm((el.dataset.k || '') + ' ' + el.textContent);
+      const hit = !v || hay.includes(v);
+      el.classList.toggle('hidden', !hit);
+      if (hit) empty = false;
+    }
+    // masque les titres dont toutes les cartes sont cachées
+    document.querySelectorAll('h2').forEach(h => {
+      const zone = [];
+      let sib = h.nextElementSibling;
+      while (sib && !sib.matches('h2')) { zone.push(sib); sib = sib.nextElementSibling; }
+      const zoneCards = zone.filter(z => z.querySelector && z.querySelector('.card, tr[data-k]'));
+      const anyVisible = zone.some(z => z.querySelector && [...z.querySelectorAll('.card, tr[data-k]')].some(c => !c.classList.contains('hidden')));
+      h.classList.toggle('hidden', v && !anyVisible);
+      zone.filter(z => z.classList.contains('cards')).forEach(z => z.classList.toggle('hidden', v && !anyVisible));
+    });
+  });
+</script>
+</body>
+</html>
