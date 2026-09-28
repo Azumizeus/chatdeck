@@ -50,17 +50,27 @@ function healthEndpoint(): Plugin {
   const cache = new Map<string, { at: number; data: Health }>()
   const TTL = 10_000
   const probe = async (url: string): Promise<Health> => {
-    const t0 = Date.now()
-    try {
-      const r = await fetch(url, {
-        method: 'GET',
-        signal: AbortSignal.timeout(5000),
-        headers: { 'user-agent': 'chatdeck-health' },
-      })
-      return { up: r.status < 500, status: r.status, ms: Date.now() - t0 }
-    } catch (e) {
-      return { up: false, ms: Date.now() - t0, error: (e as Error).name === 'TimeoutError' ? 'timeout' : (e as Error).message }
+    const attempt = async (): Promise<Health> => {
+      const t0 = Date.now()
+      try {
+        const r = await fetch(url, {
+          method: 'GET',
+          signal: AbortSignal.timeout(5000),
+          headers: { 'user-agent': 'chatdeck-health' },
+        })
+        return { up: r.status < 500, status: r.status, ms: Date.now() - t0 }
+      } catch (e) {
+        return { up: false, ms: Date.now() - t0, error: (e as Error).name === 'TimeoutError' ? 'timeout' : (e as Error).message }
+      }
     }
+    // Anti-clignotement : la PREMIÈRE sonde après un boot échoue souvent en
+    // timeout (cold start DNS/TLS du process, ~8 s) alors que le réseau va
+    // bien — on retente immédiatement un timeout pour ne pas empoisonner le
+    // cache 10 s avec un « up:false » faux (boucle « aucun provider »).
+    const first = await attempt()
+    if (first.up || first.error !== 'timeout') return first
+    const second = await attempt()
+    return { ...second, ms: (first.ms ?? 0) + (second.ms ?? 0) }
   }
   return {
     name: 'chatdeck-health',

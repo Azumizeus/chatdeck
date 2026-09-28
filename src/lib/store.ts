@@ -521,6 +521,11 @@ export function loadSettings(): Settings {
   // Normalisation des réglages ajoutés après coup : les anciens localStorage
   // (d'avant le hub) n'ont pas hubTabs → le bouton Outils resterait muet.
   if (!Array.isArray(s.hubTabs)) s.hubTabs = defaultSettings().hubTabs
+  // Les onglets ajoutés aux defaults APRÈS coup doivent réapparaître chez les
+  // anciens profils : un hubTabs persisté qui omet « connecteurs » (ex. réglage
+  // datant d'avant cet onglet) masquait le panneau Connecteurs définitivement.
+  const def = defaultSettings().hubTabs ?? []
+  for (const t of def) if (!s.hubTabs!.includes(t)) s.hubTabs!.push(t)
   return s
 }
 
