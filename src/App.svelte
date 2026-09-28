@@ -1689,12 +1689,12 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
       variant="perConv"
       conv={c}
       streaming={streamingIds.has(convId)}
-      duelActive={false}
+      duelActive={true}
       agentsActive={Boolean(c.agents?.length)}
       filesOpen={showFiles && filesConvId === convId}
       terminalOpen={showTerminal && terminalConvId === convId}
       onToggleAgents={() => setAgentsFor(convId, c.agents?.length ? [] : ['nexus', 'seeker'])}
-      onToggleDuel={() => {}}
+      onToggleDuel={toggleDuel}
       onToggleFiles={() => toggleFiles(convId)}
       onToggleTerminal={() => { terminalConvId = convId; showTerminal = !showTerminal }}
       onSearch={() => (showSearch = true)}

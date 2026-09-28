@@ -63,17 +63,19 @@
     >
       <span aria-hidden="true">🧠</span> {#if !compact}<span>Agents</span>{/if}
     </button>
-    {#if !perConv}
-      <button
-        class="tb"
-        class:active={duelActive}
-        aria-pressed={duelActive}
-        onclick={onToggleDuel}
-        title={duelActive ? 'Quitter le mode duel' : 'Mode duel : deux conversations côte à côte'}
-      >
-        <span aria-hidden="true">⚔️</span> {#if !compact}<span>Duel</span>{/if}
-      </button>
-    {/if}
+    <!-- Le bouton duel reste visible en variante perConv (colonnes du duel) :
+         c'est la sortie visible du mode — actif = quitter. (Avant 0.4.7, les
+         colonnes n'offraient que Agents/Fichiers/Terminal, sans moyen de
+         rebasculer vers la vue agent simple.) -->
+    <button
+      class="tb"
+      class:active={duelActive}
+      aria-pressed={duelActive}
+      onclick={onToggleDuel}
+      title={duelActive ? 'Quitter le mode duel' : 'Mode duel : deux conversations côte à côte'}
+    >
+      <span aria-hidden="true">⚔️</span> {#if !compact}<span>{duelActive ? 'Quitter le duel' : 'Duel'}</span>{/if}
+    </button>
   </div>
 
   <span class="sep" aria-hidden="true"></span>

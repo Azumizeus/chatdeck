@@ -1,5 +1,25 @@
 # Changelog
 
+## Non publié
+
+### Ajouté
+- **Sortie du duel visible dans les colonnes** : le bouton ⚔️ Duel (rendu
+  « Quitter le duel » une fois en duel) est réaffiché dans les mini-toolbars
+  perConv — depuis 0.4.6 les colonnes n'offraient que Agents/Fichiers/Terminal
+  et on ne pouvait plus rebasculer vers la vue agent qu'en cherchant la
+  verdictbar. Entrée/sortie désormais possibles depuis n'importe quelle colonne.
+- **E2e verrou serveur autonome** (`e2e/standalone-api.spec.ts`, 5 tests) :
+  bundle le VRAI sandbox-server.ts comme `build:api`, boot le serveur autonome
+  et exige du JSON sur /health, /api/cascade-check, /api/cascade (gagnant ou
+  502), 404 et /api/sandbox + /api/deck — le bug packagé « Unexpected token
+  '<' » ne peut plus revenir.
+
+### Documenté
+- `docs/hdiutil-contournement.md` : diagnostic du montage DMG bloqué (étape
+  diskarbitrationd uniquement — `attach -nomount` OK, `diskutil` OK) et le
+  contournement prouvé `-mountpoint`, plus l'install direct depuis
+  `release/mac/`.
+
 ## 0.4.6
 
 ### Corrigé
