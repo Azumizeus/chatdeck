@@ -348,9 +348,22 @@ export function toolsFor(
     {
       type: 'function',
       function: {
+        name: 'web_search',
+        description:
+          'Recherche web SANS URL : interroge un moteur (DuckDuckGo) et renvoie titres + URLs + extraits. Appelle-le dès que l\'utilisateur demande de "chercher sur internet", une actualité ou une doc — puis web_fetch sur les résultats pertinents. Ne réponds JAMAIS que tu n\'as pas de navigateur : cet outil EST ton accès au web.',
+        parameters: {
+          type: 'object',
+          properties: { query: P('query', 'string', 'Requête de recherche (mots-clés, ex. "svelte 5 runes tutorial")') },
+          required: ['query'],
+        },
+      },
+    },
+    {
+      type: 'function',
+      function: {
         name: 'web_fetch',
         description:
-          'Explore le web : télécharge une page http(s) et renvoie son texte brut (200 ko max). Utilise-le pour documenter, vérifier une API ou citer une source.',
+          'Explore le web : télécharge une page http(s) et renvoie son texte brut (200 ko max). Utilise-le pour documenter, vérifier une API ou citer une source — typiquement APRÈS web_search pour lire un résultat.',
         parameters: {
           type: 'object',
           properties: { url: P('url', 'string', 'URL http(s) complète à récupérer') },
@@ -594,6 +607,26 @@ export async function execTool(convId: string, call: ToolCall): Promise<string> 
       if (j.error) return `❌ deck_load : ${j.error} — relance deck_search pour trouver le bon id`
       return `Fiche « ${id} » — à appliquer comme méthode :\n\n${(j.content ?? '').slice(0, 20_000)}`
     }
+    case 'web_search': {
+      // Recherche sans URL via DuckDuckGo Lite (HTML léger, pas de JS requis).
+      // Passé par le webfetch du serveur (même bornes) puis parsé en DOM côté client.
+      const query = String(call.args.query ?? '').trim()
+      if (!query) return '❌ web_search : requête vide'
+      const url = `https://lite.duckduckgo.com/lite/?q=${encodeURIComponent(query)}`
+      const r = await fetch(`/api/sandbox/${convId}/webfetch?url=${encodeURIComponent(url)}`)
+      const j = (await r.json()) as { status?: number; text?: string; error?: string }
+      if (j.error) return `Erreur web_search : ${j.error}`
+      const doc = new DOMParser().parseFromString(j.text ?? '', 'text/html')
+      const rows = [...doc.querySelectorAll('a.result-link')]
+      if (!rows.length) return `Aucun résultat pour « ${query} ». Reformule avec d'autres mots-clés.`
+      const lines = rows.slice(0, 10).map((a, i) => {
+        const link = (a.getAttribute('href') ?? '').replace(/^\/\/duckduckgo\.com\/l\/\?uddg=/, '').split('&rut=')[0]
+        const decoded = (() => { try { return decodeURIComponent(link) } catch { return link } })()
+        const snippet = a.closest('tr')?.nextElementSibling?.querySelector('.result-snippet')?.textContent?.trim() ?? ''
+        return `${i + 1}. ${a.textContent?.trim()}\n   ${decoded}${snippet ? `\n   ${snippet.slice(0, 220)}` : ''}`
+      })
+      return `Résultats web pour « ${query} » (DuckDuckGo) :\n\n${lines.join('\n')}\n\n→ Utilise web_fetch avec l'URL d'un résultat pour lire la page.`
+    }
     case 'web_fetch': {
       const url = String(call.args.url ?? '')
       const r = await fetch(`/api/sandbox/${convId}/webfetch?url=${encodeURIComponent(url)}`)
@@ -699,14 +732,16 @@ Tu travailles dans ChatDeck, une app qui te donne un vrai poste de développemen
 
 - **Sandbox disque persistante** par conversation (~/.chatdeck/workspaces/<id>). Tes fichiers survivent entre les tours et sont visibles par l'utilisateur dans le panneau Fichiers (hub « Outils »).
 - **Trois environnements réels** : mac, windows et linux. Chacun a son VRAI espace disque (<id>@@<os>) conservé côte à côte : switch_os bascule instantanément SANS rien effacer — tu retrouves exactement les fichiers de l'OS visé. Les exécutions restent bornées (liste blanche du terminal).
-- **Outils disponibles** : list_tree (arborescence), read_file, run_command (ls, cat, pwd, node -v, npm -v… liste blanche), ${writeTools} web_fetch (télécharger une page web), deck_search + deck_load (bibliothèque PromptDeck de 636 fiches méthodes/agents — CHERCHE la fiche adaptée et CHARGE-LA avant d'improviser une procédure)${agent === 'deck' ? ', promptdeck_browse (catalogue complet)' : ''}.
+- **Outils disponibles** : list_tree (arborescence), read_file, run_command (ls, cat, pwd, node -v, npm -v… liste blanche), ${writeTools} web_search (recherche web sans URL — DuckDuckGo) + web_fetch (lire une page précise), deck_search + deck_load (bibliothèque PromptDeck de 636 fiches méthodes/agents — CHERCHE la fiche adaptée et CHARGE-LA avant d'improviser une procédure)${agent === 'deck' ? ', promptdeck_browse (catalogue complet)' : ''}.
 - **Git intégré** : le workspace est un dépôt ; git_commit fait add+commit de tout avec un message obligatoire. Des checkpoints automatiques permettent à l'utilisateur d'annuler un tour (bouton ↩) — ne compte pas dessus pour corriger tes erreurs, committe proprement.
 - **Panneau Preview** : l'utilisateur voit en direct la première page .html du workspace (servie par /serve). Si ta tâche produit une interface, crée un index.html complet (HTML+CSS+JS inline) : la preview se mettra à jour dès l'écriture. Annonce explicitement « preview prête » quand tu écris une page.
 - **Délégation** : ${agent === 'nexus' ? 'delegate_to_seeker (recherche/analyse approfondie) et delegate_to_deck (conception de prompts/personas)' : agent === 'deck' ? 'delegate_to_nexus (orchestration et synthèse)' : 'tu peux recevoir des missions de Nexus et rendre ton rapport via report_to_deck'}.
 - **Fiches .CD actives** : si des fiches sont injectées ci-dessus (section « Fiches actives »), elles sont des méthodes/personas que tu DOIS appliquer pendant cette conversation.${connectors && (connectors.builtin.length || connectors.http.length) ? `\n- **Connecteurs** : ${[...connectors.builtin.map((b) => `${b.name} (${b.desc})`), ...connectors.http.map((h) => `${h.name} (HTTP externe)`)].join(', ')}. Utilise connector_call (connector, op, path) pour les interroger au lieu de deviner des données.` : ''}
 ${project ? `- **Projet « ${project.name} »** : cette conversation est rattachée à un projet. Un workspace partagé (~/.chatdeck/workspaces/p-${project.id}) regroupe TOUTES ses conversations, et l'utilisateur a autorisé la LECTURE de dossiers de son Mac (${project.folders.length ? project.folders.join(', ') : 'aucun'}) : utilise list_project_tree + read_project_file (params : path) pour explorer ce code AVANT de proposer quoi que ce soit — n'écris QUE dans ta sandbox (write_file).${project.instructions ? `\n- **Règles du projet (à respecter STRICTEMENT)** :\n\n${project.instructions}` : ''}` : ''}
 
-Réponds en français, agis avec les outils au lieu de spéculer, et dis toujours à l'utilisateur ce que tu as fait sur le disque.`
+Réponds en français, agis avec les outils au lieu de spéculer, et dis toujours à l'utilisateur ce que tu as fait sur le disque.
+
+Règle absolue sur le web : tu AS un accès internet via web_search (recherche par mots-clés) et web_fetch (lecture d'une URL). Ne dis JAMAIS « je n'ai pas de navigateur » ni « donne-moi une URL » : cherche directement avec web_search, puis lis les résultats avec web_fetch.`
   if (delegation) {
     const from = delegation.from === 'nexus' ? 'Nexus' : delegation.from === 'deck' ? 'PromptDeck' : 'Nexus'
     const reportTool = reportToolNameFor(agent)

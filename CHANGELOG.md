@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.4.7
+
+### Ajouté
+- **web_search : l'agent accède enfin au web sans URL** — nouvel outil
+  (DuckDuckGo Lite parsé en DOM, passé par les mêmes bornes que web_fetch :
+  http(s), pas de localhost, timeout, taille plafonnée) qui renvoie les 10
+  premiers résultats (titre + URL + extrait). web_fetch reste pour lire une
+  page précise. Prompt système durci : ne JAMAIS répondre « je n'ai pas de
+  navigateur » ni « donne-moi une URL » — chercher directement.
+- **Fiche agent AEGIS-7** (`.cd/agents/aegis-7.cd`) : le persona improvisé
+  par le modèle devient officiel — 7 rôles, triggers, méthodes et la règle
+  d'or « utilise web_search/web_fetch au lieu de promettre ».
+
 ## Non publié
 
 ### Ajouté
