@@ -8,6 +8,12 @@
   import { resizeGeo, snapForPointer, snapCycle, zoneRect, beyondTrigger, MIN_W, type Dir, type Edge } from '../float.svelte'
   import type { PaneGeometry } from '../store'
 
+  /** Vrai dans l'app de bureau Electron : la fenêtre OS EST le cadre. Dessiner
+   *  notre faux châssis (pastilles + barre de titre) par-dessus le hiddenInset
+   *  natif faisait un DOUBLE encadrement — le correctif 0.4.3 ne couvrait que
+   *  le mode docké (WindowFrame), pas celui-ci. */
+  const inElectron = typeof navigator !== 'undefined' && /Electron/i.test(navigator.userAgent)
+
   let {
     geo,
     title,
@@ -161,9 +167,11 @@
   }
 
   const style = $derived(
-    maximized
-      ? 'left:8px;top:8px;width:calc(100vw - 16px);height:calc(100vh - 16px)'
-      : `left:${local.x}px;top:${local.y}px;width:${local.w}px;height:${local.h}px`,
+    inElectron
+      ? 'left:0;top:0;width:100vw;height:100vh' // la fenêtre OS EST le cadre
+      : maximized
+        ? 'left:8px;top:8px;width:calc(100vw - 16px);height:calc(100vh - 16px)'
+        : `left:${local.x}px;top:${local.y}px;width:${local.w}px;height:${local.h}px`,
   )
 </script>
 
@@ -176,40 +184,49 @@
   ></div>
 {/if}
 
-<div class="float-win" class:dragging class:resizing class:maximized class:anim {style} role="dialog" aria-label={title}>
-  <div class="titlebar" role="presentation" onpointerdown={startDrag} ondblclick={toggleMax}>
-    <div class="traffic">
-      <button class="light close" title="Revenir en fenêtre ancrée" aria-label="Revenir en fenêtre ancrée" onclick={onRestore}></button>
-      <button class="light minimize" title="Réduire en pill (barre de tâches)" aria-label="Réduire en pill" onclick={() => onMinimize?.()}></button>
-      <button class="light maximize" title="Plein écran (ou double-clic sur la barre)" aria-label="Plein écran" onclick={toggleMax}></button>
+<div class="float-win" class:electron={inElectron} class:dragging class:resizing class:maximized class:anim {style} role="dialog" aria-label={title}>
+  {#if inElectron}
+    <!-- Electron : espace de drag pour les pastilles natives (hiddenInset),
+         pas de faux titre ni de fausses pastilles (double encadrement). -->
+    <div class="native-gap" aria-hidden="true"></div>
+  {:else}
+    <div class="titlebar" role="presentation" onpointerdown={startDrag} ondblclick={toggleMax}>
+      <div class="traffic">
+        <button class="light close" title="Revenir en fenêtre ancrée" aria-label="Revenir en fenêtre ancrée" onclick={onRestore}></button>
+        <button class="light minimize" title="Réduire en pill (barre de tâches)" aria-label="Réduire en pill" onclick={() => onMinimize?.()}></button>
+        <button class="light maximize" title="Plein écran (ou double-clic sur la barre)" aria-label="Plein écran" onclick={toggleMax}></button>
+      </div>
+      <div class="title">{title}</div>
+      <div class="right"></div>
     </div>
-    <div class="title">{title}</div>
-    <div class="right"></div>
-  </div>
+  {/if}
 
   <div class="body">
     {@render children?.()}
   </div>
 
-  <!-- Poignées de resize : 4 bords + 4 coins (pointer events, mutuellement exclusives) -->
-  {#each EDGES as d (d)}
-    <div
-      class="h edge {d}"
-      style="cursor:{CURSORS[d]}"
-      role="separator"
-      aria-label="Redimensionner {d.toUpperCase()}"
-      onpointerdown={(e) => startResize(d, e)}
-    ></div>
-  {/each}
-  {#each CORNERS as d (d)}
-    <div
-      class="h corner {d}"
-      style="cursor:{CURSORS[d]}"
-      role="separator"
-      aria-label="Redimensionner {d.toUpperCase()}"
-      onpointerdown={(e) => startResize(d, e)}
-    ></div>
-  {/each}
+  <!-- Poignées de resize : 4 bords + 4 coins (pointer events, mutuellement exclusives).
+       Inutiles en Electron : la fenêtre OS se redimensionne nativement. -->
+  {#if !inElectron}
+    {#each EDGES as d (d)}
+      <div
+        class="h edge {d}"
+        style="cursor:{CURSORS[d]}"
+        role="separator"
+        aria-label="Redimensionner {d.toUpperCase()}"
+        onpointerdown={(e) => startResize(d, e)}
+      ></div>
+    {/each}
+    {#each CORNERS as d (d)}
+      <div
+        class="h corner {d}"
+        style="cursor:{CURSORS[d]}"
+        role="separator"
+        aria-label="Redimensionner {d.toUpperCase()}"
+        onpointerdown={(e) => startResize(d, e)}
+      ></div>
+    {/each}
+  {/if}
 </div>
 
 <style>
@@ -239,6 +256,20 @@
   .float-win.resizing {
     border-color: var(--accent);
     user-select: none;
+  }
+  /* Electron : la fenêtre OS fournit cadre, ombre et coins — on ne redessine rien */
+  .float-win.electron {
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+  }
+  .float-win.electron .body {
+    border-radius: 0;
+  }
+  .native-gap {
+    height: 14px;
+    flex-shrink: 0;
+    -webkit-app-region: drag;
   }
   .float-win.anim:not(.dragging):not(.resizing) {
     transition:

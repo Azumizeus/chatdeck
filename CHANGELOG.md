@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.5
+
+### Corrigé
+- **Double encadrement en fenêtre flottante (app de bureau)** : FloatingWindow
+  dessinait son faux châssis macOS (pastilles + barre « ChatDeck — IDE premium »)
+  PAR-DESSUS la fenêtre native Electron hiddenInset — le correctif 0.4.3 ne
+  couvrait que le mode docké (WindowFrame). En Electron : plus de faux châssis
+  (espace de drag natif), la vue flottante remplit la fenêtre OS, poignées de
+  resize et bordure/ombre maison retirées (c'est la fenêtre OS qui le fournit).
+  Le châssis complet reste en navigateur (snap, poignées, pastilles maison).
+
 ## 0.4.4
 
 ### Corrigé
