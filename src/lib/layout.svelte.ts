@@ -15,6 +15,11 @@ import {
 
 export type PanelId = 'sidebar' | 'settings' | 'chat'
 
+/** Vrai dans l'app de bureau Electron (le navigateur ne contient jamais 'Electron').
+ *  Là-bas, la fenêtre OS fournit déjà châssis, déplacement et redimensionnement :
+ *  les modes fenêtre flottante, snap et pill sont désactivés à la source. */
+export const inElectron: boolean = typeof navigator !== 'undefined' && /Electron/i.test(navigator.userAgent)
+
 export interface PopoutState {
   /** Conversation mise en popout (id) — null si aucune */
   conversationId: string | null
@@ -98,11 +103,15 @@ export class LayoutManager {
 
   get appMode(): 'docked' | 'floating' | 'pill' {
     const m = this.layout.appMode
+    if (inElectron) return 'docked'
     return m === 'floating' || m === 'pill' ? m : 'docked'
   }
 
   setAppMode(m: 'docked' | 'floating' | 'pill'): void {
-    this.layout.appMode = m
+    // Electron : la fenêtre OS EST la fenêtre — pas de flottant ni de pill.
+    // (Un appMode persisté 'floating'/'pill' d'une session navigateur retombe
+    // sur docké au prochain get, cf. appMode ci-dessous.)
+    this.layout.appMode = inElectron ? 'docked' : m
     saveLayout(this.layout)
   }
 

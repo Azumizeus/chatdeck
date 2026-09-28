@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.4.6
+
+### Corrigé
+- **Cascade morte dans l'app packagée (« Unexpected token '<', '<!doctype' »)** :
+  les endpoints `/api/cascade*` n'existaient QUE dans le plugin Vite (dev) — en
+  packagé, le serveur autonome répondait le fallback SPA (index.html) et le
+  panneau Cascade échouait au JSON.parse. Refactor : `cascadeApiMount` partagé
+  (plugin Vite + serveur autonome), monté dans ChatDeckApi à côté de
+  sandbox/deck ; la résolution de clés lit aussi `~/.chatdeck/keys.local.json`
+  (le dossier projet n'existe pas en packagé). Prouvé en autonome : santé 9
+  providers + test réel (cohere gagnant après 5 bascules).
+- **Fenêtre flottante / snap / pill désactivés en Electron** : la fenêtre OS
+  fournit déjà châssis, déplacement et redimensionnement — ces modes (et leurs
+  doubles encadrements potentiels) n'ont de sens qu'en navigateur, où ils
+  restent intacts. Guards à la source (layout.setAppMode, floatWith, cycleSnap,
+  togglePill, ⌘⌥S) + commandes de palette filtrées en Electron.
+
 ## 0.4.5
 
 ### Corrigé

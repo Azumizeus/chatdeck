@@ -22,6 +22,7 @@
 // taille de fichier plafonnée, rien en dehors de la racine.
 
 import type { Plugin } from 'vite'
+import { cascadeApiMount } from './cascade-server'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { spawn } from 'node:child_process'
 import { mkdir, readdir, readFile, writeFile, rm, stat } from 'node:fs/promises'
@@ -1402,6 +1403,13 @@ class ChatDeckApi {
               const handler = mount === 'sandbox' ? sandboxHandler : deckHandler
               req.url = `/${sub}${queryPart ? `?${queryPart}` : ''}`
               return handler(req, res)
+            }
+            // Cascade du méga-pack : MÊMES handlers que le plugin Vite (dev).
+            // Sans ce montage, l'app packagée renvoyait le fallback SPA (index.html)
+            // et le panneau Cascade affichait « Unexpected token '<' ».
+            if (key === 'api' && (seg[1] === 'cascade' || seg[1] === 'cascade-check')) {
+              req.url = `/${seg.slice(2).join('/')}${queryPart ? `?${queryPart}` : ''}`
+              return cascadeApiMount(req, res)
             }
             // UI : sert dist/ (build Vite) — l'app packagée charge http://127.0.0.1:<port>/.
             const distDir = path.join(projectRoot, 'dist')

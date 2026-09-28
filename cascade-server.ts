@@ -2,15 +2,20 @@
 // Ordre officiel : omniroute → freellm → groq → cerebras → mistral → cohere →
 //                  gemini → openrouter → anthropic.
 // Clés résolues comme dans llm-cascade.py : env → auth.json (opencode) →
-// keys.local.json (chatdeck). La santé est cachée 10 min.
-// Endpoints (plugin Vite dev + serveur autonome) :
+// keys.local.json (chatdeck, dossier projet OU ~/.chatdeck). Santé cachée 10 min.
+// Endpoints — plugin Vite (dev) ET serveur autonome (app packagée) :
 //   GET  /api/cascade-check                    → santé de chaque maillon
 //   POST /api/cascade {messages, provider?}    → réponse + trace (provider, bascules)
 //   POST /api/cascade/stream {messages}        → streaming SSE token par token
+//
+// Implémentation : `cascadeApiMount(req, res)` branché sur un chemin qui commence
+// par /api/cascade — partagé par le plugin Vite ci-dessous et par ChatDeckApi
+// (sandbox-server.ts --serve). En packagé, sans ce montage, le fallback SPA
+// renvoyait index.html et le panneau Cascade affichait « Unexpected token '<' ».
 
 import type { Plugin } from 'vite'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import path from 'node:path'
 
@@ -52,6 +57,11 @@ const AUTH_ALIASES: Record<string, string[]> = {
   omniroute: ['omniroute'],
 }
 
+/** Dossiers candidats pour keys.local.json : dossier projet (dev) puis ~/.chatdeck (packagé). */
+function keysLocalCandidates(): string[] {
+  return [path.join(process.cwd(), 'keys.local.json'), path.join(homedir(), '.chatdeck', 'keys.local.json')]
+}
+
 /** Résolution de clé : env → auth.json d'opencode → keys.local.json (chatdeck). */
 function resolveKey(id: string): string | null {
   for (const n of ENV_KEYS[id] ?? []) {
@@ -65,10 +75,15 @@ function resolveKey(id: string): string | null {
       if (k) return k
     }
   } catch { /* auth.json absent */ }
-  try {
-    const kl = JSON.parse(readFileSync(path.join(homedir(), 'projects/chatdeck/keys.local.json'), 'utf8')) as Record<string, string>
-    return kl[`${id}-direct`] ?? kl[id] ?? null
-  } catch { return null }
+  for (const f of keysLocalCandidates()) {
+    if (!existsSync(f)) continue
+    try {
+      const kl = JSON.parse(readFileSync(f, 'utf8')) as Record<string, string>
+      const hit = kl[`${id}-direct`] ?? kl[id]
+      if (hit) return hit
+    } catch { /* fichier suivant */ }
+  }
+  return null
 }
 
 type Msg = { role: 'system' | 'user' | 'assistant'; content: string }
@@ -203,60 +218,71 @@ async function cascadeStream(messages: Msg[], res: ServerResponse, start?: strin
 const healthCache = new Map<string, Health>()
 const HEALTH_TTL = 600_000 // 10 min
 
+/** GET /api/cascade-check : santé de chaque maillon (cache 10 min). */
+async function cascadeCheckApi(res: ServerResponse): Promise<void> {
+  const now = Date.now()
+  const entries = await Promise.all(
+    CASCADE.map(async (def) => {
+      const hit = healthCache.get(def.id)
+      if (hit && now - hit.at < HEALTH_TTL) return [def.id, hit] as const
+      const t0 = Date.now()
+      let up = false
+      const key = def.needsKey ? resolveKey(def.id) : null
+      try {
+        const headers: Record<string, string> = {}
+        if (key) headers.Authorization = `Bearer ${key}`
+        const base = def.base.replace(/\/chat\/completions$/, '/models')
+        const r = await fetch(base, { headers, signal: AbortSignal.timeout(8000) })
+        up = r.status < 500
+      } catch { up = false }
+      const h: Health = { at: now, up, ms: Date.now() - t0, key: key ? 'oui' : def.needsKey ? 'non' : 'n/a' }
+      healthCache.set(def.id, h)
+      return [def.id, h] as const
+    }),
+  )
+  json(res, 200, { providers: Object.fromEntries(entries) })
+}
+
+/* ─────────── Montage partagé (plugin Vite + serveur autonome) ─────────── */
+
+/**
+ * Branche req.url (chemin contenant /api/cascade…) vers le bon endpoint.
+ * Appelé par le plugin Vite (req.url relatif au mount, ex. '' ou '/stream')
+ * et par ChatDeckApi (req.url complet, ex. '/api/cascade-check').
+ */
+export function cascadeApiMount(req: IncomingMessage, res: ServerResponse): void {
+  void (async () => {
+    const p = (req.url ?? '/').split('?')[0] ?? '/'
+    const isCheck = p.includes('cascade-check')
+    const isStream = p.endsWith('/stream')
+    const isRoot = !isCheck && !isStream && (p === '' || p === '/' || /cascade$/.test(p))
+    try {
+      if (req.method === 'GET' && (isCheck || isRoot)) {
+        // GET /api/cascade ≡ health-check (commodité)
+        return await cascadeCheckApi(res)
+      }
+      if (req.method === 'POST' && isCheck) return await cascadeCheckApi(res)
+      const body = JSON.parse(await readBody(req)) as { messages?: Msg[]; provider?: string }
+      const messages = body.messages ?? []
+      if (!messages.length) return json(res, 400, { error: 'messages requis' })
+      if (req.method === 'POST' && isStream) return await cascadeStream(messages, res, body.provider)
+      if (req.method === 'POST') return json(res, 200, await cascade(messages, body.provider))
+      return json(res, 405, { error: `méthode ${req.method} non supportée` })
+    } catch (e) {
+      return json(res, 502, { error: (e as Error).message })
+    }
+  })()
+}
+
+/** Plugin Vite (dev) : mêmes handlers que le serveur autonome. */
 export function cascadeServer(): Plugin {
   return {
     name: 'chatdeck-cascade-server',
     configureServer(server) {
-      server.middlewares.use('/api/cascade-check', (req, res) => {
-        void (async () => {
-          const now = Date.now()
-          const entries = await Promise.all(
-            CASCADE.map(async (def) => {
-              const hit = healthCache.get(def.id)
-              if (hit && now - hit.at < HEALTH_TTL) return [def.id, hit] as const
-              const t0 = Date.now()
-              let up = false
-              const key = def.needsKey ? resolveKey(def.id) : null
-              try {
-                const headers: Record<string, string> = {}
-                if (key) headers.Authorization = `Bearer ${key}`
-                const base = def.base.replace(/\/chat\/completions$/, '/models')
-                const r = await fetch(base, { headers, signal: AbortSignal.timeout(8000) })
-                up = r.status < 500
-              } catch { up = false }
-              const h: Health = { at: now, up, ms: Date.now() - t0, key: key ? 'oui' : def.needsKey ? 'non' : 'n/a' }
-              healthCache.set(def.id, h)
-              return [def.id, h] as const
-            }),
-          )
-          json(res, 200, { providers: Object.fromEntries(entries) })
-        })()
+      server.middlewares.use('/api/cascade-check', (_req, res) => {
+        void cascadeCheckApi(res)
       })
-      server.middlewares.use('/api/cascade', (req, res) => {
-        void (async () => {
-          try {
-            const body = JSON.parse(await readBody(req)) as { messages?: Msg[]; provider?: string }
-            const messages = body.messages ?? []
-            if (!messages.length) return json(res, 400, { error: 'messages requis' })
-            const out = await cascade(messages, body.provider)
-            json(res, 200, out)
-          } catch (e) {
-            json(res, 502, { error: (e as Error).message })
-          }
-        })()
-      })
-      server.middlewares.use('/api/cascade/stream', (req, res) => {
-        void (async () => {
-          try {
-            const body = JSON.parse(await readBody(req)) as { messages?: Msg[]; provider?: string }
-            const messages = body.messages ?? []
-            if (!messages.length) return json(res, 400, { error: 'messages requis' })
-            await cascadeStream(messages, res, body.provider)
-          } catch (e) {
-            json(res, 500, { error: (e as Error).message })
-          }
-        })()
-      })
+      server.middlewares.use('/api/cascade', (req, res) => cascadeApiMount(req, res))
     },
   }
 }

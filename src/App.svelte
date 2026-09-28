@@ -45,7 +45,7 @@
     type Settings,
     BUILTIN_CONNECTORS,
   } from './lib/store'
-  import { layout, type PanelId } from './lib/layout.svelte'
+  import { layout, inElectron, type PanelId } from './lib/layout.svelte'
   import Sidebar from './lib/components/Sidebar.svelte'
   import ChatMessage from './lib/components/ChatMessage.svelte'
   import Composer from './lib/components/Composer.svelte'
@@ -979,6 +979,7 @@
   })
 
   function floatWith(geo: PaneGeometry): void {
+    if (inElectron) return
     layout.setAppGeo(geo)
     layout.setAppMode('floating')
   }
@@ -994,6 +995,7 @@
   }
 
   function togglePill(): void {
+    if (inElectron) return
     layout.setAppMode(layout.appMode === 'pill' ? 'floating' : 'pill')
   }
 
@@ -1295,6 +1297,7 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
 
   /** Fait avancer le cycle de snap au clavier/palette : quarters → moitiés → plein écran → retour. */
   function cycleSnap(): void {
+    if (inElectron) return
     const cycle = snapCycle('left')
     if (layout.appMode !== 'floating') {
       floatWith(zoneRect(cycle[0], window.innerWidth, window.innerHeight))
@@ -1372,7 +1375,7 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
       showSearch = !showSearch
     } else if (mod && e.altKey && e.key.toLowerCase() === 's') {
       e.preventDefault()
-      cycleSnap()
+      if (!inElectron) cycleSnap()
     } else if (mod && e.key === '\\') {
       e.preventDefault()
       layout.toggleSidebar()
@@ -1483,7 +1486,7 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
     { id: 'float', label: 'Fenêtre flottante', run: () => floatWith(layout.appGeo) },
     { id: 'snap', label: 'Snap : zone suivante (quarter → moitié → plein écran)', hint: '⌘⌥S', run: cycleSnap },
     { id: 'pill', label: layout.appMode === 'pill' ? 'Restaurer depuis la barre de tâches' : 'Réduire en barre de tâches (pill)', run: togglePill },
-  ])
+  ].filter((c) => !(inElectron && (c.id === 'float' || c.id === 'snap' || c.id === 'pill'))))
 
   const SUGGESTIONS = [
     'Explique-moi Svelte 5 en 5 phrases.',
