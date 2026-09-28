@@ -24,7 +24,8 @@ type Health = { at: number; up: boolean; ms?: number; key?: string }
 
 const CASCADE: CascadeDef[] = [
   { id: 'omniroute', base: 'http://127.0.0.1:20128/v1/chat/completions', model: 'auto/best-fast', needsKey: false },
-  { id: 'freellm', base: 'http://127.0.0.1:8000/v1/chat/completions', model: 'auto', needsKey: false },
+  // FreeLLMAPI V13 exige une clé (clé unifiée du dashboard) — résolue via auth.json.
+  { id: 'freellm', base: 'http://127.0.0.1:8000/v1/chat/completions', model: 'auto', needsKey: true },
   { id: 'groq', base: 'https://api.groq.com/openai/v1/chat/completions', model: 'openai/gpt-oss-20b', needsKey: true },
   { id: 'cerebras', base: 'https://api.cerebras.ai/v1/chat/completions', model: 'gpt-oss-120b', needsKey: true },
   { id: 'mistral', base: 'https://api.mistral.ai/v1/chat/completions', model: 'mistral-small-latest', needsKey: true },
@@ -119,7 +120,9 @@ async function attempt(def: CascadeDef, key: string | null, messages: Msg[]): Pr
     method: 'POST',
     headers,
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(30_000),
+    // 60 s : les modèles « auto » des providers gratuits peuvent router vers
+    // des backends lents (nemotron-550b observé à 7-40 s) — 30 s tuait freellm.
+    signal: AbortSignal.timeout(60_000),
   })
   if (!r.ok) throw new Error(`HTTP ${r.status}`)
   const j = (await r.json()) as Record<string, unknown>

@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.4.8
+
+### Ajouté
+- **Hysteresis NetworkBanner** : 2 échecs CONSÉCUTIFS de la sonde proxy avant
+  d'afficher « Réseau injoignable » — une micro-coupure ou une sonde isolée ne
+  fait plus clignoter l'UI (l'event `offline` navigateur force l'affichage,
+  lui, est fiable).
+- **LaunchAgents** : `com.mickael.freellmapi` (serveur :8000, KeepAlive) et
+  `com.mickael.chatdeck-dev` (vite :5199 au reboot) — comme omniroute.
+- **Fiche `.cd/skills/lancer-studyvault.cd`** : procédure locale StudyVault /
+  tutor / tutor-setup (deck_load, pdftotext, coffret Obsidian, quiz).
+
+### Corrigé
+- **freellm de retour dans la cascade** : FreeLLMAPI V13 (installée dans
+  `~/tools/freellmapi`) exige une clé unifiée — `needsKey: true` + résolution
+  auth.json (alignée sur la clé du dashboard, jamais affichée) ; timeout
+  d'appel 30 s → 60 s (les modèles « auto » gratuits routent vers des
+  backends lents). Prouvé : `auto` → kilo-auto répond en ~10-14 s.
+
 ## 0.4.7
 
 ### Ajouté

@@ -22,8 +22,13 @@ class NetState {
   /** Dernière sonde réussie (évite de re-sonder en boucle quand tout va bien) */
   lastOkAt = $state(0)
   checking = $state(false)
+  /** Anti-clignotement : nombre d'échecs CONSÉCUTIFS avant d'afficher la bannière.
+   *  Une seule sonde qui tombe (micro-coupure, cold start, latence réseau) ne
+   *  doit pas faire clignoter l'UI — il faut 2 échecs de suite. */
+  private consecutiveDown = 0
+  private static DOWN_THRESHOLD = 2
 
-  /** Bannière visible : la sonde proxy a échoué (ou n'a jamais réussi et le serveur ne répond pas). */
+  /** Bannière visible : ≥ 2 sondes proxy consécutives échouées. */
   get bannerVisible(): boolean {
     return this.proxy === 'down'
   }
@@ -46,7 +51,15 @@ class NetState {
       } finally {
         clearTimeout(timer)
       }
-      if (this.proxy === 'up') this.lastOkAt = Date.now()
+      if (this.proxy === 'up') {
+        this.lastOkAt = Date.now()
+        this.consecutiveDown = 0
+      } else {
+        this.consecutiveDown++
+        // Hysteresis : tant qu'on n'a pas atteint le seuil, on reste sur le
+        // dernier état stable (« up ») — pas de clignotement sur un échec isolé.
+        if (this.consecutiveDown < NetState.DOWN_THRESHOLD) this.proxy = 'up'
+      }
 
       // 2) Détail par fournisseur (endpoint Vite, best effort)
       const h = await fetch('/api/health', { signal: AbortSignal.timeout(12_000) })
@@ -66,6 +79,8 @@ class NetState {
     void this.probe()
     const interval = setInterval(() => void this.probe(), 60_000)
     const offline = (): void => {
+      // Événement navigateur fiable (vraie coupure) : on force l'affichage.
+      this.consecutiveDown = NetState.DOWN_THRESHOLD
       this.proxy = 'down'
     }
     const online = (): void => {

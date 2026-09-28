@@ -1,7 +1,7 @@
 {
   "name": "chatdeck",
   "private": true,
-  "version": "0.4.7",
+  "version": "0.4.8",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -70,6 +70,7 @@
   },
   "dependencies": {
     "dompurify": "^3.2.0",
-    "marked": "^15.0.0"
+    "marked": "^15.0.0",
+    "pdfjs-dist": "^6.3.289"
   }
 }
