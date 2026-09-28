@@ -16,6 +16,26 @@
   }
   let mcpList = $state<{ server: string; tools: McpTool[] }[]>([])
   let mcpError = $state('')
+  interface WebEntry { q?: string; url?: string; title?: string; at: number }
+  let web = $state<{ history: WebEntry[]; favorites: WebEntry[]; cache: Record<string, { title: string; at: number; chars: number }> } | null>(null)
+
+  async function loadWeb(): Promise<void> {
+    try {
+      web = await fetch('/api/sandbox/connectors/web').then((r) => r.json())
+    } catch {
+      web = null
+    }
+  }
+
+  async function toggleFav(url: string, title: string): Promise<void> {
+    const has = (web?.favorites ?? []).some((f) => f.url === url)
+    await fetch('/api/sandbox/connectors/web', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ op: 'favorite', url, title, add: !has }),
+    })
+    void loadWeb()
+  }
 
   async function loadMcp(): Promise<void> {
     mcpError = ''
@@ -40,6 +60,7 @@
   }
   $effect(() => {
     void loadMcp()
+    void loadWeb()
   })
 
   let {
@@ -148,6 +169,41 @@
         </div>
       </div>
     {/each}
+
+    <!-- Connecteur web natif : historique web_search, favoris, cache web_fetch -->
+    {#if web}
+      <div class="conn on">
+        <div class="row"><span class="name">🌐 Web</span><span class="tag">intégré</span></div>
+        <p class="desc">Mémoire des accès web des agents : recherches (<code>web_search</code>), pages lues (<code>web_fetch</code>, 10 ko de texte mis en cache), favoris.</p>
+        {#if web.favorites.length}
+          <p class="sec">⭐ Favoris</p>
+          {#each web.favorites.slice(-8).reverse() as f (f.url!)}
+            <div class="wrow">
+              <span class="wtitle" title={f.url}>{f.title}</span>
+              <button class="mini" onclick={() => void toggleFav(f.url!, f.title ?? f.url!)} title="Retirer des favoris">★</button>
+            </div>
+          {/each}
+        {/if}
+        {#if web.history.length}
+          <p class="sec">🕘 Dernières recherches</p>
+          {#each web.history.slice(0, 8) as h (h.at)}
+            <div class="wrow"><span class="wtitle">{h.q}</span><span class="ws-meta">{new Date(h.at).toLocaleTimeString()}</span></div>
+          {/each}
+        {/if}
+        {#if Object.keys(web.cache).length}
+          <p class="sec">📄 Pages en cache</p>
+          {#each Object.entries(web.cache).slice(-8).reverse() as [u, v] (u)}
+            <div class="wrow">
+              <span class="wtitle" title={u}>{v.title}</span>
+              <span class="ws-meta">{v.chars} car.</span>
+            </div>
+          {/each}
+        {/if}
+        {#if !web.favorites.length && !web.history.length && !Object.keys(web.cache).length}
+          <p class="desc">Rien encore — les recherches et pages des agents apparaîtront ici.</p>
+        {/if}
+      </div>
+    {/if}
 
     <!-- Serveurs MCP stdio (~/.chatdeck/mcp-servers.local.json) -->
     {#if mcpList.length}
@@ -322,6 +378,26 @@
   .ws-meta {
     font-size: 11px;
     color: var(--muted);
+  }
+  .sec {
+    margin: 2px 0 0;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+  }
+  .wrow {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .wtitle {
+    font-size: 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .add {
     border: 1px dashed var(--border);

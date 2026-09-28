@@ -64,6 +64,9 @@ const mcpProcs = new Map<
     /** Réponses appariées PAR ID JSON-RPC (jamais par ordre d'arrivée). */
     pending: Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: NodeJS.Timeout }>
     id: number
+    /** Handshake MCP terminé : les requêtes user attendent la fin d'initialize
+     *  (browser-use IGNORE tout ce qui arrive avant sa réponse d'init). */
+    ready: Promise<void>
   }
 >()
 function mcpRpc(name: string, method: string, params: unknown, timeoutMs = 25_000): Promise<unknown> {
@@ -78,7 +81,7 @@ function mcpRpc(name: string, method: string, params: unknown, timeoutMs = 25_00
       env: { ...process.env, ...(cfg.env ?? {}) },
       stdio: ['pipe', 'pipe', 'pipe'],
     })
-    entry = { child, buf: '', pending: new Map(), id: 0 }
+    entry = { child, buf: '', pending: new Map(), id: 0, ready: Promise.resolve() }
     mcpProcs.set(name, entry)
     needInit = true
     child.stdout!.on('data', (d: Buffer) => {
@@ -126,28 +129,40 @@ function mcpRpc(name: string, method: string, params: unknown, timeoutMs = 25_00
     const write = (obj: unknown): boolean => e.child.stdin!.write(`${JSON.stringify(obj)}\n`)
     // Handshake obligatoire du protocole MCP au premier appel d'un process neuf :
     // initialize → (réponse appariée par id) → notifications/initialized.
+    // IMPORTANT : certains serveurs (browser-use) IGNORENT toute requête qui
+    // arrive avant la fin de leur initialize — les requêtes user attendent
+    // donc la fin du handshake (e.ready) avant d'être écrites.
     if (needInit) {
-      const initId = ++e.id
-      const initTimer = setTimeout(() => e.pending.delete(initId), effTimeout)
-      e.pending.set(initId, {
-        resolve: () => {
-          write({ jsonrpc: '2.0', method: 'notifications/initialized' })
-        },
-        reject: () => {},
-        timer: initTimer,
-      })
-      write({
-        jsonrpc: '2.0',
-        id: initId,
-        method: 'initialize',
-        params: {
-          protocolVersion: '2024-11-05',
-          capabilities: {},
-          clientInfo: { name: 'ChatDeck', version: '0.4.2' },
-        },
+      e.ready = new Promise<void>((resolveReady) => {
+        const initId = ++e.id
+        const initTimer = setTimeout(() => {
+          e.pending.delete(initId)
+          resolveReady() // on n'enferme pas les requêtes suivantes pour toujours
+        }, effTimeout)
+        e.pending.set(initId, {
+          resolve: () => {
+            write({ jsonrpc: '2.0', method: 'notifications/initialized' })
+            resolveReady()
+          },
+          reject: () => resolveReady(),
+          timer: initTimer,
+        })
+        write({
+          jsonrpc: '2.0',
+          id: initId,
+          method: 'initialize',
+          params: {
+            protocolVersion: '2024-11-05',
+            capabilities: {},
+            clientInfo: { name: 'ChatDeck', version: '0.4.7' },
+          },
+        })
       })
     }
-    write({ jsonrpc: '2.0', id, method, params })
+    void e.ready.then(() => {
+      if (!e.child.stdin || e.child.killed) return
+      write({ jsonrpc: '2.0', id, method, params })
+    })
   })
 }
 const MCP_TOOLS_TTL = 60_000
@@ -1119,8 +1134,17 @@ const sandboxHandler: RequestHandler = (req, res) => {
               return json(res, 200, { servers: mcpServers().map((s) => ({ name: s.name, enabled: s.enabled !== false })) })
             }
             if (convId === 'mcp' || action === 'mcp') {
-              const sub = convId === 'mcp' ? (action ?? '') : (pathPart.split('/').slice(2).join('/') || '')
-              const srv = convId === 'mcp' ? (query.get('server') ?? '') : convId
+              // Deux formes : /api/sandbox/mcp?server=X (query) et
+              // /api/sandbox/mcp/<serveur>/tools|call (segments REST).
+              // pathPart est RELATIF au montage /api/sandbox : ici
+              // ['mcp', serveur?, 'tools'|'call'?] — la destructuration
+              // [convId, action] perd le 3ᵉ segment, on reconstitue.
+              const rest = pathPart.split('/').filter(Boolean)
+              const srv = convId === 'mcp'
+                ? (query.get('server') ?? (rest[1] && rest[1] !== 'tools' && rest[1] !== 'call' ? rest[1] : ''))
+                : convId
+              // sub = la partie route : 'tools' | 'call' (mcp + serveur retirés)
+              const sub = rest.filter((s) => s !== 'mcp' && s !== srv).join('/')
               if (!srv) return json(res, 400, { error: 'nom de serveur MCP requis' })
               try {
                 if (sub === 'tools' || sub === 'tools/list') {
@@ -1177,7 +1201,56 @@ const sandboxHandler: RequestHandler = (req, res) => {
                 const now = new Date()
                 return json(res, 200, { connector: 'horloge', iso: now.toISOString(), local: now.toString(), tz: Intl.DateTimeFormat().resolvedOptions().timeZone })
               }
-              return json(res, 404, { error: 'connecteur inconnu (tree|file|deck|clock)' })
+              // web : connecteur web NATIF de l'agent — historique des web_search,
+              // favoris et cache des pages fetchées (~/.chatdeck/web.local.json).
+              // GET  …/web?conv=<id>              → {history, favorites, cache(index)}
+              // POST …/web {op:'search', query}    → enregistre la recherche
+              // POST …/web {op:'favorite', url, title, add} → gère les favoris
+              // POST …/web {op:'cache', url, title, text}   → stocke une page (10 ko)
+              if (sub === 'web') {
+                const WEB_FILE = path.join(homedir(), '.chatdeck', 'web.local.json')
+                interface WebEntry { q?: string; url?: string; title?: string; at: number }
+                interface WebStore { history: WebEntry[]; favorites: WebEntry[]; cache: Record<string, { title: string; text: string; at: number }> }
+                const load = (): WebStore => {
+                  try {
+                    return JSON.parse(readFileSync(WEB_FILE, 'utf8')) as WebStore
+                  } catch {
+                    return { history: [], favorites: [], cache: {} }
+                  }
+                }
+                if (req.method === 'GET') {
+                  const s = load()
+                  return json(res, 200, {
+                    connector: 'web',
+                    history: s.history.slice(-50).reverse(),
+                    favorites: s.favorites,
+                    cache: Object.fromEntries(Object.entries(s.cache).map(([u, v]) => [u, { title: v.title, at: v.at, chars: v.text.length }])),
+                  })
+                }
+                if (req.method === 'POST') {
+                  const body = JSON.parse(await readBody(req) || '{}') as { op?: string; query?: string; url?: string; title?: string; text?: string; add?: boolean }
+                  const s = load()
+                  const at = Date.now()
+                  if (body.op === 'search' && body.query) {
+                    s.history.push({ q: body.query.slice(0, 300), at })
+                    s.history = s.history.slice(-200)
+                  } else if (body.op === 'favorite' && body.url) {
+                    s.favorites = s.favorites.filter((f) => f.url !== body.url)
+                    if (body.add !== false) s.favorites.push({ url: body.url.slice(0, 2000), title: (body.title ?? body.url).slice(0, 300), at })
+                  } else if (body.op === 'cache' && body.url && body.text) {
+                    s.cache[body.url.slice(0, 2000)] = { title: (body.title ?? body.url).slice(0, 300), text: body.text.slice(0, 10_000), at }
+                    const keys = Object.keys(s.cache)
+                    if (keys.length > 100) for (const k of keys.slice(0, keys.length - 100)) delete s.cache[k]
+                  } else {
+                    return json(res, 400, { error: 'op attendue : search | favorite | cache' })
+                  }
+                  try {
+                    writeFileSync(WEB_FILE, JSON.stringify(s))
+                  } catch { /* disque plein etc. : on ignore */ }
+                  return json(res, 200, { ok: true })
+                }
+              }
+              return json(res, 404, { error: 'connecteur inconnu (tree|file|deck|clock|web)' })
             }
 
             return json(res, 404, { error: 'route inconnue' })

@@ -127,6 +127,19 @@ PromptDeck → deck-prompts.md (prompt conçu,
        l'implémentation, puis report_to_deck.</pre>
     </details>
   </div>
+  <div class="card" data-k="aegis-7 aegis équipe élite 7 agents fiche cd persona triggers">
+    <h3>🛡 AEGIS-7 <span class="who all">fiche .CD — .cd/agents/aegis-7.cd</span></h3>
+    <p class="role">Équipe élite de 7 agents senior en un seul (Archo, Backy, Fronty, Testa, Secu, Opsy, Data) — officiellement documentée dans la fiche <code class="inline">aegis-7.cd</code>.</p>
+    <p>Fiche <code class="inline">kind: agent</code> avec triggers (« AEGIS ») : citée dans un message, elle est injectée dans le prompt et le modèle l'incarne avec SA méthode (explorer avant de proposer, utiliser web_search/web_fetch, écrire le réel, git_commit).</p>
+    <details><summary>Exemple d'utilisation</summary>
+      <pre>Toi : « AEGIS-7 : construis une page dashboard
+       avec les prix du bitcoin en direct »
+
+AEGIS-7 : Archo planifie → web_search "bitcoin price api"
+  → web_fetch la doc de l'API → Fronty écrit index.html
+  (preview prête) → Testa vérifie → git_commit.</pre>
+    </details>
+  </div>
 </div>
 <div class="tip">🧭 <strong>Délégation bidirectionnelle</strong> : Nexus ⇄ Seeker et Nexus ⇄ PromptDeck, rapport garanti (<code class="inline">report_to_*</code>) injecté dans le fil d'origine — plafonné à 6 sauts. Le rapport apparaît comme « (X a rendu son rapport à Y) ».</div>
 
@@ -157,9 +170,17 @@ Agent → write_file path:"src/utils/date.js"
     <details><summary>Exemple</summary><pre>Toi : « Vérifie la version de node dispo »
 Agent → run_command cmd:"node -v"</pre></details>
   </div>
+  <div class="card" data-k="web_search web recherche internet duckduckgo actualité sans url">
+    <h3>web_search <span class="who all">tous</span></h3>
+    <p>Recherche web SANS URL : interroge DuckDuckGo et renvoie 10 résultats (titre + URL + extrait). L'outil à appeler dès qu'on demande de « chercher sur internet » — puis <code class="inline">web_fetch</code> sur un résultat. L'agent ne doit JAMAIS répondre qu'il n'a pas de navigateur.</p>
+    <details><summary>Exemple</summary><pre>Toi : « Cherche les nouveautés de Svelte 5 »
+Agent → web_search query:"svelte 5 nouveautés"
+        → 10 résultats → web_fetch url:"…"
+        → résume avec les sources</pre></details>
+  </div>
   <div class="card" data-k="web_fetch web page url documenter source">
     <h3>web_fetch <span class="who all">tous</span></h3>
-    <p>Télécharge une page http(s) et renvoie son texte brut (200 ko max) — documenter, vérifier une API, citer une source.</p>
+    <p>Télécharge une page http(s) et renvoie son texte brut (200 ko max) — documenter, vérifier une API, citer une source. Typiquement APRÈS <code class="inline">web_search</code>. Chaque page lue est mise en cache (Connecteurs → 🌐 Web).</p>
     <details><summary>Exemple</summary><pre>Toi : « Cite la doc officielle de Svelte 5 runes »
 Agent → web_fetch url:"https://svelte.dev/docs/svelte"
         → résume + cite l'URL</pre></details>
@@ -288,6 +309,24 @@ Toi : « Retiens que je préfère les réponses
   concises » → l'agent appelle l'outil
   remember du serveur cognee.</pre></details>
   </div>
+  <div class="card" data-k="browser-use navigateur chrome click navigate screenshot web interactif mcp">
+    <h3>browser-use (MCP) <span class="who all">tous</span></h3>
+    <p>Contrôle du VRAI Chrome : <code class="inline">browser_navigate</code>, <code class="inline">browser_click</code>, <code class="inline">browser_type</code>, <code class="inline">browser_screenshot</code>, <code class="inline">browser_get_state</code>… (16 outils). Installé via venv + <code class="inline">--mcp</code> — le panneau 🔌 Connecteurs affiche ses outils détectés.</p>
+    <details><summary>Exemple</summary><pre>{"name":"browser-use","command":
+ "/…/browser-use-venv/bin/browser-use","args":["--mcp"]}
+
+Toi : « Ouvre example.com et fais une capture »
+Agent → connector_call connector:"mcp:browser-use"
+  op:"call" path:"browser_navigate"
+  → puis browser_screenshot</pre></details>
+  </div>
+  <div class="card" data-k="connecteur web natif historique recherches favoris cache pages">
+    <h3>🌐 Web (mémoire) <span class="who all">connecteur</span></h3>
+    <p>Mémoire automatique des accès web : chaque <code class="inline">web_search</code> alimente l'historique, chaque page <code class="inline">web_fetch</code> est mise en cache (10 ko), favoris gérables (★). Visible dans 🔌 Connecteurs → 🌐 Web, stocké dans <code class="inline">~/.chatdeck/web.local.json</code>.</p>
+    <details><summary>Exemple</summary><pre>🔌 Connecteurs → 🌐 Web →
+  ⭐ Favoris · 🕘 Dernières recherches · 📄 Pages en cache
+(clic ★ pour épingler une page en favori)</pre></details>
+  </div>
 </div>
 
 <h2 id="commandes">⌨︎ Commandes du composer <span class="count">— / commandes · @ fichiers</span></h2>
@@ -306,7 +345,7 @@ Toi : « Retiens que je préfère les réponses
 <div class="cards">
   <div class="card" data-k="duel deux colonnes comparer modèles verdict arbitre synthèse ⇉">
     <h3>⚔︎ Duel <span class="who all">⌘K « duel »</span></h3>
-    <p>Deux conversations côte à côte, streaming concurrent, bouton <code class="inline">⇉</code> = même message aux deux. Arbitre : ⚖︎ Synthèse (ou débat 2 tours) tranche « Verdict : A / B / égalité ». Sortie : « ✕ quitter le duel » dans la verdictbar.</p>
+    <p>Deux conversations côte à côte, streaming concurrent, bouton <code class="inline">⇉</code> = même message aux deux. Arbitre : ⚖︎ Synthèse (ou débat 2 tours) tranche « Verdict : A / B / égalité ». Sortie : le bouton <code class="inline">⚔️ Quitter le duel</code> présent DANS chaque colonne (ou « ✕ quitter le duel » en verdictbar) — le même bouton redevient « Duel » pour y retourner.</p>
     <details><summary>Exemple</summary><pre>⌘K → « duel » → ⇉ « Explique les runes Svelte 5 »
 → compare → ⚖︎ Synthèse → verdict affiché.</pre></details>
   </div>

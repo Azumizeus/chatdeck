@@ -136,7 +136,7 @@ export function toolsFor(
   agent: AgentId,
   readOnly = false,
   projectId?: string,
-  connectors?: { builtin: { name: string; desc: string }[]; http: { name: string }[] },
+  connectors?: { builtin: { name: string; desc: string }[]; http: { name: string }[]; mcp?: { name: string }[] },
 ): ToolDef[] {
   // Outils projet (workspace dédié + dossiers Mac autorisés en lecture) :
   // proposés à tous les agents quand la conversation est rattachée à un projet.
@@ -401,10 +401,11 @@ export function toolsFor(
     },
   ]
   // Connecteurs : intégrés (workspace/deck/horloge) + HTTP déclarés par l'utilisateur
-  if (connectors && (connectors.builtin.length || connectors.http.length)) {
+  if (connectors && (connectors.builtin.length || connectors.http.length || connectors.mcp?.length)) {
     const list = [
       ...connectors.builtin.map((b) => `« ${b.name} » (${b.desc})`),
       ...connectors.http.map((h) => `« ${h.name} » (source HTTP externe)`),
+      ...(connectors.mcp ?? []).map((m) => `« mcp:${m.name} » (outils MCP locaux — op « tools » pour les lister, op « call » + path « <outil> » pour appeler)`),
     ].join(', ')
     tools.push({
       type: 'function',
@@ -414,9 +415,9 @@ export function toolsFor(
         parameters: {
           type: 'object',
           properties: {
-            connector: P('connector', 'string', 'Nom du connecteur (ex. workspace, deck, horloge, ou un connecteur HTTP déclaré)'),
-            op: P('op', 'string', 'Opération : workspace → tree | file ; deck → search ; horloge → now ; connecteur HTTP → chemin libre (ex. /repos/owner/name)'),
-            path: P('path', 'string', 'Chemin ou paramètres : fichier pour workspace, requête pour deck, chemin URL pour HTTP'),
+            connector: P('connector', 'string', 'Nom du connecteur (ex. workspace, deck, horloge, connecteur HTTP déclaré, ou mcp:<serveur> pour les serveurs MCP locaux)'),
+            op: P('op', 'string', 'Opération : workspace → tree | file ; deck → search ; horloge → now ; mcp:<serveur> → tools | call ; connecteur HTTP → chemin libre (ex. /repos/owner/name)'),
+            path: P('path', 'string', 'Chemin ou paramètres : fichier pour workspace, requête pour deck, nom de l outil MCP pour mcp:call, chemin URL pour HTTP'),
           },
           required: ['connector'],
         },
@@ -498,6 +499,18 @@ function safeArgs(args: Record<string, unknown>): Record<string, unknown> {
 }
 
 /** Exécute un appel d'outil. Renvoie le résultat à renvoyer au modèle (chaîne). */
+/** Connecteur web natif : enregistre recherche/favori/page dans ~/.chatdeck/web.local.json
+ *  (via /api/sandbox/connectors/web) — affiché dans le panneau Connecteurs. */
+async function webTrack(body: { op: 'search' | 'favorite' | 'cache'; query?: string; url?: string; title?: string; text?: string }): Promise<void> {
+  try {
+    await fetch('/api/sandbox/connectors/web', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+  } catch { /* le tracking ne doit jamais casser l'outil */ }
+}
+
 export async function execTool(convId: string, call: ToolCall): Promise<string> {
   const callConvId = convId
   switch (call.name) {
@@ -560,11 +573,12 @@ export async function execTool(convId: string, call: ToolCall): Promise<string> 
           return j.output ?? '(aucun résultat)'
         }
       }
-      // Serveur MCP stdio (déclaré dans ~/.chatdeck/mcp-servers.local.json) :
+      // Serveurs MCP locaux : connector « mcp:<nom> » (ou nom nu si op tools/call)
       // op « tools » liste les outils, op « call » + path « <outil> » + args JSON.
-      if (op === 'tools' || op === 'call') {
-        const srv = conn
-        if (op === 'tools') {
+      const mcpName = conn.startsWith('mcp:') ? conn.slice(4).trim() : ''
+      if (mcpName || ((op === 'tools' || op === 'call') && !['workspace', 'horloge', 'deck'].includes(conn))) {
+        const srv = mcpName || conn
+        if (op === 'tools' || !p) {
           const r = await fetch(`/api/sandbox/mcp/tools?server=${encodeURIComponent(srv)}`)
           const j = (await r.json()) as { tools?: { name: string; description?: string }[]; error?: string }
           if (j.error) return `❌ MCP ${srv} : ${j.error}`
@@ -625,6 +639,7 @@ export async function execTool(convId: string, call: ToolCall): Promise<string> 
         const snippet = a.closest('tr')?.nextElementSibling?.querySelector('.result-snippet')?.textContent?.trim() ?? ''
         return `${i + 1}. ${a.textContent?.trim()}\n   ${decoded}${snippet ? `\n   ${snippet.slice(0, 220)}` : ''}`
       })
+      void webTrack({ op: 'search', query })
       return `Résultats web pour « ${query} » (DuckDuckGo) :\n\n${lines.join('\n')}\n\n→ Utilise web_fetch avec l'URL d'un résultat pour lire la page.`
     }
     case 'web_fetch': {
@@ -632,7 +647,9 @@ export async function execTool(convId: string, call: ToolCall): Promise<string> 
       const r = await fetch(`/api/sandbox/${convId}/webfetch?url=${encodeURIComponent(url)}`)
       const j = (await r.json()) as { status?: number; text?: string; error?: string; contentType?: string }
       if (j.error) return `Erreur web_fetch : ${j.error}`
-      return `HTTP ${j.status} (${j.contentType ?? '?'}) — ${url}\n\n${(j.text ?? '').slice(0, 12_000)}`
+      const text = (j.text ?? '').slice(0, 12_000)
+      void webTrack({ op: 'cache', url, title: url, text: (j.text ?? '').slice(0, 10_000) })
+      return `HTTP ${j.status} (${j.contentType ?? '?'}) — ${url}\n\n${text}`
     }
     case 'promptdeck_browse': {
       const r = await fetch('/api/sandbox/promptdeck')
@@ -718,7 +735,7 @@ export function systemPromptFor(
   delegation?: { task: string; from?: AgentId },
   readOnly = false,
   project?: { id: string; name: string; instructions: string; folders: string[] },
-  connectors?: { builtin: { name: string; desc: string }[]; http: { name: string }[] },
+  connectors?: { builtin: { name: string; desc: string }[]; http: { name: string }[]; mcp?: { name: string }[] },
 ): string {
   const persona = AGENTS[agent]
   const base = [persona.system, settingsSystem.trim()].filter(Boolean).join('\n\n')

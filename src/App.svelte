@@ -1091,11 +1091,22 @@
   const filesConv = $derived(filesFid ? conversations.find((x) => x.id === filesFid) : undefined)
 
   /** Connecteurs actifs : intégrés (toujours) + HTTP déclarés dans les réglages. */
+  /** Serveurs MCP stdio déclarés (~/.chatdeck/mcp-servers.local.json) — exposés
+   *  aux agents comme connecteurs « mcp:<nom> » (connector_call op=tools/call). */
+  let mcpServers = $state<{ name: string; enabled?: boolean }[]>([])
+  $effect(() => {
+    void fetch('/api/sandbox/mcp-config')
+      .then((r) => r.json())
+      .then((j) => (mcpServers = (j.servers ?? []).filter((s: { enabled?: boolean }) => s.enabled !== false)))
+      .catch(() => {})
+  })
+
   const activeConnectors = $derived.by(() => {
     const http = (settings.connectors ?? []).filter((c) => c.enabled !== false && c.name && c.baseUrl)
     return {
       builtin: BUILTIN_CONNECTORS.map((b) => ({ name: b.name, desc: b.desc })),
       http: http.map((h) => ({ name: h.name })),
+      mcp: mcpServers.map((s) => ({ name: s.name })),
     }
   })
 
