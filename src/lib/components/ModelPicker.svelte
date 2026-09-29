@@ -30,6 +30,11 @@
   const filtered = $derived.by(() => {
     const q = query.trim().toLowerCase()
     const list = q ? models.filter((m) => m.id.toLowerCase().includes(q) || m.label.toLowerCase().includes(q)) : models
+    // Le modèle courant reste toujours sélectionnable (même hors catalogue)
+    if (value && !list.some((m) => m.id === value)) {
+      const cur: CatalogModel = { id: value, label: 'modèle courant' }
+      return [cur, ...list].slice(0, 61)
+    }
     return list.slice(0, 60) // rendu limité, la recherche filtre le reste
   })
 

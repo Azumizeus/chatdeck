@@ -41,9 +41,14 @@ export const PROVIDERS: Provider[] = [
     models: [
       { id: 'openai/gpt-4.1-mini', label: 'GPT-4.1 mini (rapide)' },
       { id: 'openai/gpt-4.1', label: 'GPT-4.1' },
+      { id: 'openai/gpt-5-codex', label: 'GPT-5 Codex (code)' },
       { id: 'anthropic/claude-sonnet-4', label: 'Claude Sonnet 4' },
+      { id: 'anthropic/claude-sonnet-4.5', label: 'Claude Sonnet 4.5 (code)' },
       { id: 'google/gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
+      { id: 'google/gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
       { id: 'meta-llama/llama-3.3-70b-instruct', label: 'Llama 3.3 70B' },
+      { id: 'qwen/qwen3-coder', label: 'Qwen3 Coder (code)' },
+      { id: 'deepseek/deepseek-chat-v3.1', label: 'DeepSeek V3.1' },
     ],
   },
   {
@@ -56,6 +61,8 @@ export const PROVIDERS: Provider[] = [
     models: [
       { id: 'nvidia/nemotron-3-super-120b-a12b', label: 'Nemotron 3 Super 120B' },
       { id: 'nvidia/nemotron-3.5-lightning-30b-a3b', label: 'Nemotron 3.5 Lightning 30B' },
+      { id: 'qwen/qwen3-coder-480b-a35b-instruct', label: 'Qwen3 Coder 480B (code)' },
+      { id: 'deepseek-ai/deepseek-v3.1', label: 'DeepSeek V3.1 (NIM)' },
     ],
   },
   {
@@ -68,6 +75,7 @@ export const PROVIDERS: Provider[] = [
     models: [
       { id: 'command-a-03-2025', label: 'Command A' },
       { id: 'command-r-plus-08-2024', label: 'Command R+' },
+      { id: 'command-r7b-12-2024', label: 'Command R7b (rapide)' },
     ],
   },
   {
@@ -79,7 +87,9 @@ export const PROVIDERS: Provider[] = [
     color: '#ff7000',
     models: [
       { id: 'mistral-large-latest', label: 'Mistral Large' },
-      { id: 'codestral-latest', label: 'Codestral' },
+      { id: 'codestral-latest', label: 'Codestral (code)' },
+      { id: 'mistral-small-latest', label: 'Mistral Small (rapide)' },
+      { id: 'devstral-medium-latest', label: 'Devstral Medium (code agent)' },
     ],
   },
 ]
