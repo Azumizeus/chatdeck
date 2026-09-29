@@ -24,21 +24,23 @@
 
 ## Plan d'intégration proposé (ordre de valeur/effort)
 
-### Phase 1 — L'équipe V5 en fiches .CD (zéro code, ~1 lot)
-Créer dans `.cd/agents/` (+ copies globales `~/.chatdeck/agents/`) :
-`fullstack-lead.cd`, `devsec-expert.cd`, `web3x-senior.cd`, `x-architect.cd`
-— frontmatter `name/description/kind: agent/tools`, triggers, et le brief de
-rôle tiré des prototypes. La délégation bidirectionnelle existante
-(`delegate_to_deck/nexus/seeker`) fait fonctionner l'équipe immédiatement ;
-chaque agent garde ses outils sandbox réels.
+### Phase 1 — L'équipe V5 en fiches .CD (zéro code) — ✅ FAIT (2026-09-29)
+Créées dans `.cd/agents/` (+ copies globales `~/.chatdeck/agents/`) :
+`FullStack Lead.cd`, `DevSec Expert.cd`, `Web3X Senior.cd`,
+`X-Architect.cd` — frontmatter `name/description/kind: agent/tools`,
+triggers, et le brief de rôle tiré des prototypes. Délégation testée en
+réel (mission DevSec via cascade freellm : injection SQL détectée,
+correctif paramétré proposé). NB : l'id de fiche = le nom de fichier, les
+fichiers portent donc les espaces (« FullStack Lead.cd »).
 
-### Phase 2 — Monaco dans le panneau Fichiers (le gros morceau)
-Ajouter `monaco-editor` (npm) monté dans le hub (onglet Fichiers → mode
-« Éditeur ») : le FS = les endpoints `/api/sandbox` existants (read/write
-via `/file`), pas de FS en mémoire comme les prototypes. Thème custom
-vert/cyan repris du prototype 2, multi-onglets, sauvegarde = PUT /file.
-Vigilances : bundle size (Monaco ~2 Mo gzip — lazy import), workers Vite
-(`?worker`), et ne PAS recréer d'overlay fixed (règle hub, cf. CLAUDE.md).
+### Phase 2 — Monaco dans le panneau Fichiers — ✅ FAIT (2026-09-29)
+`src/lib/components/MonacoEditor.svelte` : import dynamique (chunk séparé,
+~857 kB gzip chargé à l'ouverture d'un fichier), workers `?worker` de Vite
+(editor/json/css/ts), thème `chatdeck` dérivé des variables CSS de l'app,
+models par URI `inmemory://sandbox/<path>` (un model par fichier, la
+sauvegarde passe par le PUT `/api/sandbox/<conv>/file` existant), repli
+textarea si le chargement échoue. Le FS reste réel (endpoints sandbox),
+pas de FS en mémoire comme les prototypes.
 
 ### Phase 3 — Barre de sécurité sandbox
 Pastille/barre live : taille workspace + nb fichiers (poll léger de

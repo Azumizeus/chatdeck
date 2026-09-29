@@ -7,7 +7,7 @@
 ![Svelte 5 + TypeScript + Vite 6](https://img.shields.io/badge/Svelte%205%20%2B%20TypeScript%20%2B%20Vite%206-ChatDeck-ff3e00)
 ![svelte-check](https://img.shields.io/badge/svelte--check-0%20erreur%2C%200%20warning-brightgreen)
 ![tests](https://img.shields.io/badge/tests-79%20unitaires%20%C2%B7%2045%20e2e-brightgreen)
-![bundle](https://img.shields.io/badge/bundle-~72%20kB%20gzip-4f8cff)
+![bundle](https://img.shields.io/badge/c%C5%93ur%20app-~122%20kB%20gzip-4f8cff)
 
 ## Pourquoi
 
@@ -114,7 +114,7 @@ npm run build        # bundle production + build:api (electron/api-server.mjs)
 - **Function calling réel** (OpenAI-compatible) : `list_tree`, `read_file`, `write_file`, `run_command`, `delegate_to_seeker` / `delegate_to_deck` / `delegate_to_nexus`, `report_to_*` ; rounds d'outils plafonnés avec rappel de conclusion
 - **Sandbox disque par conversation ET par OS** : `~/.chatdeck/workspaces/<conv-id>/` (OS de l'hôte) plus les espaces `<conv-id>@@mac`, `<conv-id>@@windows`, `<conv-id>@@linux` — créés au premier message du fil (README, NOTES, src/, package.json) via les endpoints `/api/sandbox` ; chemins confinés (anti path-traversal), tailles plafonnées, commandes agents en liste blanche. **Changer d'OS bascule d'espace, sans rien effacer** : les fichiers de chaque OS sont retrouvés intacts après un aller-retour.
 - **Terminal intégré** ⌨︎ : exécution réelle dans le workspace — `node`, `npm`, `npx`, `git`, `ls`, `cat`… — spawn sans shell, timeout 60 s, sortie streamée, historique ↑/↓
-- **Panneau Fichiers** 📁 (mode gestionnaire, élargissable ⤢) : arborescence complète filtrable, renommer/dupliquer/supprimer, import glisser-déposer (≤ 20 fichiers texte), téléchargement, preview live HTML/CSS/JS, **historique Git avec diff par commit** (+/−), commit auto annoté, **switcher d'OS sécurisé** (mac / windows / linux)
+- **Panneau Fichiers** 📁 (mode gestionnaire, élargissable ⤢) : arborescence complète filtrable, renommer/dupliquer/supprimer, import glisser-déposer (≤ 20 fichiers texte), téléchargement, **éditeur Monaco** (le vrai moteur VS Code — chargé à la demande, repli textarea), preview live HTML/CSS/JS, **historique Git avec diff par commit** (+/−), commit auto annoté, **switcher d'OS sécurisé** (mac / windows / linux)
 - **Santé sandbox** dans les réglages : racine, nombre de workspaces, tailles, suppression unitaire ou générale
 - **deck_search / deck_load** : les agents cherchent eux-mêmes dans la bibliothèque PromptDeck (636 fiches, recherche bilingue FR/EN) et chargent une fiche comme méthode — plus besoin de l'activer à la main. Fiche **manuel-chatdeck** (.cd/skills) : la carte de l'app, activable dans le deck ; catégorie **« outils »** en plus de skills/agents
 - **Skills & Agents (.CD)** 🃏 : panneau deck (hub ou popout) qui liste les 335+ fiches (pack PromptDeck, projet ./.cd, global ~/.chatdeck) ; **activation par clic** — globale, ou **par conversation** via la pastille 🃏 du composer (menu déroulant, compteur) ; **édition directe des fiches projet** dans le panneau (sauvegarde PUT) ; création intégrée (équivalent `deck cd --new`) ; badge 🃏 sous les messages envoyés avec fiches appliquées ; injection dans le prompt système (même mécanique que `deck run`, plafond 12 fiches)
@@ -194,6 +194,7 @@ src/
         ├── ModelPicker.svelte    # combobox catalogue (~460 modèles)
         ├── SettingsPanel.svelte  # réglages dockable (clés, customs, apparence, santé sandbox)
         ├── FilesPanel.svelte     # gestionnaire sandbox : arbre filtrable, import/export, diff Git par commit, switcher OS
+        ├── MonacoEditor.svelte   # éditeur Monaco (moteur VS Code) : import dynamique, workers, repli textarea
         ├── TerminalPanel.svelte  # terminal réel du workspace (spawn borné, sortie streamée)
         ├── SearchPanel.svelte    # recherche globale ⌘⇧F
         ├── StatusBar.svelte      # fournisseur, latence, tokens réels, coût estimé, santé providers
@@ -230,7 +231,7 @@ Le navigateur ne parle **qu'à localhost** : fournisseurs intégrés proxifiés 
 - [`docs/launchagents.md`](docs/launchagents.md) — services locaux, auto-start au reboot, watchdog
 - [`docs/studyvault.md`](docs/studyvault.md) — coffrets de révision, tuteur, export Anki, OCR
 - [`docs/hdiutil-contournement.md`](docs/hdiutil-contournement.md) — créer une DMG fiable (contournement diskarbitrationd)
-- [`docs/roadmap-secure-ai.md`](docs/roadmap-secure-ai.md) — audit des prototypes « Secure AI Multi-OS » et plan d'intégration (équipe V5, Monaco)
+- [`docs/roadmap-secure-ai.md`](docs/roadmap-secure-ai.md) — audit des prototypes « Secure AI Multi-OS » et plan d'intégration (équipe V5 ✅, Monaco ✅)
 - [`docs/guide-interactif.html`](docs/guide-interactif.html) — guide interactif de l'app : agents, outils, connecteurs, raccourcis
 
 ## Onglets frères

@@ -4,6 +4,7 @@
   // arbre Git + diff par commit, commit auto, profil OS, preview live.
   import type { FileNode } from '../agents'
   import { loadToolLog, type ToolLogEntry } from '../store'
+  import MonacoEditor from './MonacoEditor.svelte'
 
   let {
     convId,
@@ -38,6 +39,8 @@
   let renameValue = $state('')
   let wide = $state(false)
   let fileInput: HTMLInputElement | undefined = $state()
+  // Monaco a échoué à charger (réseau, bundle) → fallback textarea instantané
+  let monacoFailed = $state(false)
   // Recherche dans l'arbre
   let filter = $state('')
 
@@ -543,7 +546,16 @@
         <button class="mini" onclick={saveFile} title="Sauvegarder">💾</button>
         <button class="mini" onclick={() => (selected = null)} title="Fermer">×</button>
       </header>
-      <textarea bind:value={selected.content} spellcheck="false" oninput={() => selected && (selected = { ...selected, dirty: true })}></textarea>
+      {#if monacoFailed}
+        <textarea bind:value={selected.content} spellcheck="false" oninput={() => selected && (selected = { ...selected, dirty: true })}></textarea>
+      {:else}
+        <MonacoEditor
+          path={selected.path}
+          content={selected.content}
+          oninput={(v) => selected && (selected = { ...selected, content: v, dirty: true })}
+          onerror={() => (monacoFailed = true)}
+        />
+      {/if}
     </div>
   {/if}
 

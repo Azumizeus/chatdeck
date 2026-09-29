@@ -154,6 +154,15 @@ arrêt via `npm run dev:bg:stop` — indispensable après un redémarrage de mac
   d'electron-builder reste bloqué (diskarbitrationd). Les fiches globales
   vivent dans `~/.chatdeck/` : le bundle n'a pas de `.cd/` et « global » a
   priorité. LaunchAgents documentés dans `docs/launchagents.md`.
+- **Équipe V5** (fiches `.cd/agents/` + `~/.chatdeck/agents/`) : FullStack
+  Lead, DevSec Expert, Web3X Senior, X-Architect — **l'id de fiche est le
+  nom de fichier** (espaces compris : « FullStack Lead.cd ») ; délégation
+  = agents du fil courant, rôle V5 à préciser dans la mission.
+- **Monaco dans FilesPanel** (`MonacoEditor.svelte`) : import dynamique
+  (chunk séparé, chargé à l'ouverture d'un fichier), workers `?worker`,
+  thème `chatdeck` (variables CSS), repli textarea si échec de chargement
+  (`monacoFailed`). Ne pas importer Monaco en statique — +857 kB gzip au
+  bundle principal.
 
 ## Règles du projet
 

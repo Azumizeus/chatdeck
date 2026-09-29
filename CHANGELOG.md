@@ -84,6 +84,21 @@
 ## Non publié
 
 ### Ajouté
+- **Équipe V5 « Secure AI » en fiches agents** (phase 1 de
+  `docs/roadmap-secure-ai.md`) : FullStack Lead, DevSec Expert, Web3X
+  Senior et X-Architect — rôles et méthodes tirés des prototypes
+  (`Secure AI  Multi-OS/`), outils réels de la sandbox. Fiches dans
+  `.cd/agents/` + copies globales `~/.chatdeck/agents/`. Délégation testée
+  en réel via la cascade : mission « en tant que DevSec Expert : audite… »
+  → injection SQL détectée (sévérité, preuve, correctif paramétré).
+- **Monaco Editor dans le panneau Fichiers** (phase 2) : le vrai moteur
+  VS Code — coloration par langage, minimap, sticky scroll, bracket
+  pairing. Import **dynamique** (chunk séparé, ~857 kB gzip, chargé
+  uniquement à l'ouverture d'un fichier), workers via `?worker` de Vite,
+  thème `chatdeck` dérivé des variables de l'app, models par URI
+  `inmemory://sandbox/<path>`, **repli textarea** si Monaco échoue
+  (`monacoFailed`). Cœur de l'app : ~122 kB gzip (Monaco exclu).
+### Ajouté
 - **Sortie du duel visible dans les colonnes** : le bouton ⚔️ Duel (rendu
   « Quitter le duel » une fois en duel) est réaffiché dans les mini-toolbars
   perConv — depuis 0.4.6 les colonnes n'offraient que Agents/Fichiers/Terminal
