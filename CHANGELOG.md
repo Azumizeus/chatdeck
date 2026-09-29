@@ -13,6 +13,12 @@
 - **« Failed to fetch » aléatoires** : Vite écoutait sur les deux piles et
   `localhost` se résolvait dans un ordre variable — `host: '127.0.0.1'`
   explicite dans vite.config.ts.
+- **Groq/xAI sans proxy en app packagée** : le mount standalone de
+  `ChatDeckApi` listait 4 fournisseurs en dur — les POST `/api/groq/…` et
+  `/api/xai/…` retombaient sur le fallback SPA (« réponse vide », même bug
+  que celui corrigé pour openrouter). Fix : liste unique `PROVIDER_IDS`
+  (provider-proxy-server.ts) importée par le mount ; verrous e2e étendus
+  aux 6 fournisseurs (standalone 12/12).
 - **Crash vite si un spawn MCP échoue** : `spawn npx` ENOENT sous launchd
   levait un `error` non géré → série e2e instable (9,6 min, 17→27 tests).
   Handler `child.on('error')` + retrait du process mort — e2e **33/33 en

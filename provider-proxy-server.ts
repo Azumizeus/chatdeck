@@ -1,5 +1,5 @@
-// Proxy fournisseurs intégrés (openrouter/nvidia/cohere/mistral) — partagé
-// plugin Vite (dev) + serveur autonome (app packagée).
+// Proxy fournisseurs intégrés (openrouter, nvidia, cohere, mistral, groq,
+// xai) — partagé plugin Vite (dev) + serveur autonome (app packagée).
 //
 // BUG corrigé (0.4.9) : en dev, `server.proxy` de Vite proxifiait /api/openrouter
 // vers https://openrouter.ai ; mais ce mécanisme n'existe pas dans l'api-server
@@ -9,6 +9,10 @@
 // fetch (SSE inclus, duplex half).
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Plugin } from 'vite'
+
+/** Les 6 fournisseurs intégrés — UNE SEULE liste, importée partout (le mount
+ *  standalone l'utilisait en dur à 4 : groq/xai n'étaient pas proxifiés en app). */
+export const PROVIDER_IDS = ['openrouter', 'nvidia', 'cohere', 'mistral', 'groq', 'xai'] as const
 
 const TARGETS: Record<string, string> = {
   openrouter: 'https://openrouter.ai',

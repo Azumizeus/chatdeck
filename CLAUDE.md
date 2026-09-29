@@ -21,6 +21,13 @@ La recherche est bilingue : écris en français, elle trouve les fiches anglaise
 interroger, pas une pile de prompts. Le skill `promptdeck` (dans `.claude/skills/`)
 contient la table de routage complète — lis-le si tu hésites.
 
+## Docs du projet
+
+`docs/architecture.md` (serveur/endpoints/sandbox — **à lire avant de toucher à
+sandbox-server.ts**), `docs/launchagents.md` (services locaux),
+`docs/studyvault.md` (tuteur/Anki/OCR), `docs/hdiutil-contournement.md` (DMG),
+`docs/guide-interactif.html` (guide utilisateur).
+
 ## Commandes
 
 ```bash
@@ -127,6 +134,12 @@ arrêt via `npm run dev:bg:stop` — indispensable après un redémarrage de mac
   `mcpProcs.delete(name)` — un spawn raté (ex. `npx` ENOENT sous launchd) ne
   fait plus crasher vite. C'est ce qui rendait les e2e instables (9,6 min,
   17→27 tests passés) ; depuis : 33/33 en ~30 s.
+- **PROVIDER_IDS** (provider-proxy-server.ts) : la liste des 6 fournisseurs
+  intégrés — source unique importée par le mount standalone de `ChatDeckApi`
+  (une liste en dur à 4 avait laissé groq/xai sans proxy en app ; verrous
+  e2e standalone 12/12). Ajouter un fournisseur = PROVIDERS (llm.ts) + Keys
+  (store.ts) + TARGETS (provider-proxy-server.ts) + PROVIDER_TARGETS
+  (vite.config.ts) + Labels (SettingsPanel/StatusBar).
 - **Tuteur générique** (fiche globale `tuteur.cd`, remplace tuteur-nexus) :
   flashcards une carte/message, verdicts ✅/🟡/❌, persiste `progress.md` dans
   le coffret. Précharge auto : `tutorCardsBlock()` (App.svelte, async) matche

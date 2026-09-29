@@ -23,7 +23,7 @@
 
 import type { Plugin } from 'vite'
 import { cascadeApiMount } from './cascade-server'
-import { providerProxyMount } from './provider-proxy-server'
+import { PROVIDER_IDS, providerProxyMount } from './provider-proxy-server'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { spawn } from 'node:child_process'
 import { mkdir, readdir, readFile, writeFile, rm, stat } from 'node:fs/promises'
@@ -1492,10 +1492,10 @@ class ChatDeckApi {
               req.url = `/${seg.slice(2).join('/')}${queryPart ? `?${queryPart}` : ''}`
               return cascadeApiMount(req, res)
             }
-            // Proxy fournisseurs intégrés (openrouter/nvidia/cohere/mistral) :
-            // sans ce montage, l'app packagée renvoyait le fallback SPA et le
-            // chat affichait « réponse vide (modèle saturé ?) ».
-            if (key === 'api' && ['openrouter', 'nvidia', 'cohere', 'mistral'].includes(seg[1] ?? '')) {
+            // Proxy fournisseurs intégrés (les 6, via PROVIDER_IDS partagé —
+            // la liste en dur à 4 laissait groq/xai sans proxy en app :
+            // fallback SPA → « réponse vide », même bug que 0.4.9).
+            if (key === 'api' && (PROVIDER_IDS as readonly string[]).includes(seg[1] ?? '')) {
               req.url = `/${seg.slice(1).join('/')}${queryPart ? `?${queryPart}` : ''}`
               return providerProxyMount(req, res)
             }

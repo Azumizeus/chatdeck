@@ -6,7 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-4f8cff.svg)](LICENSE)
 ![Svelte 5 + TypeScript + Vite 6](https://img.shields.io/badge/Svelte%205%20%2B%20TypeScript%20%2B%20Vite%206-ChatDeck-ff3e00)
 ![svelte-check](https://img.shields.io/badge/svelte--check-0%20erreur%2C%200%20warning-brightgreen)
-![tests](https://img.shields.io/badge/tests-79%20unitaires%20%C2%B7%2033%20e2e-brightgreen)
+![tests](https://img.shields.io/badge/tests-79%20unitaires%20%C2%B7%2045%20e2e-brightgreen)
 ![bundle](https://img.shields.io/badge/bundle-~72%20kB%20gzip-4f8cff)
 
 ## Pourquoi
@@ -223,6 +223,15 @@ Le navigateur ne parle **qu'à localhost** : fournisseurs intégrés proxifiés 
 - `src/lib/float.test.ts` — resize 8 directions (minima, viewport), zones de snap, cycle, enfoncement
 - `src/lib/search.test.ts` — extraits, casse, plafonnement par conversation, agents
 - `e2e/standalone-api.spec.ts` — le VRAI serveur autonome (bundle sandbox-server) : endpoints, cascade, et le POST `/api/<fournisseur>/…` ne renvoie jamais le fallback SPA
+
+## Documentation
+
+- [`docs/architecture.md`](docs/architecture.md) — serveur, endpoints, sandbox, cascade, app packagée (à lire avant de toucher à `sandbox-server.ts`)
+- [`docs/launchagents.md`](docs/launchagents.md) — services locaux, auto-start au reboot, watchdog
+- [`docs/studyvault.md`](docs/studyvault.md) — coffrets de révision, tuteur, export Anki, OCR
+- [`docs/hdiutil-contournement.md`](docs/hdiutil-contournement.md) — créer une DMG fiable (contournement diskarbitrationd)
+- [`docs/roadmap-secure-ai.md`](docs/roadmap-secure-ai.md) — audit des prototypes « Secure AI Multi-OS » et plan d'intégration (équipe V5, Monaco)
+- [`docs/guide-interactif.html`](docs/guide-interactif.html) — guide interactif de l'app : agents, outils, connecteurs, raccourcis
 
 ## Onglets frères
 
