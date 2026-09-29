@@ -118,6 +118,30 @@ test.describe('serveur autonome (app packagée)', () => {
     expect(ct).toContain('application/json')
   })
 
+  // LE verrou 0.4.9 (bug « réponse vide ») : le proxy fournisseurs intégrés
+  // (openrouter/nvidia/cohere/mistral) n'existait que dans server.proxy de Vite
+  // — en app packagée, le POST tombait sur le fallback SPA (index HTML), lu
+  // comme du SSE sans `data:` → « réponse vide (modèle saturé ?) ».
+  test('proxy fournisseurs : /api/openrouter/… NE renvoie JAMAIS le fallback SPA', async ({ apiUrl }) => {
+    const r = await fetch(`${apiUrl}/api/openrouter/api/v1/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer fausse-cle-test' },
+      body: JSON.stringify({ model: 'openai/gpt-4.1-mini', messages: [{ role: 'user', content: 'OK' }], max_tokens: 5 }),
+    })
+    const body = await r.text()
+    // Quelle que soit la réponse (401 auth OpenRouter, 402, réseau…), elle ne
+    // doit PAS être la page HTML de l'app — c'est ça, la régression verrouillée.
+    expect(body).not.toContain('<!doctype html>')
+    expect(body).not.toContain('ChatDeck — chat LLM léger')
+  })
+
+  test('proxy fournisseurs : fournisseur inconnu → JSON 404', async ({ apiUrl }) => {
+    const r = await fetch(`${apiUrl}/api/fournisseur-inconnu/v1/chat/completions`, { method: 'POST' })
+    expect(r.status).toBe(404)
+    const ct = r.headers.get('content-type') ?? ''
+    expect(ct).toContain('application/json')
+  })
+
   test('/api/sandbox/status et /api/deck/cards répondent toujours du JSON', async ({ apiUrl }) => {
     for (const p of ['/api/sandbox/status', '/api/deck/cards']) {
       const r = await fetch(`${apiUrl}${p}`)

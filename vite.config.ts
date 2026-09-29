@@ -4,9 +4,18 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { sandboxServer, deckServer } from './sandbox-server'
+import { providerProxyServer } from './provider-proxy-server'
 import { cascadeServer } from './cascade-server'
 
 const root = fileURLToPath(new URL('.', import.meta.url))
+
+/** Cibles des 4 fournisseurs intégrés (sonde health + proxy partagé). */
+const PROVIDER_TARGETS: Record<string, string> = {
+  openrouter: 'https://openrouter.ai',
+  nvidia: 'https://integrate.api.nvidia.com',
+  cohere: 'https://api.cohere.ai',
+  mistral: 'https://api.mistral.ai',
+}
 
 /** Sert keys.local.json en dev (gitignore) pour précharger les clés — jamais bundlé. */
 function localKeys(): Plugin {
@@ -27,19 +36,6 @@ function localKeys(): Plugin {
   }
 }
 
-/** Proxy par fournisseur : le navigateur ne parle qu'à localhost → aucun souci CORS, SSE inclus. */
-const apiProxy = (target: string) => ({
-  target,
-  changeOrigin: true,
-  rewrite: (p: string) => p.replace(/^\/api\/[a-z]+/, ''),
-})
-
-const PROVIDER_TARGETS: Record<string, string> = {
-  openrouter: 'https://openrouter.ai',
-  nvidia: 'https://integrate.api.nvidia.com',
-  cohere: 'https://api.cohere.ai',
-  mistral: 'https://api.mistral.ai',
-}
 
 /**
  * /api/health : état réseau de l'app + des 4 fournisseurs (HEAD/GET courts, 5 s max).
@@ -252,16 +248,12 @@ function connectorGateway(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [svelte(), localKeys(), customProxy(), connectorGateway(), sandboxServer(), deckServer(), cascadeServer(), healthEndpoint()],
+  // providerProxyServer remplace server.proxy (0.4.9) : MÊME mécanique dans le
+  // serveur autonome de l'app packagée (sinon « réponse vide » au chat).
+  plugins: [svelte(), localKeys(), customProxy(), connectorGateway(), providerProxyServer(), sandboxServer(), deckServer(), cascadeServer(), healthEndpoint()],
   server: {
     port: 5199,
     strictPort: true,
-    proxy: {
-      '/api/openrouter': apiProxy(PROVIDER_TARGETS.openrouter),
-      '/api/nvidia': apiProxy(PROVIDER_TARGETS.nvidia),
-      '/api/cohere': apiProxy(PROVIDER_TARGETS.cohere),
-      '/api/mistral': apiProxy(PROVIDER_TARGETS.mistral),
-    },
   },
   // Vitest : environnement DOM léger pour les tests du store (localStorage)
   test: {

@@ -23,6 +23,7 @@
 
 import type { Plugin } from 'vite'
 import { cascadeApiMount } from './cascade-server'
+import { providerProxyMount } from './provider-proxy-server'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { spawn } from 'node:child_process'
 import { mkdir, readdir, readFile, writeFile, rm, stat } from 'node:fs/promises'
@@ -1483,6 +1484,13 @@ class ChatDeckApi {
             if (key === 'api' && (seg[1] === 'cascade' || seg[1] === 'cascade-check')) {
               req.url = `/${seg.slice(2).join('/')}${queryPart ? `?${queryPart}` : ''}`
               return cascadeApiMount(req, res)
+            }
+            // Proxy fournisseurs intégrés (openrouter/nvidia/cohere/mistral) :
+            // sans ce montage, l'app packagée renvoyait le fallback SPA et le
+            // chat affichait « réponse vide (modèle saturé ?) ».
+            if (key === 'api' && ['openrouter', 'nvidia', 'cohere', 'mistral'].includes(seg[1] ?? '')) {
+              req.url = `/${seg.slice(1).join('/')}${queryPart ? `?${queryPart}` : ''}`
+              return providerProxyMount(req, res)
             }
             // UI : sert dist/ (build Vite) — l'app packagée charge http://127.0.0.1:<port>/.
             const distDir = path.join(projectRoot, 'dist')

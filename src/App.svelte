@@ -581,6 +581,9 @@
     // Mode Plan (inspiré d'OpenCode) : lecture seule, l'agent propose sans modifier
     const readOnly = conv.planMode ?? false
     const cardsBlock = activeCardsSystem(convId, text)
+    // Tuteur : cartes du coffret préchargées (quiz/révision) — asynchrone, on
+    // attend pour l'inclure dans le system de CE tour.
+    const tutorBlock = await tutorCardsBlock(text)
     // Projet lié : règles du projet injectées, outils projet (workspace partagé
     // + dossiers Mac autorisés) disponibles pour les agents.
     const project = projectOf(conv.projectId)
@@ -597,8 +600,8 @@
     const systemWire: WireMsg = {
       role: 'system',
       content: multi
-        ? systemPromptFor('nexus', [settings.system, cardsBlock, atBlock, projectBlock].filter(Boolean).join('\n\n'), undefined, readOnly, project)
-        : [settings.system.trim(), cardsBlock, atBlock, projectBlock].filter(Boolean).join('\n\n'),
+        ? systemPromptFor('nexus', [settings.system, cardsBlock, tutorBlock, atBlock, projectBlock].filter(Boolean).join('\n\n'), undefined, readOnly, project)
+        : [settings.system.trim(), cardsBlock, tutorBlock, atBlock, projectBlock].filter(Boolean).join('\n\n'),
     }
     const baseMessagesPre: WireMsg[] = systemWire.content ? [systemWire, ...wires] : wires
     // Condenseur de contexte (OpenHands) : au-delà du seuil, l'historique ancien
@@ -851,6 +854,61 @@
       default:
         // Commande inconnue : le texte partira au modèle tel quel.
         return false
+    }
+  }
+
+  /**
+   * Tuteur : si le message demande un quiz/révision, précharge les cartes du
+   * coffret StudyVault visé (anki.md ou quiz.md de la sandbox) dans le system
+   * — l'agent n'a plus besoin de son outil read pour démarrer la session.
+   */
+  async function tutorCardsBlock(userText: string): Promise<string> {
+    const lower = userText.toLowerCase()
+    if (!/\b(quiz|r[eé]vis\w*)\b/.test(lower)) return ''
+    try {
+      // Coffret nommé explicitement ? (« quiz nexus », « révise formation-test »…)
+      let coffret = lower.match(/(?:quiz|r[eé]vis\w*)\s+([\w-]{2,40})\b/)?.[1] ?? ''
+      if (['moi', 'le', 'la', 'un', 'une', 'ce', 'avec', 'pour'].includes(coffret)) coffret = ''
+      const res = await fetch('/api/sandbox/status')
+      const st = (await res.json()) as { workspaces?: { id: string }[] }
+      const ws = st.workspaces?.[0]?.id
+      if (!ws) return ''
+      // Pas de nom → premier coffret avec anki.md/quiz.md (suffisant : 1-2 coffrets)
+      const candidates = coffret ? [coffret] : null
+      let dir = ''
+      let cardsRaw = ''
+      const tryFetch = async (name: string): Promise<boolean> => {
+        for (const f of [`StudyVault/${name}/anki.md`, `StudyVault/${name}/quiz.md`]) {
+          const r = await fetch(`/api/sandbox/projects/${ws}/file?path=${encodeURIComponent(f)}`)
+          if (r.ok) {
+            const j = (await r.json()) as { content?: string }
+            if (j.content) {
+              cardsRaw = j.content
+              dir = name
+              return true
+            }
+          }
+        }
+        return false
+      }
+      if (candidates) {
+        for (const c of candidates) if (await tryFetch(c)) break
+      } else {
+        const list = await fetch(`/api/sandbox/projects/${ws}/exec`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cmd: 'ls StudyVault' }),
+        })
+        if (list.ok) {
+          const j = (await list.json()) as { output?: string }
+          const names = (j.output ?? '').split('\n').map((s) => s.trim()).filter(Boolean)
+          for (const n of names) if (await tryFetch(n)) break
+        }
+      }
+      if (!cardsRaw) return ''
+      return `\n\n[CARTES DU COFFRET « ${dir} » — source de vérité unique : pose ces cartes, corrige avec ces réponses, n'invente rien]\n\n${cardsRaw.slice(0, 24_000)}`
+    } catch {
+      return ''
     }
   }
 
