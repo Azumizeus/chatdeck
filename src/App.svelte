@@ -1148,6 +1148,19 @@
   const filesFid = $derived(filesConvId ?? currentId)
   const filesConv = $derived(filesFid ? conversations.find((x) => x.id === filesFid) : undefined)
 
+  /** Espaces sandbox « ouverts » (panneaux Fichiers/terminal d'un fil, en hub
+   * OU dockés) : la barre sécurité du StatusBar ne sonde que ceux-là (poll
+   * 10 s, léger). NB : Fichiers/terminal n'existent qu'en hub quand il est
+   * ouvert — showFiles/showTerminal restent alors false. */
+  const sandboxOpenIds = $derived.by(() => {
+    const ids = new Set<string>()
+    const filesShown = (showHub && hubActive === 'files') || (!showHub && showFiles)
+    const termShown = (showHub && hubActive === 'terminal') || (!showHub && showTerminal)
+    if (filesShown && filesFid) ids.add(filesFid)
+    if (termShown && terminalConvId) ids.add(terminalConvId)
+    return [...ids]
+  })
+
   /** Connecteurs actifs : intégrés (toujours) + HTTP déclarés dans les réglages. */
   /** Serveurs MCP stdio déclarés (~/.chatdeck/mcp-servers.local.json) — exposés
    *  aux agents comme connecteurs « mcp:<nom> » (connector_call op=tools/call). */
@@ -1210,6 +1223,20 @@
   function toggleFiles(convId?: string): void {
     toggleToolDock('files', convId)
   }
+
+  /** Exécuter (FilesPanel, Secure AI phase 4) : affiche la sortie du terminal
+   * du fil — sous le composer si le terminal est déjà docké dessus, sinon
+   * dock outils. Ne réactive JAMAIS un onglet hub ouvert (il resterait masqué). */
+  function onFilesExec(convId: string): void {
+    if (showHub && hubActive === 'terminal') return
+    if (showTerminal && terminalConvId === convId) return
+    terminalConvId = convId
+    if (showTerminal) return
+    if (showHub) return
+    showTerminal = true
+    dockTool = 'terminal'
+  }
+
   /** Preview : hub s'il est ouvert, sinon dock outils à droite. */
   function togglePreview(convId?: string): void {
     toggleToolDock('preview', convId)
@@ -1725,7 +1752,7 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
       <div class="dock-right dock-tools" style="width: {Math.max(300, Math.min(560, layout.layout.settingsWidth))}px">
         {#if dockTool === 'files'}
           {#if filesFid && filesConv}
-            <FilesPanel convId={filesFid} enabled={Boolean(filesConv.agents?.length)} onClose={() => { dockTool = null; showFiles = false }} />
+            <FilesPanel convId={filesFid} enabled={Boolean(filesConv.agents?.length)} onExec={onFilesExec} onClose={() => { dockTool = null; showFiles = false }} />
           {:else}
             <p class="hub-empty">Aucune conversation — crée-en une pour voir ses fichiers.</p>
           {/if}
@@ -1911,7 +1938,7 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
       {/if}
     </WindowFrame>
 
-    <StatusBar conv={current} streaming={anyStreaming} {latencyMs} {customs} onCascade={() => { dockTool = dockTool === 'cascade' ? null : 'cascade' }} />
+    <StatusBar conv={current} streaming={anyStreaming} {latencyMs} {customs} sandboxOpen={sandboxOpenIds} onCascade={() => { dockTool = dockTool === 'cascade' ? null : 'cascade' }} />
     {#if notice}
       <div class="notice" role="status">{notice}</div>
     {/if}
@@ -1926,7 +1953,7 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
       onMinimize={togglePill}
     >
     {@render ideShell()}
-    <StatusBar conv={current} streaming={anyStreaming} {latencyMs} {customs} onCascade={() => { dockTool = dockTool === 'cascade' ? null : 'cascade' }} />
+    <StatusBar conv={current} streaming={anyStreaming} {latencyMs} {customs} sandboxOpen={sandboxOpenIds} onCascade={() => { dockTool = dockTool === 'cascade' ? null : 'cascade' }} />
   </FloatingWindow>
 {:else}
   <div class="app">
@@ -1939,7 +1966,7 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
     {@render ideShell()}
     </WindowFrame>
 
-    <StatusBar conv={current} streaming={anyStreaming} {latencyMs} {customs} onCascade={() => { dockTool = dockTool === 'cascade' ? null : 'cascade' }} />
+    <StatusBar conv={current} streaming={anyStreaming} {latencyMs} {customs} sandboxOpen={sandboxOpenIds} onCascade={() => { dockTool = dockTool === 'cascade' ? null : 'cascade' }} />
   </div>
 {/if}
 
@@ -1970,7 +1997,7 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
     </div>
     <div hidden={hubActive !== 'files'}>
       {#if filesFid && filesConv}
-        <FilesPanel convId={filesFid} enabled={Boolean(filesConv.agents?.length)} onClose={() => (showHub = false)} />
+        <FilesPanel convId={filesFid} enabled={Boolean(filesConv.agents?.length)} onExec={onFilesExec} onClose={() => (showHub = false)} />
       {:else}
         <p class="hub-empty">Aucune conversation — crée-en une pour voir ses fichiers.</p>
       {/if}

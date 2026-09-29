@@ -12,6 +12,7 @@
     latencyMs,
     customs = [],
     onCascade,
+    sandboxOpen,
   }: {
     /** Conversation à décrire (peut être null) */
     conv: Conversation | null
@@ -21,6 +22,8 @@
     customs?: CustomProvider[]
     /** Ouvre le panneau Cascade (santé des 9 providers + test réel) */
     onCascade: () => void
+    /** Ids des espaces sandbox ouverts — barre sécurité (poll léger 10 s) */
+    sandboxOpen?: string[]
   } = $props()
 
   const provider = $derived(conv ? providerOf(conv.providerId, customs) : null)
@@ -41,6 +44,44 @@
     return h.up ? 'up' : 'down'
   }
   const proxyState = $derived(net.proxy)
+
+  /* ── Barre sécurité sandbox (phase 3 « Secure AI ») ──
+   * Taille + nb de fichiers des espaces ouverts, via /api/sandbox/status
+   * (données déjà servies, zéro endpoint nouveau). Poll 10 s seulement quand
+   * au moins un espace est ouvert. */
+  let sb = $state<{ total: number; files: number } | null>(null)
+  let sbTimer: ReturnType<typeof setInterval> | undefined
+  const fmtBytes = (n: number): string =>
+    n < 1024 ? `${n} o` : n < 1_048_576 ? `${(n / 1024).toFixed(1)} ko` : `${(n / 1_048_576).toFixed(1)} Mo`
+
+  $effect(() => {
+    const open = sandboxOpen ?? []
+    if (!open.length) {
+      sb = null
+      return
+    }
+    let alive = true
+    const poll = async (): Promise<void> => {
+      try {
+        const r = await fetch('/api/sandbox/status')
+        const j = (await r.json()) as { workspaces?: { id: string; sizeBytes: number; files: number }[] }
+        const ws = (j.workspaces ?? []).filter((w) => open.includes(w.id))
+        if (alive)
+          sb = {
+            total: ws.reduce((a, w) => a + (w.sizeBytes ?? 0), 0),
+            files: ws.reduce((a, w) => a + (w.files ?? 0), 0),
+          }
+      } catch {
+        if (alive) sb = null
+      }
+    }
+    void poll()
+    sbTimer = setInterval(() => void poll(), 10_000)
+    return () => {
+      alive = false
+      clearInterval(sbTimer)
+    }
+  })
 </script>
 
 <footer class="status">
@@ -80,6 +121,13 @@
       {formatCost(cost?.cost ?? null)}{cost && !cost.realPricing && cost.cost !== null ? '~' : ''}
     </span>
     <span class="sep">·</span>
+    {#if sb}
+      <span
+        class="mono"
+        title="Barre sécurité sandbox (Secure AI) : taille + fichiers des espaces ouverts — /api/sandbox/status, poll 10 s"
+      >🔒 {fmtBytes(sb.total)} · {sb.files} fichier{sb.files > 1 ? 's' : ''}</span>
+      <span class="sep">·</span>
+    {/if}
     <span class="mono">UTF-8</span>
   </div>
 </footer>

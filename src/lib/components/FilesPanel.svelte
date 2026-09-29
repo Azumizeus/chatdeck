@@ -3,16 +3,19 @@
   // création/renommage/duplication/suppression, upload (drag & drop), téléchargement,
   // arbre Git + diff par commit, commit auto, profil OS, preview live.
   import type { FileNode } from '../agents'
-  import { loadToolLog, type ToolLogEntry } from '../store'
+  import { appendToolLog, loadToolLog, type ToolLogEntry } from '../store'
   import MonacoEditor from './MonacoEditor.svelte'
 
   let {
     convId,
     enabled,
+    onExec,
     onClose,
   }: {
     convId: string
     enabled: boolean
+    /** Bouton ▶ Exécuter : App affiche le terminal du fil (docké sous le composer) */
+    onExec?: (convId: string) => void
     onClose: () => void
   } = $props()
 
@@ -38,6 +41,99 @@
   let renamedPath = $state<string | null>(null)
   let renameValue = $state('')
   let wide = $state(false)
+
+  /* ── Barre sécurité sandbox (Secure AI, phase 3) : taille + nb de fichiers
+   * du workspace courant, tirés de /api/sandbox/status (données déjà servies,
+   * zéro endpoint nouveau) — poll léger 10 s tant que le panneau est ouvert. */
+  let sbSize = $state<number | null>(null)
+  let sbFiles = $state<number | null>(null)
+  const fmtBytes = (n: number): string =>
+    n < 1024 ? `${n} o` : n < 1_048_576 ? `${(n / 1024).toFixed(1)} ko` : `${(n / 1_048_576).toFixed(1)} Mo`
+
+  $effect(() => {
+    void convId
+    let alive = true
+    const poll = async (): Promise<void> => {
+      try {
+        const r = await fetch('/api/sandbox/status')
+        const j = (await r.json()) as { workspaces?: { id: string; sizeBytes: number; files: number }[] }
+        const ws = (j.workspaces ?? []).find((w) => w.id === convId)
+        if (alive) {
+          sbSize = ws?.sizeBytes ?? null
+          sbFiles = ws?.files ?? null
+        }
+      } catch {
+        if (alive) {
+          sbSize = null
+          sbFiles = null
+        }
+      }
+    }
+    void poll()
+    const timer = setInterval(() => void poll(), 10_000)
+    return () => {
+      alive = false
+      clearInterval(timer)
+    }
+  })
+
+  /* ── Exécuter (Secure AI, phase 4) : bouton ▶ dans l'en-tête de l'éditeur
+   * (commun Monaco/textarea). Sauvegarde le fichier ouvert s'il est sale,
+   * exécute via l'endpoint du terminal réel (/run : liste blanche, timeout,
+   * cwd workspace), affiche la sortie ci-dessous et journalise dans le
+   * toollog du fil — le même journal que les outils des agents. */
+  let execCmd = $state('')
+  let execBusy = $state(false)
+  let execOut = $state('')
+  let execOpen = $state(false)
+
+  const defaultCmdFor = (p: string): string =>
+    /\.(m?js|cjs)$/i.test(p) ? `node ${p}` : /\.(txt|md|m?js|cjs|html?|css|json)$/i.test(p) ? `cat ${p}` : 'ls -la'
+
+  async function executeOpen(): Promise<void> {
+    if (execBusy || !selected) return
+    execBusy = true
+    execOpen = true
+    execOut = ''
+    try {
+      if (selected.dirty) await saveFile()
+      if (!execCmd) execCmd = defaultCmdFor(selected.path)
+      const r = await fetch(`/api/sandbox/${convId}/run`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cmd: execCmd }),
+      })
+      if (!r.ok) {
+        const j = (await r.json().catch(() => ({}))) as { error?: string }
+        execOut = j.error ?? `HTTP ${r.status}`
+        appendToolLog({ conv: convId, ts: Date.now(), agent: null, tool: 'exec', detail: `✗ ${execCmd}`, ok: false })
+      } else {
+        const reader = r.body!.getReader()
+        const dec = new TextDecoder()
+        let buf = ''
+        for (;;) {
+          const { done, value } = await reader.read()
+          if (done) break
+          buf += dec.decode(value, { stream: true })
+        }
+        execOut = buf
+        appendToolLog({
+          conv: convId,
+          ts: Date.now(),
+          agent: null,
+          tool: 'exec',
+          detail: execCmd,
+          ok: !/\[erreur\]/.test(buf) && !/\[timeout/.test(buf),
+        })
+      }
+    } catch (e) {
+      execOut = (e as Error).message
+      appendToolLog({ conv: convId, ts: Date.now(), agent: null, tool: 'exec', detail: `✗ ${execCmd}`, ok: false })
+    } finally {
+      execBusy = false
+      onExec?.(convId)
+    }
+  }
   let fileInput: HTMLInputElement | undefined = $state()
   // Monaco a échoué à charger (réseau, bundle) → fallback textarea instantané
   let monacoFailed = $state(false)
@@ -456,6 +552,16 @@
     {/if}
   </div>
 
+  <!-- barre sécurité sandbox (Secure AI, phase 3) -->
+  <div class="secrow" title="Barre sécurité : taille + fichiers du workspace (poll 10 s, /api/sandbox/status)">
+    <span class="secdot" aria-hidden="true"></span>
+    {#if sbSize !== null}
+      <span class="secval">🔒 {fmtBytes(sbSize)} · {sbFiles ?? 0} fichier{sbFiles === 1 ? '' : 's'}</span>
+    {:else}
+      <span class="secval off">🔒 espace hors suivi</span>
+    {/if}
+  </div>
+
   <!-- profil OS sécurisé (Secure AI Multi-OS) -->
   <div class="osrow">
     <span class="oslabel">OS :</span>
@@ -543,9 +649,30 @@
     <div class="editor">
       <header class="edhead">
         <code>{selected.path}{selected.dirty ? ' •' : ''}</code>
+        <button class="mini" onclick={() => void executeOpen()} disabled={execBusy} title="Exécuter : sauvegarde puis terminal réel (liste blanche, timeout 60 s)">▶</button>
         <button class="mini" onclick={saveFile} title="Sauvegarder">💾</button>
         <button class="mini" onclick={() => (selected = null)} title="Fermer">×</button>
       </header>
+      {#if execOpen}
+        <div class="execdrawer">
+          <div class="execbar">
+            <input
+              class="execcmd"
+              bind:value={execCmd}
+              placeholder="node src/main.js"
+              aria-label="Commande à exécuter"
+              onkeydown={(e) => e.key === 'Enter' && void executeOpen()}
+            />
+            <button class="mini" onclick={() => void executeOpen()} disabled={execBusy} title="Relancer">↺</button>
+            <button class="mini" onclick={() => (execOpen = false)} title="Masquer la sortie">✕</button>
+          </div>
+          {#if execBusy}
+            <pre class="execout">▍ en cours…</pre>
+          {:else}
+            <pre class="execout">{execOut || '(aucune sortie)'}</pre>
+          {/if}
+        </div>
+      {/if}
       {#if monacoFailed}
         <textarea bind:value={selected.content} spellcheck="false" oninput={() => selected && (selected = { ...selected, dirty: true })}></textarea>
       {:else}
@@ -670,6 +797,59 @@
     font-family: var(--mono);
     max-height: 260px;
     overflow: auto;
+  }
+  .secrow {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11.5px;
+    color: var(--muted);
+    font-family: var(--mono);
+  }
+  .secdot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--ok, #27c93f);
+    opacity: 0.9;
+    flex-shrink: 0;
+  }
+  .secval.off {
+    opacity: 0.7;
+  }
+  .execdrawer {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px;
+  }
+  .execbar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .execcmd {
+    flex: 1 1 auto;
+    min-width: 0;
+    border: 1px solid var(--border);
+    background: none;
+    color: var(--fg);
+    font-family: var(--mono);
+    font-size: 12px;
+    border-radius: 8px;
+    padding: 4px 8px;
+  }
+  .execout {
+    margin: 0;
+    max-height: 160px;
+    overflow: auto;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--fg);
+    white-space: pre-wrap;
+    word-break: break-word;
   }
   .toollog {
     border: 1px solid var(--border);

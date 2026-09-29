@@ -59,6 +59,14 @@
   let text = $state('')
   let ta: HTMLTextAreaElement | undefined = $state()
 
+  /* ── Hint « mode agents » (chat simple) ──
+   * Taper « tu es Nexus », « tes outils »… en chat simple ne peut pas marcher :
+   * aucun persona ni outil n'est envoyé au modèle (par design). On le signale
+   * discrètement, avec activation directe possible (dismissible). */
+  let agentHintDismissed = $state(false)
+  const AGENT_HINT_RE =
+    /\b(tu es|t'es|vous êtes)\s+(nexus|seeker|deck|promptdeck)\b|\btes outils\b|\btes agents\b|\btes commandes\b|\bliste (de tes )?outils\b|\bactive (les )?(agents|outils)\b/i
+
   const providers = $derived(allProviders(customs))
   const hint = $derived(providers.find((p) => p.id === providerId)?.docs ?? '')
   const isCatalog = $derived(providerId === 'openrouter')
@@ -234,6 +242,9 @@
   )
 
   const agentsValue = $derived(agents.length ? agents.join(',') : '')
+  const showAgentHint = $derived(
+    !agentHintDismissed && !agents.length && AGENT_HINT_RE.test(text),
+  )
 </script>
 
 <div class="composer">
@@ -299,6 +310,13 @@
     {/if}
     <span class="hint">{hint}</span>
   </div>
+  {#if showAgentHint}
+    <div class="hint-row" role="status">
+      <span>💡 En chat simple, le modèle n'a ni persona ni outils. Pour « {text.match(/nexus|seeker|deck/i)?.[0] ?? 'Nexus'} » et la sandbox, active le mode agents —</span>
+      <button onclick={() => onAgents(['nexus', 'seeker'])}>🧠 Nexus + 🔎 Seeker</button>
+      <button class="ghost" onclick={() => (agentHintDismissed = true)} title="Ne plus afficher" aria-label="Masquer l'astuce">✕</button>
+    </div>
+  {/if}
   <div class="inputrow">
     {#if atOpen && atHasItems}
       <ul class="at-menu" role="listbox" aria-label="Fichiers sandbox">
@@ -438,6 +456,31 @@
     max-width: 900px;
     width: 100%;
     margin: 0 auto;
+  }
+  .hint-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12.5px;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+  .hint-row button {
+    border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    color: var(--fg);
+    font: inherit;
+    font-size: 12.5px;
+    border-radius: 8px;
+    padding: 3px 8px;
+    cursor: pointer;
+  }
+  .hint-row button.ghost {
+    background: none;
+    border-color: var(--border);
+    color: var(--muted);
+    min-width: 24px;
+    min-height: 24px;
   }
   .pickers {
     display: flex;

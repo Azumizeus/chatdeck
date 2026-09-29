@@ -81,7 +81,7 @@
   par le modèle devient officiel — 7 rôles, triggers, méthodes et la règle
   d'or « utilise web_search/web_fetch au lieu de promettre ».
 
-## Non publié
+## 0.4.10
 
 ### Corrigé
 - **Recherche ModelPicker qui « ne trouvait rien »** : dans la liste déroulante
@@ -120,6 +120,20 @@
   DeckPanel)
 
 ### Ajouté
+- **Hint « mode agents » dans le composer** : taper « tu es Nexus », « tes
+  outils »… en chat simple affiche une astuce discrète (le modèle n'a ni
+  persona ni outils dans ce mode, par design) avec activation directe
+  « 🧠 Nexus + 🔎 Seeker » en un clic — dismissible. (Composer)
+- **Barre sécurité sandbox temps réel** (phase 3 de `docs/roadmap-secure-ai.md`)
+  : 🔒 taille + nb de fichiers du workspace ouvert, dans le panneau Fichiers
+  ET la barre d'état — poll léger 10 s de `/api/sandbox/status` (données
+  déjà servies, zéro endpoint nouveau). (FilesPanel, StatusBar, App)
+- **Bouton ▶ Exécuter dans l'éditeur** (phase 4) : en-tête de l'éditeur
+  Monaco/textarea du panneau Fichiers — sauvegarde le fichier ouvert s'il
+  est sale, exécute via l'endpoint du terminal réel (liste blanche node/npm/
+  git…, timeout 60 s, cwd workspace), affiche la sortie dans un drawer avec
+  commande éditable et journalise dans le toollog du fil. (FilesPanel,
+  MonacoEditor inchangé)
 - **Équipe V5 « Secure AI » en fiches agents** (phase 1 de
   `docs/roadmap-secure-ai.md`) : FullStack Lead, DevSec Expert, Web3X
   Senior et X-Architect — rôles et méthodes tirés des prototypes

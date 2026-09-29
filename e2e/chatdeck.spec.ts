@@ -277,7 +277,9 @@ test.describe('fonctionnalités agents avancées', () => {
       })
     }, id)
     await btn.click()
-    await expect(panel.locator('.commitnote')).toContainText(/✅|rien à committer/)
+    // git-commit (add -A + commit) peut dépasser 5 s sous forte charge machine :
+    // attente explicite, pas le timeout par défaut.
+    await expect(panel.locator('.commitnote')).toContainText(/✅|rien à committer/, { timeout: 20_000 })
   })
 })
 
@@ -675,6 +677,65 @@ test.describe('@fichier : attachement + autocomplétion', () => {
     await expect(menu.locator('button', { hasText: 'demo-at.md' }).first()).toBeVisible()
     await menu.locator('button', { hasText: 'demo-at.md' }).first().click()
     await expect(ta).toHaveValue(/@demo-at.md/)
+  })
+})
+
+// Secure AI 0.4.10 : hint agents (chat simple), barre sécurité, bouton Exécuter
+test.describe('Secure AI 0.4.10 : hint agents, barre sécurité, Exécuter', () => {
+  test('hint agents : taper « tu es Nexus » en chat simple propose le mode agents', async () => {
+    const ta = page.locator('.composer textarea')
+    await ta.click()
+    await ta.pressSequentially('tu es Nexus ?', { delay: 20 })
+    const hint = page.locator('.composer .hint-row')
+    await expect(hint).toBeVisible()
+    await expect(hint).toContainText('mode agents')
+    // Bouton d'activation directe → le select passe sur nexus,seeker (hint retiré)
+    await hint.locator('button', { hasText: 'Nexus + 🔎 Seeker' }).click()
+    await expect(hint).not.toBeVisible()
+    await expect(page.locator('.composer select').first()).toHaveValue('nexus,seeker')
+    // Et ne réapparaît plus tant que le fil a des agents
+    await ta.fill('tu es Nexus à nouveau ?')
+    await expect(hint).not.toBeVisible()
+  })
+
+  test('barre sécurité : taille + fichiers du workspace ouvert dans la barre d\'état', async ({ request }) => {
+    const id = await convId()
+    await request.post(`/api/sandbox/${id}/bootstrap`)
+    await request.put(`/api/sandbox/${id}/file`, { data: { path: 'sec.txt', content: 'SECURE-AI-SEC' } })
+    // Ouvrir l'onglet Fichiers du hub : le workspace devient « ouvert » → la
+    // barre d'état affiche la sécurité (poll 10 s + mesure immédiate au montage).
+    await page.locator('.toolbar .tb', { hasText: 'Outils' }).click()
+    const hub = page.locator('.hub')
+    await hub.locator('nav button', { hasText: 'Fichiers' }).click()
+    await expect(hub.locator('.files')).toBeVisible()
+    const st = page.locator('footer.status')
+    await expect(st.locator('.mono', { hasText: '🔒' })).toBeVisible({ timeout: 15_000 })
+  })
+
+  test('bouton Exécuter : sauvegarde, run réel (cat) et sortie affichée', async ({ request }) => {
+    const id = await convId()
+    await request.post(`/api/sandbox/${id}/bootstrap`)
+    await request.put(`/api/sandbox/${id}/file`, { data: { path: 'exec-demo.txt', content: 'EXEC-OK-42' } })
+    await page.locator('.toolbar .tb', { hasText: 'Outils' }).click()
+    const hub = page.locator('.hub')
+    await hub.locator('nav button', { hasText: 'Fichiers' }).click()
+    const files = hub.locator('.files')
+    await files.locator('button.f', { hasText: 'exec-demo.txt' }).click()
+    const ed = files.locator('.editor')
+    await expect(ed).toBeVisible()
+    // ▶ dans l'en-tête éditeur → drawer avec commande + sortie
+    await ed.locator('header button[title^="Exécuter"]').click()
+    const drawer = ed.locator('.execdrawer')
+    await expect(drawer).toBeVisible({ timeout: 10_000 })
+    const input = drawer.locator('.execcmd')
+    await expect(input).toBeVisible()
+    await expect(drawer.locator('.execout')).toContainText('EXEC-OK-42', { timeout: 15_000 })
+    // Journalisé dans le toollog du fil (outil « exec »)
+    const log = await page.evaluate((cid) => {
+      const all = JSON.parse(localStorage.getItem('chatdeck.toollog.v1') || '[]') as { conv: string; tool: string; detail: string }[]
+      return all.filter((e) => e.conv === cid && e.tool === 'exec').map((e) => e.detail)
+    }, id)
+    expect(log.some((d) => d.includes('cat exec-demo.txt'))).toBe(true)
   })
 })
 

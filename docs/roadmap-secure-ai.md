@@ -42,14 +42,18 @@ sauvegarde passe par le PUT `/api/sandbox/<conv>/file` existant), repli
 textarea si le chargement échoue. Le FS reste réel (endpoints sandbox),
 pas de FS en mémoire comme les prototypes.
 
-### Phase 3 — Barre de sécurité sandbox
-Pastille/barre live : taille workspace + nb fichiers (poll léger de
-`/api/sandbox/status`), commandes refusées (tail du toollog). Données déjà
-servies, juste de l'UI.
+### Phase 3 — Barre de sécurité sandbox — ✅ FAIT (2026-09-29, 0.4.10)
+🔒 taille + nb de fichiers du workspace ouvert, affichés dans le panneau
+Fichiers (rangée dédiée) ET la barre d'état (uniquement quand un espace est
+ouvert — hub Fichiers/Terminal ou dock). Poll léger 10 s de
+`/api/sandbox/status`, données déjà servies — zéro endpoint nouveau.
 
-### Phase 4 — Bouton « Exécuter »
-Dans l'éditeur Monaco : bouton play → `run_command` réel dans la sandbox
-(node/jj selon l'OS du fil) + sortie dans le terminal docké existant.
+### Phase 4 — Bouton « Exécuter » — ✅ FAIT (2026-09-29, 0.4.10)
+Bouton ▶ dans l'en-tête de l'éditeur Monaco (commun au repli textarea) du
+panneau Fichiers : sauvegarde le fichier ouvert s'il est sale, exécute via
+l'endpoint du terminal réel (`/run` : liste blanche, timeout 60 s, cwd
+workspace), sortie streamée dans un drawer avec commande éditable, et
+journalisation dans le toollog du fil (outil `exec`).
 
 ### Hors périmètre (assumé)
 AES-256/chroot/réseau virtuel (fiction), boot animé, mobile. Le prototype

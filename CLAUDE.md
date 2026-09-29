@@ -96,7 +96,18 @@ arrêt via `npm run dev:bg:stop` — indispensable après un redémarrage de mac
   sur la sélection globale du DeckPanel ; pastille 🃏 du composer (menu
   `cards-pop`) ; le `Msg.cards` de l'envoi alimente le badge 🃏 de
   MessageActions. Édition des fiches projet : PUT `/api/deck/card`
-  (frontmatter requis, pack en lecture seule).
+  (frontmatter requis, pack en lecture seule). `/api/deck/cards` GET est
+  **caché** (invalidation par mtime des dossiers + POST/PUT ; `?fresh=1`
+  pour forcer) — ne pas retirer : ~640 fichiers relus à chaque appel faisaient
+  dépasser 30 s sous charge.
+- **Secure AI phases 3-4** : 🔒 barre sécurité (taille+fichiers workspace,
+  poll 10 s `/api/sandbox/status`) dans FilesPanel ET StatusBar
+  (`sandboxOpen` = ids des espaces ouverts, calculé dans App — hub OU dock).
+  Bouton ▶ Exécuter dans l'en-tête éditeur FilesPanel (commun Monaco/textarea)
+  : save si sale → `/run` (liste blanche, timeout 60 s) → drawer sortie +
+  toollog (`exec`) → `onExec` (App ouvre le terminal du fil, jamais un onglet
+  hub). Hint « mode agents » du Composer : regex locale, dismissible par
+  session — le chat simple n'envoie ni persona ni outils (par design).
 - **Mode Plan** : `Conversation.planMode` → `toolsFor(agent, readOnly)` filtre
   write_file/git_commit/délégations + prompt « lecture seule » ; toggle Tab ou
   bouton 📋 Plan dans Composer. **/undo** : endpoint sandbox `git-undo`
