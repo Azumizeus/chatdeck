@@ -1,0 +1,2485 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>SecureDev Premium — Environnement de développement sécurisé</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+  <style>
+    /* ===== RESET & ROOT ===== */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    :root {
+      --bg-primary: #070b15;
+      --bg-secondary: #0b1222;
+      --bg-card: #0f1a2e;
+      --bg-elevated: #16243b;
+      --bg-input: #0a1428;
+      --border-subtle: #1a2a48;
+      --border-medium: #2a3e62;
+      --border-glow: #00ff8844;
+      --text-primary: #e8f0f8;
+      --text-secondary: #8a9bb5;
+      --text-muted: #4a6080;
+      --accent: #00ff88;
+      --accent-glow: #00ff8844;
+      --cyan: #00d4ff;
+      --cyan-glow: #00d4ff44;
+      --purple: #a855f7;
+      --purple-glow: #a855f744;
+      --red: #ff3366;
+      --red-glow: #ff336644;
+      --orange: #ff8844;
+      --yellow: #ffd700;
+      --font-ui: 'Inter', sans-serif;
+      --font-code: 'JetBrains Mono', monospace;
+      --radius-sm: 6px;
+      --radius-md: 10px;
+      --radius-lg: 16px;
+      --radius-xl: 24px;
+      --shadow-card: 0 8px 32px rgba(0, 0, 0, 0.6);
+      --shadow-glow: 0 0 40px rgba(0, 255, 136, 0.08);
+      --transition: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    html,
+    body {
+      height: 100%;
+      overflow: hidden;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      font-family: var(--font-ui);
+    }
+
+    ::-webkit-scrollbar {
+      width: 4px;
+      height: 4px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: var(--border-medium);
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--text-muted);
+    }
+
+    /* ===== GLASS BACKGROUND ===== */
+    .bg-orb {
+      position: fixed;
+      border-radius: 50%;
+      filter: blur(80px);
+      pointer-events: none;
+      z-index: 0;
+    }
+    .bg-orb-1 {
+      width: 500px;
+      height: 500px;
+      background: var(--accent-glow);
+      top: -150px;
+      right: -150px;
+      opacity: 0.15;
+    }
+    .bg-orb-2 {
+      width: 400px;
+      height: 400px;
+      background: var(--cyan-glow);
+      bottom: -100px;
+      left: -100px;
+      opacity: 0.12;
+    }
+    .bg-orb-3 {
+      width: 300px;
+      height: 300px;
+      background: var(--purple-glow);
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      opacity: 0.08;
+    }
+
+    /* ===== BOOT SCREEN PREMIUM ===== */
+    #boot-screen {
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      background: var(--bg-primary);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      transition: opacity 0.8s ease, transform 0.8s ease;
+    }
+    #boot-screen.hidden {
+      opacity: 0;
+      transform: scale(1.05);
+      pointer-events: none;
+    }
+
+    .boot-ring {
+      position: relative;
+      width: 96px;
+      height: 96px;
+      margin-bottom: 24px;
+    }
+    .boot-ring svg {
+      width: 100%;
+      height: 100%;
+      animation: spin 3s linear infinite;
+    }
+    .boot-ring .logo-icon {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 36px;
+      color: var(--accent);
+      background: var(--bg-card);
+      border-radius: 50%;
+      width: 72px;
+      height: 72px;
+      margin: 12px;
+      box-shadow: 0 0 30px var(--accent-glow);
+    }
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    .boot-title {
+      font-size: 32px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+    }
+    .boot-title span {
+      background: linear-gradient(135deg, var(--accent), var(--cyan));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .boot-sub {
+      font-size: 14px;
+      color: var(--text-secondary);
+      margin-top: 4px;
+      font-weight: 400;
+    }
+
+    .boot-progress {
+      width: 340px;
+      max-width: 80%;
+      margin-top: 32px;
+      height: 4px;
+      background: var(--border-subtle);
+      border-radius: 4px;
+      overflow: hidden;
+      position: relative;
+    }
+    .boot-progress-bar {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--accent), var(--cyan));
+      border-radius: 4px;
+      transition: width 0.4s ease;
+      box-shadow: 0 0 12px var(--accent-glow);
+    }
+
+    .boot-status {
+      margin-top: 12px;
+      font-size: 12px;
+      font-family: var(--font-code);
+      color: var(--text-muted);
+      min-height: 20px;
+      text-align: center;
+    }
+
+    .boot-indicators {
+      display: flex;
+      gap: 12px;
+      margin-top: 20px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    .boot-ind {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 10px;
+      font-family: var(--font-code);
+      color: var(--text-muted);
+      padding: 4px 12px;
+      background: var(--bg-card);
+      border-radius: 20px;
+      border: 1px solid var(--border-subtle);
+      transition: all 0.3s;
+    }
+    .boot-ind .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--text-muted);
+      opacity: 0.2;
+      transition: all 0.3s;
+    }
+    .boot-ind .dot.active {
+      background: var(--cyan);
+      opacity: 1;
+      box-shadow: 0 0 8px var(--cyan-glow);
+      animation: pulse-dot 1s infinite;
+    }
+    .boot-ind .dot.done {
+      background: var(--accent);
+      opacity: 1;
+      box-shadow: 0 0 8px var(--accent-glow);
+    }
+    @keyframes pulse-dot {
+      0%,
+      100% {
+        opacity: 1;
+        transform: scale(1);
+      }
+      50% {
+        opacity: 0.5;
+        transform: scale(0.8);
+      }
+    }
+
+    /* ===== ENV SELECT PREMIUM ===== */
+    #env-select {
+      position: fixed;
+      inset: 0;
+      z-index: 9998;
+      background: var(--bg-primary);
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      backdrop-filter: blur(4px);
+    }
+    #env-select.active {
+      display: flex;
+    }
+    #env-select.slide-out {
+      animation: slideUp 0.6s forwards;
+    }
+    @keyframes slideUp {
+      to {
+        opacity: 0;
+        transform: translateY(-40px);
+      }
+    }
+
+    .env-title {
+      font-size: 26px;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+    .env-subtitle {
+      font-size: 14px;
+      color: var(--text-secondary);
+      margin: 4px 0 28px;
+      text-align: center;
+      max-width: 480px;
+      line-height: 1.6;
+    }
+
+    .env-cards {
+      display: flex;
+      gap: 20px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    .env-card {
+      width: 220px;
+      padding: 28px 20px;
+      border-radius: var(--radius-lg);
+      background: var(--bg-card);
+      border: 1.5px solid var(--border-subtle);
+      cursor: pointer;
+      transition: all var(--transition);
+      position: relative;
+      overflow: hidden;
+      text-align: center;
+      backdrop-filter: blur(4px);
+      box-shadow: var(--shadow-card);
+    }
+    .env-card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      transition: opacity var(--transition);
+      background: radial-gradient(ellipse at 50% 0%, var(--card-accent) 0%, transparent 70%);
+    }
+    .env-card:hover {
+      border-color: var(--card-accent);
+      transform: translateY(-6px) scale(1.01);
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6), var(--shadow-glow);
+    }
+    .env-card:hover::before {
+      opacity: 1;
+    }
+    .env-card[data-os="mac"] {
+      --card-accent: var(--cyan);
+    }
+    .env-card[data-os="windows"] {
+      --card-accent: var(--accent);
+    }
+    .env-card[data-os="linux"] {
+      --card-accent: var(--orange);
+    }
+
+    .env-card-icon {
+      font-size: 42px;
+      margin-bottom: 12px;
+      position: relative;
+      z-index: 1;
+    }
+    .env-card[data-os="mac"] .env-card-icon {
+      color: var(--cyan);
+    }
+    .env-card[data-os="windows"] .env-card-icon {
+      color: var(--accent);
+    }
+    .env-card[data-os="linux"] .env-card-icon {
+      color: var(--orange);
+    }
+
+    .env-card-name {
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--text-primary);
+      position: relative;
+      z-index: 1;
+    }
+    .env-card-desc {
+      font-size: 12px;
+      color: var(--text-secondary);
+      margin-top: 4px;
+      line-height: 1.5;
+      position: relative;
+      z-index: 1;
+    }
+
+    .env-card-loading {
+      position: absolute;
+      inset: 0;
+      background: var(--bg-card);
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 5;
+      gap: 10px;
+      border-radius: var(--radius-lg);
+      backdrop-filter: blur(8px);
+    }
+    .env-card-loading.active {
+      display: flex;
+    }
+    .env-card-loading .spinner {
+      width: 28px;
+      height: 28px;
+      border: 2.5px solid var(--border-subtle);
+      border-top-color: var(--card-accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    .env-security-note {
+      margin-top: 30px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 12px;
+      color: var(--text-secondary);
+      padding: 10px 20px;
+      background: var(--bg-card);
+      border-radius: var(--radius-md);
+      border: 1px solid var(--border-subtle);
+      backdrop-filter: blur(4px);
+    }
+    .env-security-note i {
+      color: var(--accent);
+      font-size: 14px;
+    }
+
+    /* ===== APP LAYOUT PREMIUM ===== */
+    #app {
+      display: none;
+      height: 100vh;
+      flex-direction: column;
+      background: var(--bg-primary);
+      position: relative;
+      z-index: 1;
+    }
+    #app.active {
+      display: flex;
+    }
+
+    /* Topbar */
+    .topbar {
+      height: 48px;
+      min-height: 48px;
+      background: rgba(11, 18, 34, 0.85);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      padding: 0 14px;
+      gap: 10px;
+      z-index: 100;
+      flex-shrink: 0;
+    }
+    .topbar-logo {
+      width: 30px;
+      height: 30px;
+      border-radius: var(--radius-sm);
+      background: linear-gradient(135deg, var(--accent), var(--cyan));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      color: var(--bg-primary);
+      font-weight: 700;
+      flex-shrink: 0;
+      box-shadow: 0 0 20px var(--accent-glow);
+    }
+    .topbar-env {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      font-family: var(--font-code);
+      color: var(--text-secondary);
+      flex-shrink: 0;
+    }
+    .topbar-env .os-badge {
+      padding: 2px 10px;
+      border-radius: 12px;
+      font-size: 9px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .os-badge.mac {
+      background: #00d4ff22;
+      color: var(--cyan);
+    }
+    .os-badge.windows {
+      background: #00ff8822;
+      color: var(--accent);
+    }
+    .os-badge.linux {
+      background: #ff884422;
+      color: var(--orange);
+    }
+
+    .topbar-sep {
+      width: 1px;
+      height: 24px;
+      background: var(--border-subtle);
+      flex-shrink: 0;
+    }
+
+    .topbar-tabs {
+      display: flex;
+      gap: 2px;
+      overflow-x: auto;
+      flex: 1;
+      min-width: 0;
+      scrollbar-width: none;
+      padding: 0 4px;
+    }
+    .topbar-tabs::-webkit-scrollbar {
+      display: none;
+    }
+
+    .tab {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      font-size: 11px;
+      font-family: var(--font-code);
+      color: var(--text-muted);
+      border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+      cursor: pointer;
+      white-space: nowrap;
+      border: 1px solid transparent;
+      border-bottom: none;
+      transition: all var(--transition);
+      flex-shrink: 0;
+      position: relative;
+    }
+    .tab:hover {
+      color: var(--text-primary);
+      background: var(--bg-elevated);
+    }
+    .tab.active {
+      color: var(--text-primary);
+      background: var(--bg-card);
+      border-color: var(--border-subtle);
+      box-shadow: 0 -2px 12px rgba(0, 255, 136, 0.06);
+    }
+    .tab .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .tab .close-tab {
+      opacity: 0;
+      font-size: 10px;
+      padding: 2px;
+      border-radius: 4px;
+      transition: opacity var(--transition);
+    }
+    .tab:hover .close-tab {
+      opacity: 0.5;
+    }
+    .tab .close-tab:hover {
+      opacity: 1;
+      background: var(--red-glow);
+      color: var(--red);
+    }
+
+    .topbar-actions {
+      display: flex;
+      gap: 4px;
+      flex-shrink: 0;
+    }
+    .topbar-btn {
+      width: 32px;
+      height: 32px;
+      border: none;
+      border-radius: var(--radius-sm);
+      background: transparent;
+      color: var(--text-muted);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      transition: all var(--transition);
+    }
+    .topbar-btn:hover {
+      background: var(--bg-elevated);
+      color: var(--text-primary);
+    }
+    .topbar-btn.active {
+      color: var(--accent);
+      background: var(--accent-glow);
+      box-shadow: 0 0 20px var(--accent-glow);
+    }
+
+    /* Security bar premium */
+    .security-bar {
+      height: 32px;
+      min-height: 32px;
+      background: rgba(11, 18, 34, 0.7);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      gap: 18px;
+      font-size: 10px;
+      font-family: var(--font-code);
+      color: var(--text-secondary);
+      overflow-x: auto;
+      flex-shrink: 0;
+      scrollbar-width: none;
+    }
+    .security-bar::-webkit-scrollbar {
+      display: none;
+    }
+    .sec-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      white-space: nowrap;
+    }
+    .sec-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .sec-dot.green {
+      background: var(--accent);
+      box-shadow: 0 0 8px var(--accent-glow);
+    }
+    .sec-dot.yellow {
+      background: var(--yellow);
+      box-shadow: 0 0 8px rgba(255, 215, 0, 0.3);
+    }
+    .sec-dot.red {
+      background: var(--red);
+      box-shadow: 0 0 8px var(--red-glow);
+    }
+
+    .sec-metric {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-weight: 500;
+    }
+
+    /* Main area */
+    .main-area {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* Sidebar premium */
+    .sidebar {
+      width: 260px;
+      min-width: 260px;
+      background: rgba(11, 18, 34, 0.6);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-right: 1px solid var(--border-subtle);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      transition: width 0.3s ease, min-width 0.3s ease, opacity 0.3s ease;
+    }
+    .sidebar.collapsed {
+      width: 0;
+      min-width: 0;
+      opacity: 0;
+      pointer-events: none;
+    }
+    .sidebar-header {
+      padding: 10px 16px;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      color: var(--text-muted);
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+
+    .file-tree {
+      flex: 1;
+      overflow-y: auto;
+      padding: 6px 0;
+    }
+    .file-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 3px 14px;
+      font-size: 12px;
+      font-family: var(--font-code);
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.15s;
+      user-select: none;
+      border-radius: 4px;
+      margin: 0 4px;
+    }
+    .file-item:hover {
+      background: var(--bg-elevated);
+      color: var(--text-primary);
+    }
+    .file-item.active {
+      background: var(--accent-glow);
+      color: var(--accent);
+      box-shadow: inset 0 0 20px var(--accent-glow);
+    }
+    .file-item .fi-icon {
+      width: 16px;
+      text-align: center;
+      font-size: 12px;
+      flex-shrink: 0;
+    }
+    .file-item .fi-name {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .file-item.folder>.fi-icon {
+      color: var(--orange);
+    }
+    .file-item.folder.open>.fi-icon {
+      transform: rotate(90deg);
+    }
+    .file-item .fi-children {
+      display: none;
+    }
+    .file-item.folder.open>.fi-children {
+      display: block;
+    }
+
+    .sidebar-section {
+      border-top: 1px solid var(--border-subtle);
+      padding: 10px 14px;
+      flex-shrink: 0;
+    }
+    .sidebar-section-title {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+    }
+    .tool-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+    .tool-chip {
+      padding: 3px 10px;
+      border-radius: 12px;
+      font-size: 10px;
+      font-family: var(--font-code);
+      background: var(--bg-elevated);
+      color: var(--text-secondary);
+      border: 1px solid var(--border-subtle);
+      cursor: pointer;
+      transition: all var(--transition);
+    }
+    .tool-chip:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+      box-shadow: 0 0 16px var(--accent-glow);
+    }
+
+    /* Editor premium */
+    .editor-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      min-width: 0;
+    }
+    .editor-container {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+      position: relative;
+    }
+    .code-editor {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+      font-family: var(--font-code);
+      font-size: 13px;
+      line-height: 1.7;
+    }
+    .line-numbers {
+      padding: 12px 0;
+      text-align: right;
+      color: var(--text-muted);
+      font-size: 12px;
+      min-width: 48px;
+      user-select: none;
+      background: rgba(11, 18, 34, 0.4);
+      border-right: 1px solid var(--border-subtle);
+      overflow: hidden;
+      padding-right: 12px;
+    }
+    .line-numbers div {
+      padding: 0 4px;
+    }
+    .code-content {
+      flex: 1;
+      padding: 12px 18px;
+      overflow: auto;
+      background: transparent;
+      color: var(--text-primary);
+      white-space: pre;
+      tab-size: 2;
+      outline: none;
+      caret-color: var(--accent);
+    }
+
+    /* Syntax highlighting premium */
+    .hl-keyword {
+      color: #c678dd;
+    }
+    .hl-string {
+      color: #98c379;
+    }
+    .hl-number {
+      color: #d19a66;
+    }
+    .hl-comment {
+      color: #5c6370;
+      font-style: italic;
+    }
+    .hl-function {
+      color: #61afef;
+    }
+    .hl-tag {
+      color: #e06c75;
+    }
+    .hl-attr {
+      color: #d19a66;
+    }
+    .hl-type {
+      color: #e5c07b;
+    }
+    .hl-operator {
+      color: #56b6c2;
+    }
+    .hl-punct {
+      color: #abb2bf;
+    }
+    .hl-constant {
+      color: #d19a66;
+    }
+
+    /* Terminal premium */
+    .terminal-panel {
+      height: 200px;
+      min-height: 40px;
+      background: rgba(7, 11, 21, 0.9);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      border-top: 1px solid var(--border-subtle);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      transition: height 0.3s ease;
+    }
+    .terminal-panel.collapsed {
+      height: 40px;
+      min-height: 40px;
+    }
+    .terminal-header {
+      height: 40px;
+      min-height: 40px;
+      display: flex;
+      align-items: center;
+      padding: 0 12px;
+      gap: 8px;
+      border-bottom: 1px solid var(--border-subtle);
+      background: rgba(11, 18, 34, 0.6);
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .terminal-header span {
+      font-size: 11px;
+      font-family: var(--font-code);
+      color: var(--text-secondary);
+    }
+    .terminal-tabs {
+      display: flex;
+      gap: 4px;
+      flex: 1;
+    }
+    .terminal-tab {
+      padding: 3px 12px;
+      font-size: 10px;
+      font-family: var(--font-code);
+      color: var(--text-muted);
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all var(--transition);
+    }
+    .terminal-tab.active {
+      color: var(--text-primary);
+      background: var(--bg-elevated);
+    }
+    .terminal-toggle {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .terminal-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px 14px;
+      font-family: var(--font-code);
+      font-size: 12px;
+      line-height: 1.8;
+    }
+    .term-line {
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .term-prompt {
+      color: var(--accent);
+    }
+    .term-path {
+      color: var(--cyan);
+    }
+    .term-cmd {
+      color: var(--text-primary);
+    }
+    .term-output {
+      color: var(--text-secondary);
+    }
+    .term-error {
+      color: var(--red);
+    }
+    .term-success {
+      color: var(--accent);
+    }
+    .term-warning {
+      color: var(--yellow);
+    }
+    .term-cyan {
+      color: var(--cyan);
+    }
+
+    .terminal-input-line {
+      display: flex;
+      align-items: center;
+      padding: 0 14px 8px;
+      gap: 0;
+      flex-shrink: 0;
+    }
+    .terminal-input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      outline: none;
+      font-family: var(--font-code);
+      font-size: 12px;
+      color: var(--text-primary);
+      caret-color: var(--accent);
+      padding: 2px 0;
+    }
+
+    /* Agent panel premium */
+    .agent-panel {
+      width: 340px;
+      min-width: 340px;
+      background: rgba(11, 18, 34, 0.7);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border-left: 1px solid var(--border-subtle);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      transition: width 0.3s ease, min-width 0.3s ease, opacity 0.3s ease;
+    }
+    .agent-panel.collapsed {
+      width: 0;
+      min-width: 0;
+      opacity: 0;
+      pointer-events: none;
+    }
+    .agent-header {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-shrink: 0;
+    }
+    .agent-avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, var(--accent), var(--cyan));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      color: var(--bg-primary);
+      flex-shrink: 0;
+      box-shadow: 0 0 24px var(--accent-glow);
+    }
+    .agent-info {
+      flex: 1;
+    }
+    .agent-name {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+    .agent-status {
+      font-size: 10px;
+      color: var(--accent);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .agent-status .pulse {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--accent);
+      animation: pulse-dot 1.5s infinite;
+    }
+
+    .agent-tools-bar {
+      padding: 6px 12px;
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      gap: 4px;
+      overflow-x: auto;
+      scrollbar-width: none;
+      flex-shrink: 0;
+    }
+    .agent-tools-bar::-webkit-scrollbar {
+      display: none;
+    }
+    .agent-tool-btn {
+      padding: 3px 10px;
+      border-radius: 12px;
+      font-size: 9px;
+      font-family: var(--font-code);
+      background: var(--bg-elevated);
+      color: var(--text-muted);
+      border: 1px solid var(--border-subtle);
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all var(--transition);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .agent-tool-btn:hover {
+      border-color: var(--cyan);
+      color: var(--cyan);
+    }
+    .agent-tool-btn.active {
+      border-color: var(--cyan);
+      color: var(--cyan);
+      background: var(--cyan-glow);
+      box-shadow: 0 0 20px var(--cyan-glow);
+    }
+    .agent-tool-btn i {
+      font-size: 9px;
+    }
+
+    .agent-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .agent-msg {
+      max-width: 95%;
+      padding: 10px 14px;
+      border-radius: var(--radius-md);
+      font-size: 12px;
+      line-height: 1.7;
+      animation: fadeSlide 0.3s ease;
+    }
+    @keyframes fadeSlide {
+      from {
+        opacity: 0;
+        transform: translateY(8px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+    .agent-msg.user {
+      align-self: flex-end;
+      background: var(--accent-glow);
+      border: 1px solid var(--accent-glow);
+      color: var(--text-primary);
+    }
+    .agent-msg.assistant {
+      align-self: flex-start;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-primary);
+    }
+    .agent-msg.system {
+      align-self: center;
+      background: transparent;
+      border: 1px dashed var(--border-subtle);
+      color: var(--text-muted);
+      font-size: 10px;
+      text-align: center;
+      padding: 4px 14px;
+      font-family: var(--font-code);
+    }
+    .agent-msg-tool {
+      display: flex;
+      align-items: flex-start;
+      gap: 6px;
+      margin-top: 4px;
+      padding: 4px 10px;
+      background: var(--bg-primary);
+      border-radius: 6px;
+      font-size: 10px;
+      font-family: var(--font-code);
+      color: var(--cyan);
+      border-left: 2px solid var(--cyan);
+    }
+    .agent-msg-tool i {
+      margin-top: 1px;
+    }
+
+    .agent-input-area {
+      padding: 8px 12px;
+      border-top: 1px solid var(--border-subtle);
+      display: flex;
+      gap: 8px;
+      align-items: flex-end;
+      flex-shrink: 0;
+      background: rgba(7, 11, 21, 0.4);
+    }
+    .agent-input {
+      flex: 1;
+      background: var(--bg-input);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      padding: 8px 12px;
+      font-size: 12px;
+      font-family: var(--font-ui);
+      color: var(--text-primary);
+      outline: none;
+      resize: none;
+      min-height: 38px;
+      max-height: 100px;
+      transition: border-color var(--transition);
+    }
+    .agent-input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 20px var(--accent-glow);
+    }
+    .agent-input::placeholder {
+      color: var(--text-muted);
+    }
+    .agent-send {
+      width: 38px;
+      height: 38px;
+      border-radius: var(--radius-md);
+      background: linear-gradient(135deg, var(--accent), var(--cyan));
+      border: none;
+      color: var(--bg-primary);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      transition: all var(--transition);
+      flex-shrink: 0;
+      box-shadow: 0 0 20px var(--accent-glow);
+    }
+    .agent-send:hover {
+      transform: scale(1.05);
+      box-shadow: 0 0 30px var(--accent-glow);
+    }
+    .agent-send:active {
+      transform: scale(0.95);
+    }
+
+    /* Modal premium */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 5000;
+      background: rgba(7, 11, 21, 0.75);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .modal-overlay.active {
+      display: flex;
+    }
+    .modal {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      padding: 28px;
+      width: 100%;
+      max-width: 420px;
+      animation: modalIn 0.3s ease;
+      box-shadow: var(--shadow-card), var(--shadow-glow);
+    }
+    @keyframes modalIn {
+      from {
+        opacity: 0;
+        transform: translateY(20px) scale(0.96);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+    .modal-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 16px;
+    }
+    .modal-field {
+      margin-bottom: 14px;
+    }
+    .modal-label {
+      font-size: 11px;
+      color: var(--text-secondary);
+      margin-bottom: 4px;
+      display: block;
+      font-family: var(--font-code);
+      font-weight: 500;
+    }
+    .modal-input {
+      width: 100%;
+      background: var(--bg-input);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-sm);
+      padding: 8px 12px;
+      font-size: 13px;
+      font-family: var(--font-code);
+      color: var(--text-primary);
+      outline: none;
+      transition: border-color var(--transition);
+    }
+    .modal-input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 16px var(--accent-glow);
+    }
+    .modal-actions {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+      margin-top: 18px;
+    }
+    .modal-btn {
+      padding: 6px 18px;
+      border-radius: var(--radius-sm);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all var(--transition);
+      border: 1px solid var(--border-subtle);
+      background: var(--bg-elevated);
+      color: var(--text-secondary);
+    }
+    .modal-btn:hover {
+      background: var(--border-subtle);
+      color: var(--text-primary);
+    }
+    .modal-btn.primary {
+      background: linear-gradient(135deg, var(--accent), var(--cyan));
+      color: var(--bg-primary);
+      border: none;
+      font-weight: 700;
+      box-shadow: 0 0 20px var(--accent-glow);
+    }
+    .modal-btn.primary:hover {
+      box-shadow: 0 0 30px var(--accent-glow);
+      transform: scale(1.02);
+    }
+
+    /* Toast premium */
+    .toast-container {
+      position: fixed;
+      top: 60px;
+      right: 16px;
+      z-index: 6000;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-width: 360px;
+    }
+    .toast {
+      padding: 10px 16px;
+      border-radius: var(--radius-md);
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      font-size: 12px;
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      animation: toastIn 0.4s ease;
+      box-shadow: var(--shadow-card);
+      backdrop-filter: blur(8px);
+    }
+    .toast.success {
+      border-color: var(--accent-glow);
+    }
+    .toast.success i {
+      color: var(--accent);
+    }
+    .toast.error {
+      border-color: var(--red-glow);
+    }
+    .toast.error i {
+      color: var(--red);
+    }
+    @keyframes toastIn {
+      from {
+        opacity: 0;
+        transform: translateX(30px) scale(0.95);
+      }
+      to {
+        opacity: 1;
+        transform: translateX(0) scale(1);
+      }
+    }
+
+    /* Responsive premium */
+    @media (max-width: 1024px) {
+      .agent-panel {
+        width: 300px;
+        min-width: 300px;
+      }
+    }
+    @media (max-width: 768px) {
+      .sidebar {
+        position: fixed;
+        left: 0;
+        top: 48px;
+        bottom: 0;
+        z-index: 200;
+        width: 280px !important;
+        min-width: 280px !important;
+        border-right: 1px solid var(--border-subtle);
+        background: rgba(11, 18, 34, 0.95);
+        backdrop-filter: blur(20px);
+      }
+      .sidebar.collapsed {
+        transform: translateX(-100%);
+        width: 280px !important;
+        min-width: 280px !important;
+      }
+      .agent-panel {
+        position: fixed;
+        right: 0;
+        top: 48px;
+        bottom: 0;
+        z-index: 200;
+        width: 100% !important;
+        min-width: 100% !important;
+        max-width: 380px;
+        background: rgba(11, 18, 34, 0.95);
+        backdrop-filter: blur(20px);
+        border-left: 1px solid var(--border-subtle);
+      }
+      .agent-panel.collapsed {
+        transform: translateX(100%);
+        width: 100% !important;
+        min-width: 100% !important;
+      }
+      .env-cards {
+        flex-direction: column;
+        align-items: center;
+      }
+      .env-card {
+        width: 100%;
+        max-width: 300px;
+      }
+      .topbar-tabs {
+        max-width: 120px;
+      }
+      .terminal-panel {
+        height: 160px;
+      }
+      .terminal-panel.collapsed {
+        height: 40px;
+      }
+      .boot-progress {
+        width: 90%;
+      }
+    }
+    @media (max-width: 480px) {
+      .boot-title {
+        font-size: 24px;
+      }
+      .boot-ring {
+        width: 72px;
+        height: 72px;
+      }
+      .boot-ring .logo-icon {
+        width: 56px;
+        height: 56px;
+        font-size: 26px;
+        margin: 8px;
+      }
+      .env-title {
+        font-size: 20px;
+      }
+      .topbar-env {
+        font-size: 10px;
+      }
+      .topbar-env .os-badge {
+        font-size: 8px;
+        padding: 1px 6px;
+      }
+      .code-content {
+        font-size: 12px;
+        padding: 8px 12px;
+      }
+      .line-numbers {
+        font-size: 11px;
+        min-width: 34px;
+        padding-right: 6px;
+      }
+      .agent-panel {
+        max-width: 100%;
+      }
+      .security-bar {
+        font-size: 9px;
+        gap: 10px;
+        padding: 0 10px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ===== BACKGROUND ORBS ===== -->
+  <div class="bg-orb bg-orb-1"></div>
+  <div class="bg-orb bg-orb-2"></div>
+  <div class="bg-orb bg-orb-3"></div>
+
+  <!-- ===== BOOT SCREEN ===== -->
+  <div id="boot-screen">
+    <div class="boot-ring">
+      <svg viewBox="0 0 100 100">
+        <circle cx="50" cy="50" r="45" fill="none" stroke="var(--border-subtle)" stroke-width="2" />
+        <circle cx="50" cy="50" r="45" fill="none" stroke="url(#bootGrad)" stroke-width="2"
+        stroke-dasharray="200 100" stroke-linecap="round" />
+        <defs>
+          <linearGradient id="bootGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="var(--accent)" />
+            <stop offset="100%" stop-color="var(--cyan)" />
+          </linearGradient>
+        </defs>
+      </svg>
+      <div class="logo-icon"><i class="fas fa-shield-halved"></i></div>
+    </div>
+    <div class="boot-title"><span>SecureDev</span> Premium</div>
+    <div class="boot-sub">Environnement de développement ultra-sécurisé</div>
+
+    <div class="boot-progress">
+      <div class="boot-progress-bar" id="boot-bar"></div>
+    </div>
+    <div class="boot-status" id="boot-status">Initialisation du noyau...</div>
+
+    <div class="boot-indicators">
+      <span class="boot-ind" data-ind="kernel"><span class="dot"></span>Noyau</span>
+      <span class="boot-ind" data-ind="crypto"><span class="dot"></span>Chiffrement</span>
+      <span class="boot-ind" data-ind="sandbox"><span class="dot"></span>Sandbox</span>
+      <span class="boot-ind" data-ind="network"><span class="dot"></span>Réseau</span>
+      <span class="boot-ind" data-ind="fs"><span class="dot"></span>Filesystem</span>
+      <span class="boot-ind" data-ind="agents"><span class="dot"></span>Agents</span>
+      <span class="boot-ind" data-ind="tools"><span class="dot"></span>Outils</span>
+      <span class="boot-ind" data-ind="secure"><span class="dot"></span>Sécurité</span>
+    </div>
+  </div>
+
+  <!-- ===== ENV SELECT ===== -->
+  <div id="env-select">
+    <div class="env-title">Choisissez votre environnement</div>
+    <div class="env-subtitle">Un sandbox isolé, chiffré et sécurisé avec les outils de votre plateforme préférée.</div>
+    <div class="env-cards">
+      <div class="env-card" data-os="mac" onclick="selectEnvironment('mac')">
+        <div class="env-card-icon"><i class="fab fa-apple"></i></div>
+        <div class="env-card-name">macOS</div>
+        <div class="env-card-desc">Swift, Xcode, Homebrew, Zsh</div>
+        <div class="env-card-loading" id="load-mac">
+          <div class="spinner"></div>
+          <span style="font-size:11px;color:var(--text-muted)">Provisionnement...</span>
+        </div>
+      </div>
+      <div class="env-card" data-os="windows" onclick="selectEnvironment('windows')">
+        <div class="env-card-icon"><i class="fab fa-windows"></i></div>
+        <div class="env-card-name">Windows</div>
+        <div class="env-card-desc">.NET, Visual Studio, PowerShell</div>
+        <div class="env-card-loading" id="load-windows">
+          <div class="spinner"></div>
+          <span style="font-size:11px;color:var(--text-muted)">Provisionnement...</span>
+        </div>
+      </div>
+      <div class="env-card" data-os="linux" onclick="selectEnvironment('linux')">
+        <div class="env-card-icon"><i class="fab fa-linux"></i></div>
+        <div class="env-card-name">Linux</div>
+        <div class="env-card-desc">Node.js, Python, Docker, GCC</div>
+        <div class="env-card-loading" id="load-linux">
+          <div class="spinner"></div>
+          <span style="font-size:11px;color:var(--text-muted)">Provisionnement...</span>
+        </div>
+      </div>
+    </div>
+    <div class="env-security-note">
+      <i class="fas fa-lock"></i>
+      Sandbox chrooté · AES-256 · Réseau isolé · Aucune persistance
+    </div>
+  </div>
+
+  <!-- ===== APP ===== -->
+  <div id="app">
+    <!-- Topbar -->
+    <div class="topbar">
+      <div class="topbar-logo"><i class="fas fa-shield-halved"></i></div>
+      <div class="topbar-env">
+        <span class="os-badge" id="os-badge">MAC</span>
+        <span id="env-label">sandbox</span>
+      </div>
+      <div class="topbar-sep"></div>
+      <div class="topbar-tabs" id="editor-tabs"></div>
+      <div class="topbar-actions">
+        <button class="topbar-btn" id="btn-sidebar" title="Explorateur" onclick="toggleSidebar()"><i class="fas fa-folder-tree"></i></button>
+        <button class="topbar-btn" id="btn-terminal" title="Terminal" onclick="toggleTerminal()"><i class="fas fa-terminal"></i></button>
+        <button class="topbar-btn" id="btn-agent" title="Agent IA" onclick="toggleAgent()"><i class="fas fa-robot"></i></button>
+        <button class="topbar-btn" title="Nouveau fichier" onclick="showNewFileModal()"><i class="fas fa-plus"></i></button>
+        <button class="topbar-btn" title="Sauvegarder" onclick="saveFile()"><i class="fas fa-save"></i></button>
+      </div>
+    </div>
+
+    <!-- Security bar -->
+    <div class="security-bar" id="security-bar">
+      <div class="sec-item"><div class="sec-dot green"></div>Sandbox actif</div>
+      <div class="sec-item"><div class="sec-dot green"></div>AES-256</div>
+      <div class="sec-item"><div class="sec-dot green"></div>Réseau isolé</div>
+      <div class="sec-item"><div class="sec-dot green"></div>chroot</div>
+      <div class="sec-item sec-metric" id="sec-mem"><div class="sec-dot green"></div>RAM: 0 MB</div>
+      <div class="sec-item sec-metric" id="sec-cpu"><div class="sec-dot green"></div>CPU: 0%</div>
+      <div class="sec-item sec-metric" id="sec-uptime"><i class="far fa-clock"></i> 00:00</div>
+    </div>
+
+    <!-- Main -->
+    <div class="main-area">
+      <!-- Sidebar -->
+      <div class="sidebar" id="sidebar">
+        <div class="sidebar-header"><span>EXPLORATEUR</span></div>
+        <div class="file-tree" id="file-tree"></div>
+        <div class="sidebar-section">
+          <div class="sidebar-section-title">Outils rapides</div>
+          <div class="tool-chips">
+            <div class="tool-chip" onclick="agentQuickAction('compiler')">Compiler</div>
+            <div class="tool-chip" onclick="agentQuickAction('test')">Tester</div>
+            <div class="tool-chip" onclick="agentQuickAction('lint')">Lint</div>
+            <div class="tool-chip" onclick="agentQuickAction('format')">Formater</div>
+            <div class="tool-chip" onclick="agentQuickAction('deploy')">Déployer</div>
+            <div class="tool-chip" onclick="agentQuickAction('git')">Git</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Editor -->
+      <div class="editor-area">
+        <div class="editor-container">
+          <div class="code-editor">
+            <div class="line-numbers" id="line-numbers"></div>
+            <div class="code-content" id="code-content" contenteditable="true" spellcheck="false"></div>
+          </div>
+        </div>
+
+        <!-- Terminal -->
+        <div class="terminal-panel" id="terminal-panel">
+          <div class="terminal-header" onclick="toggleTerminal()">
+            <div class="terminal-tabs">
+              <div class="terminal-tab active">Terminal</div>
+              <div class="terminal-tab">Sortie</div>
+            </div>
+            <span class="terminal-toggle" id="term-toggle-icon"><i class="fas fa-chevron-down"></i></span>
+          </div>
+          <div class="terminal-body" id="terminal-body">
+            <div class="term-line term-success">SecureDev Premium — Terminal sécurisé v2.0</div>
+            <div class="term-line term-output">Tapez 'help' pour la liste des commandes.</div>
+          </div>
+          <div class="terminal-input-line">
+            <span class="term-prompt" id="term-prompt-text">~/project $</span>
+            <input class="terminal-input" id="terminal-input" autofocus autocomplete="off" spellcheck="false" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Agent -->
+      <div class="agent-panel" id="agent-panel">
+        <div class="agent-header">
+          <div class="agent-avatar"><i class="fas fa-robot"></i></div>
+          <div class="agent-info">
+            <div class="agent-name">Agent SecureDev</div>
+            <div class="agent-status"><div class="pulse"></div>En ligne — 10 outils</div>
+          </div>
+        </div>
+        <div class="agent-tools-bar" id="agent-tools-bar">
+          <button class="agent-tool-btn" data-tool="code" onclick="toggleAgentTool(this)"><i class="fas fa-code"></i>Générer</button>
+          <button class="agent-tool-btn" data-tool="review" onclick="toggleAgentTool(this)"><i class="fas fa-search"></i>Review</button>
+          <button class="agent-tool-btn" data-tool="debug" onclick="toggleAgentTool(this)"><i class="fas fa-bug"></i>Debug</button>
+          <button class="agent-tool-btn" data-tool="refactor" onclick="toggleAgentTool(this)"><i class="fas fa-arrows-rotate"></i>Refactor</button>
+          <button class="agent-tool-btn" data-tool="docs" onclick="toggleAgentTool(this)"><i class="fas fa-book"></i>Docs</button>
+          <button class="agent-tool-btn" data-tool="test" onclick="toggleAgentTool(this)"><i class="fas fa-flask"></i>Tests</button>
+          <button class="agent-tool-btn" data-tool="shell" onclick="toggleAgentTool(this)"><i class="fas fa-terminal"></i>Shell</button>
+          <button class="agent-tool-btn" data-tool="search" onclick="toggleAgentTool(this)"><i class="fas fa-search"></i>Search</button>
+          <button class="agent-tool-btn" data-tool="git" onclick="toggleAgentTool(this)"><i class="fas fa-code-branch"></i>Git</button>
+          <button class="agent-tool-btn" data-tool="deploy" onclick="toggleAgentTool(this)"><i class="fas fa-rocket"></i>Déploie</button>
+        </div>
+        <div class="agent-messages" id="agent-messages">
+          <div class="agent-msg system">Session sécurisée — 10 outils disponibles</div>
+          <div class="agent-msg assistant">Bonjour. Je suis votre agent de développement premium. Sélectionnez un outil ou décrivez votre besoin.</div>
+        </div>
+        <div class="agent-input-area">
+          <textarea class="agent-input" id="agent-input" placeholder="Décrire la tâche..." rows="1"></textarea>
+          <button class="agent-send" onclick="sendAgentMessage()"><i class="fas fa-arrow-up"></i></button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal -->
+  <div class="modal-overlay" id="modal-newfile">
+    <div class="modal">
+      <div class="modal-title">Nouveau fichier</div>
+      <div class="modal-field">
+        <label class="modal-label">Chemin</label>
+        <input class="modal-input" id="newfile-path" placeholder="src/App.tsx" autocomplete="off" />
+      </div>
+      <div class="modal-field">
+        <label class="modal-label">Template</label>
+        <select class="modal-input" id="newfile-template" style="cursor:pointer">
+          <option value="empty">Vide</option>
+          <option value="html">HTML5</option>
+          <option value="js">JavaScript</option>
+          <option value="ts">TypeScript</option>
+          <option value="py">Python</option>
+          <option value="swift">Swift</option>
+          <option value="cs">C#</option>
+          <option value="css">CSS</option>
+          <option value="json">JSON</option>
+          <option value="sh">Shell</option>
+        </select>
+      </div>
+      <div class="modal-actions">
+        <button class="modal-btn" onclick="closeModal('modal-newfile')">Annuler</button>
+        <button class="modal-btn primary" onclick="createNewFile()">Créer</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast-container" id="toast-container"></div>
+
+  <script>
+    /* ==========================================================
+       SECUREDEV PREMIUM — APPLICATION COMPLÈTE
+       ========================================================== */
+
+    // --- STATE ---
+    const state = {
+      os: null,
+      envName: '',
+      files: {},
+      openTabs: [],
+      activeTab: null,
+      terminalHistory: [],
+      termHistoryIdx: -1,
+      agentTools: new Set(),
+      sidebarOpen: true,
+      terminalOpen: true,
+      agentOpen: true,
+      uptimeSeconds: 0,
+    };
+
+    // --- FILESYSTEM ---
+    function initFileSystem(os) {
+      const base = {
+        'README.md': `# SecureDev Premium\n\nEnvironnement: **${os}**\nSandbox: actif · AES-256 · chroot\n\n## Structure\n\nsrc/\n  main.js\n  app.js\n  utils/\n    helpers.js\ntests/\n  main.test.js\npackage.json\n`,
+        'package.json': `{\n  "name": "securedev-premium",\n  "version": "1.0.0",\n  "description": "Projet SecureDev Premium",\n  "main": "src/main.js",\n  "scripts": {\n    "start": "node src/main.js",\n    "test": "jest",\n    "lint": "eslint src/",\n    "build": "webpack --mode production"\n  },\n  "dependencies": {\n    "express": "^4.18.2"\n  },\n  "devDependencies": {\n    "jest": "^29.7.0",\n    "eslint": "^8.56.0"\n  }\n}\n`,
+        '.env': `# Variables d'environnement (chiffrées)\nNODE_ENV=development\nPORT=3000\nDB_HOST=sandbox-db.internal\nDB_PORT=5432\nAPI_KEY=sec_********************************\n`,
+      };
+      if (os === 'mac') {
+        base['Info.plist'] =
+          `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN">\n<plist version="1.0"><dict>\n  <key>CFBundleName</key><string>SecureDev</string>\n  <key>CFBundleVersion</key><string>1.0</string>\n</dict></plist>\n`;
+      } else if (os === 'windows') {
+        base['app.config.json'] =
+          `{\n  "framework": "net8.0",\n  "runtimeIdentifier": "win-x64",\n  "publishSingleFile": true,\n  "selfContained": true\n}\n`;
+      } else {
+        base['Makefile'] =
+          `.PHONY: build test clean\n\nbuild:\n\tnode src/main.js\n\ntest:\n\tjest --coverage\n\nclean:\n\trm -rf dist/ node_modules/\n`;
+        base['Dockerfile'] =
+          `FROM node:20-alpine\nWORKDIR /app\nCOPY package*.json ./\nRUN npm ci --production\nCOPY . .\nEXPOSE 3000\nCMD ["node", "src/main.js"]\n`;
+      }
+      base['src/main.js'] =
+        `import { createApp } from './app.js';\nimport { log } from './utils/helpers.js';\n\nconst app = createApp();\nconst PORT = process.env.PORT || 3000;\n\napp.listen(PORT, () => {\n  log(\`Serveur démarré sur le port \${PORT}\`);\n  log('Environnement: ' + process.env.NODE_ENV);\n});\n`;
+      base['src/app.js'] =
+        `import express from 'express';\nimport { logger } from './utils/helpers.js';\n\nexport function createApp() {\n  const app = express();\n  app.use(express.json());\n  app.use((req, res, next) => {\n    logger(\`\${req.method} \${req.path}\`);\n    next();\n  });\n  app.get('/', (req, res) => {\n    res.json({ status: 'ok', environment: process.env.NODE_ENV, sandbox: true });\n  });\n  app.get('/health', (req, res) => {\n    res.json({ status: 'healthy' });\n  });\n  app.post('/api/data', (req, res) => {\n    const { name, value } = req.body;\n    if (!name || !value) return res.status(400).json({ error: 'Champs requis' });\n    res.json({ stored: true, name, value });\n  });\n  return app;\n}\n`;
+      base['src/utils/helpers.js'] =
+        `export function log(message) {\n  console.log(\`[\${new Date().toLocaleTimeString()}] \${message}\`);\n}\n\nexport function logger(message) {\n  console.log(\`[\${new Date().toISOString()}] \${message}\`);\n}\n\nexport function validateInput(data, schema) {\n  const errors = [];\n  for (const [key, type] of Object.entries(schema)) {\n    if (!(key in data)) errors.push(\`Champ manquant: \${key}\`);\n    else if (typeof data[key] !== type) errors.push(\`Type invalide pour \${key}\`);\n  }\n  return errors;\n}\n\nexport function generateId() {\n  return crypto.randomUUID?.() || 'xxxx-xxxx-xxxx'.replace(/x/g, () => Math.floor(Math.random()*16).toString(16));\n}\n`;
+      base['tests/main.test.js'] =
+        `import { describe, it, expect } from '@jest/globals';\nimport { validateInput, generateId } from '../src/utils/helpers.js';\n\ndescribe('Helpers', () => {\n  it('validateInput valide un objet correct', () => {\n    const result = validateInput({ name: 'test', value: 42 }, { name: 'string', value: 'number' });\n    expect(result).toHaveLength(0);\n  });\n  it('détecte un champ manquant', () => {\n    const result = validateInput({ name: 'test' }, { name: 'string', value: 'number' });\n    expect(result).toHaveLength(1);\n  });\n  it('génère un ID', () => {\n    expect(generateId()).toMatch(/^[\\w-]+$/);\n  });\n});\n`;
+      return base;
+    }
+
+    // --- BOOT SEQUENCE ---
+    const bootSteps = [
+      { ind: 'kernel', msg: 'Initialisation du noyau de sécurité...', prog: 4 },
+      { ind: 'kernel', msg: 'Chargement du module noyau v3.2.1...', prog: 9 },
+      { ind: 'kernel', msg: 'Noyau chargé avec succès ✓', prog: 15 },
+      { ind: 'crypto', msg: 'Initialisation du chiffrement AES-256...', prog: 19 },
+      { ind: 'crypto', msg: 'Génération de la clé maître...', prog: 24 },
+      { ind: 'crypto', msg: 'Chiffrement opérationnel ✓', prog: 30 },
+      { ind: 'sandbox', msg: 'Création du sandbox chrooté...', prog: 35 },
+      { ind: 'sandbox', msg: 'Namespace PID isolé (max 32768)...', prog: 40 },
+      { ind: 'sandbox', msg: 'Seccomp filter installé ✓', prog: 46 },
+      { ind: 'network', msg: 'Configuration du réseau isolé...', prog: 50 },
+      { ind: 'network', msg: 'Interface veth0 (10.0.0.0/24)...', prog: 55 },
+      { ind: 'network', msg: 'Réseau isolé configuré ✓', prog: 60 },
+      { ind: 'fs', msg: 'Montage du filesystem virtuel...', prog: 64 },
+      { ind: 'fs', msg: 'OverlayFS pour /workspace...', prog: 69 },
+      { ind: 'fs', msg: 'Filesystem chrooté monté ✓', prog: 74 },
+      { ind: 'agents', msg: 'Chargement du moteur d\'agents IA...', prog: 78 },
+      { ind: 'agents', msg: '10 outils enregistrés ✓', prog: 82 },
+      { ind: 'tools', msg: 'Indexation des outils de dev...', prog: 86 },
+      { ind: 'tools', msg: 'node, npm, git, python, gcc ✓', prog: 90 },
+      { ind: 'secure', msg: 'Vérification finale de sécurité...', prog: 94 },
+      { ind: 'secure', msg: 'Intégrité du noyau: OK ✓', prog: 97 },
+      { ind: 'secure', msg: 'Environnement prêt !', prog: 100 },
+    ];
+
+    function runBootSequence() {
+      let i = 0;
+      const bar = document.getElementById('boot-bar');
+      const status = document.getElementById('boot-status');
+
+      document.querySelectorAll('.boot-ind .dot').forEach(d => d.className = 'dot');
+
+      function next() {
+        if (i >= bootSteps.length) {
+          document.getElementById('boot-screen').classList.add('hidden');
+          setTimeout(() => {
+            document.getElementById('env-select').classList.add('active');
+          }, 500);
+          return;
+        }
+        const s = bootSteps[i];
+        bar.style.width = s.prog + '%';
+        status.textContent = s.msg;
+
+        const ind = document.querySelector(`.boot-ind[data-ind="${s.ind}"] .dot`);
+        if (ind) {
+          if (s.msg.includes('✓')) ind.className = 'dot done';
+          else ind.className = 'dot active';
+        }
+        i++;
+        const delay = s.msg.includes('✓') ? 300 : 200 + Math.random() * 150;
+        setTimeout(next, delay);
+      }
+      setTimeout(next, 500);
+    }
+
+    // --- ENV SELECT ---
+    function selectEnvironment(os) {
+      const loader = document.getElementById('load-' + os);
+      loader.classList.add('active');
+      const steps = ['Allocation RAM 4GB...', 'Disque virtuel 32GB...', 'Installation système...',
+        'Configuration outils...', 'Chargement dépendances...', 'Sécurisation...', 'Démarrage...'
+      ];
+      let i = 0;
+      const iv = setInterval(() => {
+        if (i >= steps.length) {
+          clearInterval(iv);
+          setTimeout(() => {
+            document.getElementById('env-select').classList.add('slide-out');
+            setTimeout(() => {
+              document.getElementById('env-select').style.display = 'none';
+              initApp(os);
+            }, 500);
+          }, 300);
+          return;
+        }
+        loader.querySelector('span').textContent = steps[i];
+        i++;
+      }, 400);
+    }
+
+    // --- INIT APP ---
+    function initApp(os) {
+      state.os = os;
+      state.envName = `sandbox-${os}-01`;
+      state.files = initFileSystem(os);
+
+      const badge = document.getElementById('os-badge');
+      badge.className = 'os-badge ' + os;
+      badge.textContent = os === 'mac' ? 'MACOS' : os === 'windows' ? 'WINDOWS' : 'LINUX';
+      document.getElementById('env-label').textContent = state.envName;
+
+      openFile('src/main.js');
+      renderFileTree();
+      document.getElementById('app').classList.add('active');
+
+      if (window.innerWidth < 700) {
+        state.sidebarOpen = false;
+        state.agentOpen = false;
+        document.getElementById('sidebar').classList.add('collapsed');
+        document.getElementById('agent-panel').classList.add('collapsed');
+      }
+
+      startResourceMonitor();
+      startUptime();
+      setTimeout(() => document.getElementById('terminal-input').focus(), 400);
+      showToast(`Environnement ${os} prêt`, 'success');
+    }
+
+    // --- FILE TREE ---
+    function renderFileTree() {
+      const tree = document.getElementById('file-tree');
+      tree.innerHTML = '';
+      const paths = Object.keys(state.files);
+      const structure = buildTree(paths);
+      structure.forEach(n => renderNode(tree, n, 0));
+    }
+
+    function buildTree(paths) {
+      const root = { name: '/', children: [], isDir: true };
+      paths.sort().forEach(p => {
+        const parts = p.split('/');
+        let cur = root;
+        parts.forEach((part, idx) => {
+          if (idx === parts.length - 1) {
+            cur.children.push({ name: part, path: p, isDir: false });
+          } else {
+            let dir = cur.children.find(c => c.isDir && c.name === part);
+            if (!dir) {
+              dir = { name: part, isDir: true, children: [], path: parts.slice(0, idx + 1).join('/') };
+              cur.children.push(dir);
+            }
+            cur = dir;
+          }
+        });
+      });
+      return root.children;
+    }
+
+    function renderNode(container, node, depth) {
+      const pad = 14 + depth * 16;
+      if (node.isDir) {
+        const el = document.createElement('div');
+        el.className = 'file-item folder open';
+        el.style.paddingLeft = pad + 'px';
+        el.innerHTML =
+          `<span class="fi-icon"><i class="fas fa-chevron-right"></i></span><span class="fi-name">${node.name}/</span>`;
+        el.onclick = e => { e.stopPropagation();
+          el.classList.toggle('open'); };
+        container.appendChild(el);
+        const childDiv = document.createElement('div');
+        childDiv.className = 'fi-children';
+        node.children.forEach(c => renderNode(childDiv, c, depth + 1));
+        el.appendChild(childDiv);
+      } else {
+        const el = document.createElement('div');
+        el.className = 'file-item';
+        el.style.paddingLeft = pad + 'px';
+        const icon = getFileIcon(node.name);
+        el.innerHTML = `<span class="fi-icon">${icon}</span><span class="fi-name">${node.name}</span>`;
+        el.onclick = () => openFile(node.path);
+        if (node.path === state.activeTab) el.classList.add('active');
+        container.appendChild(el);
+      }
+    }
+
+    function getFileIcon(name) {
+      const ext = name.split('.').pop().toLowerCase();
+      const map = {
+        'js': '<i class="fab fa-js" style="color:#f7df1e"></i>',
+        'ts': '<i class="fas fa-code" style="color:#3178c6"></i>',
+        'tsx': '<i class="fab fa-react" style="color:#61dafb"></i>',
+        'jsx': '<i class="fab fa-react" style="color:#61dafb"></i>',
+        'py': '<i class="fab fa-python" style="color:#3776ab"></i>',
+        'swift': '<i class="fas fa-code" style="color:#f05138"></i>',
+        'cs': '<i class="fas fa-code" style="color:#68217a"></i>',
+        'html': '<i class="fab fa-html5" style="color:#e34f26"></i>',
+        'css': '<i class="fab fa-css3-alt" style="color:#1572b6"></i>',
+        'json': '<i class="fas fa-brackets-curly" style="color:#ffa500"></i>',
+        'md': '<i class="fab fa-markdown" style="color:#fff"></i>',
+        'sh': '<i class="fas fa-terminal" style="color:#4eaa25"></i>',
+        'env': '<i class="fas fa-lock" style="color:#ffd700"></i>',
+        'plist': '<i class="fas fa-file-code" style="color:#00d4ff"></i>',
+      };
+      return map[ext] || '<i class="fas fa-file" style="color:var(--text-muted)"></i>';
+    }
+
+    // --- TABS & EDITOR ---
+    function openFile(path) {
+      if (!state.files[path]) return;
+      if (!state.openTabs.includes(path)) state.openTabs.push(path);
+      state.activeTab = path;
+      renderTabs();
+      renderEditor();
+      renderFileTree();
+    }
+
+    function closeTab(path, e) {
+      if (e) e.stopPropagation();
+      const idx = state.openTabs.indexOf(path);
+      if (idx === -1) return;
+      state.openTabs.splice(idx, 1);
+      if (state.activeTab === path) {
+        state.activeTab = state.openTabs.length > 0 ? state.openTabs[Math.max(0, idx - 1)] : null;
+      }
+      renderTabs();
+      renderEditor();
+      renderFileTree();
+    }
+
+    function renderTabs() {
+      const c = document.getElementById('editor-tabs');
+      c.innerHTML = '';
+      state.openTabs.forEach(p => {
+        const name = p.split('/').pop();
+        const ext = name.split('.').pop().toLowerCase();
+        const colors = { 'js': '#f7df1e', 'ts': '#3178c6', 'py': '#3776ab', 'html': '#e34f26',
+          'css': '#1572b6', 'json': '#ffa500', 'md': '#888', 'sh': '#4eaa25', 'env': '#ffd700',
+          'swift': '#f05138', 'cs': '#68217a', 'plist': '#00d4ff' };
+        const tab = document.createElement('div');
+        tab.className = 'tab' + (p === state.activeTab ? ' active' : '');
+        tab.innerHTML =
+          `<span class="dot" style="background:${colors[ext]||'var(--text-muted)'}"></span>${name}<span class="close-tab" onclick="closeTab('${p}',event)"><i class="fas fa-xmark"></i></span>`;
+        tab.onclick = () => openFile(p);
+        c.appendChild(tab);
+      });
+    }
+
+    function renderEditor() {
+      const content = document.getElementById('code-content');
+      const lines = document.getElementById('line-numbers');
+
+      if (!state.activeTab) {
+        content.innerHTML =
+          `<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-muted);flex-direction:column;gap:12px;font-size:14px;"><i class="fas fa-code" style="font-size:42px;opacity:0.15"></i><span>Ouvrez un fichier</span></div>`;
+        lines.innerHTML = '';
+        return;
+      }
+
+      const code = state.files[state.activeTab] || '';
+      content.innerHTML = highlightSyntax(code, state.activeTab);
+
+      const count = code.split('\n').length;
+      let html = '';
+      for (let i = 1; i <= count; i++) html += `<div>${i}</div>`;
+      lines.innerHTML = html;
+    }
+
+    function highlightSyntax(code, filename) {
+      const ext = filename.split('.').pop().toLowerCase();
+      let s = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+      const addComments = (re, cls) => s = s.replace(re, `<span class="${cls}">$1</span>`);
+      const addStrings = (re) => s = s.replace(re, `<span class="hl-string">$1</span>`);
+      const addKeywords = (list) => s = s.replace(new RegExp(`\\b(${list.join('|')})\\b`, 'g'),
+        '<span class="hl-keyword">$1</span>');
+      const addNumbers = () => s = s.replace(/\b(\d+\.?\d*)\b/g, '<span class="hl-number">$1</span>');
+      const addFuncs = () => s = s.replace(/\b([a-zA-Z_$][\w$]*)\s*\(/g, '<span class="hl-function">$1</span>(');
+
+      if (['js', 'ts', 'jsx', 'tsx', 'json'].includes(ext)) {
+        addComments(/\/\/.*$/gm, 'hl-comment');
+        addComments(/\/\*[\s\S]*?\*\//g, 'hl-comment');
+        addStrings(/("(?:[^"\\]|\\.)*")/g);
+        addStrings(/('(?:[^'\\]|\\.)*')/g);
+        addStrings(/(`(?:[^`\\]|\\.)*`)/g);
+        addKeywords(['import', 'export', 'from', 'const', 'let', 'var', 'function', 'return', 'if', 'else', 'for',
+          'while', 'class', 'new', 'this', 'async', 'await', 'try', 'catch', 'throw', 'default', 'switch',
+          'case', 'break', 'continue', 'typeof', 'instanceof', 'of', 'in', 'yield', 'true', 'false', 'null',
+          'undefined', 'void', 'delete'
+        ]);
+        addNumbers();
+        addFuncs();
+      } else if (ext === 'py') {
+        addComments(/#.*$/gm, 'hl-comment');
+        addStrings(/("(?:[^"\\]|\\.)*")/g);
+        addStrings(/('(?:[^'\\]|\\.)*')/g);
+        addKeywords(['def', 'class', 'import', 'from', 'return', 'if', 'elif', 'else', 'for', 'while', 'with',
+          'as', 'try', 'except', 'finally', 'raise', 'pass', 'break', 'continue', 'and', 'or', 'not', 'in',
+          'is', 'None', 'True', 'False', 'lambda', 'yield', 'async', 'await', 'self', 'print'
+        ]);
+        addNumbers();
+      } else if (ext === 'html') {
+        s = s.replace(/(&lt;\/?)([\w-]+)/g, '$1<span class="hl-tag">$2</span>');
+        s = s.replace(/\s([\w-]+)=/g, ' <span class="hl-attr">$1</span>=');
+        addStrings(/("(?:[^"\\]|\\.)*")/g);
+        addComments(/(<!--[\s\S]*?-->)/g, 'hl-comment');
+      } else if (ext === 'css') {
+        addComments(/\/\*[\s\S]*?\*\//g, 'hl-comment');
+        s = s.replace(/([\w-]+)\s*:/g, '<span class="hl-attr">$1</span>:');
+        s = s.replace(/(#[\da-fA-F]{3,8})\b/g, '<span class="hl-number">$1</span>');
+        s = s.replace(/\b(\d+\.?\d*(px|em|rem|%|vh|vw|s|ms)?)\b/g, '<span class="hl-number">$1</span>');
+      } else if (ext === 'sh') {
+        addComments(/#.*$/gm, 'hl-comment');
+        addStrings(/("(?:[^"\\]|\\.)*")/g);
+        addKeywords(['if', 'then', 'else', 'fi', 'for', 'do', 'done', 'while', 'case', 'esac', 'function',
+          'return', 'exit', 'echo', 'cd', 'rm', 'cp', 'mv', 'mkdir', 'chmod', 'chown', 'apt', 'npm',
+          'node', 'export', 'source', 'set'
+        ]);
+      } else if (ext === 'swift') {
+        addComments(/\/\/.*$/gm, 'hl-comment');
+        addStrings(/("(?:[^"\\]|\\.)*")/g);
+        addKeywords(['import', 'let', 'var', 'func', 'return', 'if', 'else', 'for', 'while', 'class', 'struct',
+          'enum', 'protocol', 'extension', 'guard', 'switch', 'case', 'break', 'default', 'true', 'false',
+          'nil', 'self', 'init', 'deinit', 'typealias', 'associatedtype', 'public', 'private', 'internal',
+          'fileprivate', 'open', 'static', 'override', 'mutating', 'throws', 'throw', 'try', 'catch', 'do',
+          'async', 'await'
+        ]);
+        addNumbers();
+        addFuncs();
+      } else if (ext === 'cs') {
+        addComments(/\/\/.*$/gm, 'hl-comment');
+        addStrings(/("(?:[^"\\]|\\.)*")/g);
+        addKeywords(['using', 'namespace', 'class', 'struct', 'interface', 'enum', 'public', 'private',
+          'protected', 'internal', 'static', 'void', 'int', 'string', 'bool', 'double', 'float', 'long',
+          'var', 'const', 'new', 'return', 'if', 'else', 'for', 'foreach', 'while', 'do', 'switch', 'case',
+          'break', 'default', 'try', 'catch', 'finally', 'throw', 'async', 'await', 'Task', 'true', 'false',
+          'null', 'this', 'base', 'override', 'virtual', 'abstract', 'sealed'
+        ]);
+        addNumbers();
+        s = s.replace(/\b([A-Z][\w]*)\b/g, '<span class="hl-type">$1</span>');
+      } else if (ext === 'json') {
+        s = s.replace(/("(?:[^"\\]|\\.)*")\s*:/g, '<span class="hl-attr">$1</span>:');
+        s = s.replace(/:(\s*"(?:[^"\\]|\\.)*")/g, ':<span class="hl-string">$1</span>');
+        s = s.replace(/\b(true|false|null)\b/g, '<span class="hl-keyword">$1</span>');
+        addNumbers();
+      }
+      return s + '\n';
+    }
+
+    // --- EDITOR EVENTS ---
+    document.addEventListener('DOMContentLoaded', () => {
+      const editor = document.getElementById('code-content');
+      editor.addEventListener('input', () => {
+        if (!state.activeTab) return;
+        const text = editor.innerText.replace(/\n$/, '');
+        state.files[state.activeTab] = text;
+        renderLineNumbers();
+      });
+      editor.addEventListener('keydown', (e) => {
+        if (e.key === 'Tab') { e.preventDefault();
+          document.execCommand('insertText', false, '  '); }
+      });
+    });
+
+    function renderLineNumbers() {
+      const content = document.getElementById('code-content');
+      const lines = document.getElementById('line-numbers');
+      const text = content.innerText || '';
+      const count = text.split('\n').length;
+      let html = '';
+      for (let i = 1; i <= count; i++) html += `<div>${i}</div>`;
+      lines.innerHTML = html;
+    }
+
+    function saveFile() {
+      if (!state.activeTab) return;
+      showToast(`Fichier sauvegardé: ${state.activeTab}`, 'success');
+    }
+
+    // --- TERMINAL ---
+    function executeCommand(cmd) {
+      if (!cmd) return;
+      state.terminalHistory.push(cmd);
+      state.termHistoryIdx = -1;
+
+      const body = document.getElementById('terminal-body');
+      const prompt = document.getElementById('term-prompt-text').textContent;
+      addTermLine(`<span class="term-prompt">${prompt}</span> <span class="term-cmd">${escHtml(cmd)}</span>`);
+
+      const parts = cmd.split(/\s+/);
+      const c = parts[0].toLowerCase();
+      const args = parts.slice(1);
+
+      switch (c) {
+        case 'help':
+          addTermLine('term-output',
+            'Commandes: ls, cat, touch, rm, mkdir, cd, pwd, echo, clear, node, npm, git, env, whoami, uname, neofetch, docker, python3, swift, dotnet'
+            );
+          break;
+        case 'ls': {
+          const all = Object.keys(state.files);
+          const dirs = new Set();
+          all.forEach(f => { const p = f.split('/'); if (p.length > 1) dirs.add(p[0] + '/'); });
+          [...dirs].sort().forEach(d => addTermLine('term-output', `  <span style="color:var(--orange)">${d}</span>`));
+          all.forEach(f => addTermLine('term-output', `  ${f.split('/').pop()}`));
+          break;
+        }
+        case 'cat':
+          if (!args[0]) { addTermLine('term-error', 'cat: fichier manquant'); break; }
+          if (state.files[args[0]]) {
+            state.files[args[0]].split('\n').forEach(l => addTermLine('term-output', l));
+          } else {
+            addTermLine('term-error', `cat: ${args[0]}: fichier introuvable`);
+          }
+          break;
+        case 'touch':
+          if (!args[0]) { addTermLine('term-error', 'touch: fichier manquant'); break; }
+          if (!state.files[args[0]]) { state.files[args[0]] = '';
+            renderFileTree();
+            addTermLine('term-success', `Créé: ${args[0]}`); } else addTermLine('term-output',
+            `existe déjà`);
+          break;
+        case 'rm':
+          if (!args[0]) { addTermLine('term-error', 'rm: fichier manquant'); break; }
+          if (state.files[args[0]]) {
+            delete state.files[args[0]];
+            if (state.openTabs.includes(args[0])) closeTab(args[0]);
+            renderFileTree();
+            addTermLine('term-success', `Supprimé: ${args[0]}`);
+          } else addTermLine('term-error', `rm: ${args[0]}: introuvable`);
+          break;
+        case 'mkdir':
+          if (!args[0]) { addTermLine('term-error', 'mkdir: nom manquant'); break; }
+          addTermLine('term-success', `Dossier créé: ${args[0]}/`);
+          break;
+        case 'cd':
+          if (args[0] === '..' || !args[0]) document.getElementById('term-prompt-text').textContent =
+            '~/project $';
+          else document.getElementById('term-prompt-text').textContent = `~/project/${args[0]} $`;
+          break;
+        case 'pwd':
+          addTermLine('term-output', '/home/sandbox/project');
+          break;
+        case 'echo':
+          addTermLine('term-output', args.join(' '));
+          break;
+        case 'clear':
+          body.innerHTML = '';
+          break;
+        case 'node':
+          if (!args[0]) { addTermLine('term-output', 'Node.js v20.11.0'); break; }
+          if (state.files[args[0]]) {
+            addTermLine('term-output', `[Simulation] Exécution de ${args[0]}...`);
+            setTimeout(() => addTermLine('term-success', 'Serveur démarré sur port 3000'), 400);
+          } else addTermLine('term-error', `Cannot find module '${args[0]}'`);
+          break;
+        case 'npm':
+          if (args[0] === 'install' || args[0] === 'i') {
+            addTermLine('term-success', '127 packages installés');
+          } else if (args[0] === 'run' && args[1]) {
+            if (args[1] === 'start') addTermLine('term-success', 'Serveur démarré sur port 3000');
+            else if (args[1] === 'test') addTermLine('term-success', 'Tests: 3/3 passés');
+            else if (args[1] === 'lint') addTermLine('term-success', 'Aucun problème');
+            else if (args[1] === 'build') addTermLine('term-success', 'Build terminé');
+            else addTermLine('term-error', `Script "${args[1]}" non trouvé`);
+          } else addTermLine('term-output', `npm ${args.join(' ')} (simulé)`);
+          break;
+        case 'git':
+          if (!args[0]) { addTermLine('term-output', 'usage: git <command>'); break; }
+          if (args[0] === 'status') {
+            addTermLine('term-output', `Sur la branche main · ${Object.keys(state.files).length} fichiers`);
+          } else if (args[0] === 'log') {
+            addTermLine('term-output', 'commit a1b2c3d (HEAD -> main)');
+            addTermLine('term-output', `Date: ${new Date().toUTCString()}`);
+            addTermLine('term-output', '    Initial commit');
+          } else if (args[0] === 'add') addTermLine('term-success', 'Fichiers ajoutés');
+          else if (args[0] === 'commit') addTermLine('term-success', 'Commit effectué');
+          else if (args[0] === 'branch') { addTermLine('term-output', '* main');
+            addTermLine('term-output', '  develop'); } else addTermLine('term-output',
+            `git ${args.join(' ')} (simulé)`);
+          break;
+        case 'env':
+          addTermLine('term-output', 'NODE_ENV=development');
+          addTermLine('term-output', 'PORT=3000');
+          addTermLine('term-output', `SANDBOX_ID=${state.envName}`);
+          break;
+        case 'whoami':
+          addTermLine('term-output', 'sandbox');
+          break;
+        case 'uname':
+          addTermLine('term-output', state.os === 'mac' ? 'Darwin' : state.os === 'windows' ?
+            'MSYS_NT-10.0' : 'Linux');
+          break;
+        case 'neofetch': {
+          const art = state.os === 'mac' ? '        .:\'          sandbox@securedev' :
+            state.os === 'windows' ? '   ██████████████  sandbox@securedev' :
+            '     _____          sandbox@securedev';
+          addTermLine('term-cyan', art);
+          addTermLine('term-output', `  OS: SecureDev Premium (${state.os})`);
+          addTermLine('term-output', '  Security: AES-256 · chroot · network-isolated');
+          break;
+        }
+        case 'docker':
+          if (args[0] === 'ps') addTermLine('term-output',
+            'a1b2c3d   node:20-alpine   Up 2h   sandbox-app');
+          else if (args[0] === 'build') addTermLine('term-success', 'Image Docker construite');
+          else addTermLine('term-output', `docker ${args.join(' ')} (simulé)`);
+          break;
+        case 'python3':
+          if (args[0] && state.files[args[0]]) {
+            addTermLine('term-output', `[Simulation] Exécution Python de ${args[0]}...`);
+            addTermLine('term-success', 'Exécution terminée');
+          } else addTermLine('term-output', 'Python 3.12.1 (simulé)');
+          break;
+        case 'swift':
+          if (state.os !== 'mac') addTermLine('term-error', 'swift: non disponible sur cet environnement');
+          else addTermLine('term-success', 'Swift 5.9.0 — Build succeeded (simulé)');
+          break;
+        case 'dotnet':
+          if (state.os !== 'windows') addTermLine('term-error',
+            'dotnet: non disponible sur cet environnement');
+          else addTermLine('term-success', '.NET 8.0 — Application démarrée (simulé)');
+          break;
+        default:
+          addTermLine('term-error', `${c}: commande non reconnue. Tapez 'help'.`);
+      }
+      body.scrollTop = body.scrollHeight;
+    }
+
+    function addTermLine(cls, text) {
+      const body = document.getElementById('terminal-body');
+      const line = document.createElement('div');
+      line.className = 'term-line ' + cls;
+      line.innerHTML = text;
+      body.appendChild(line);
+    }
+
+    function escHtml(str) { return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+    // --- AGENT ---
+    function sendAgentMessage() {
+      const input = document.getElementById('agent-input');
+      const text = input.value.trim();
+      if (!text) return;
+      input.value = '';
+      input.style.height = 'auto';
+      addAgentMsg('user', text);
+
+      setTimeout(() => {
+        const resp = generateAgentResponse(text);
+        addAgentMsg('assistant', resp.text);
+        if (resp.tools) resp.tools.forEach(t => addAgentTool(t.name, t.detail));
+      }, 500 + Math.random() * 800);
+    }
+
+    function generateAgentResponse(input) {
+      const lower = input.toLowerCase();
+      const active = [...state.agentTools];
+
+      const toolMap = {
+        'code': { text: 'Code généré avec succès. Vérifiez l\'éditeur.',
+        tools: [{ name: 'code-gen', detail: 'Génération terminée' }] },
+        'review': { text: 'Review terminé — Structure correcte, 0 vulnérabilités.',
+          tools: [{ name: 'code-review', detail: '4 fichiers analysés' }] },
+        'debug': { text: 'Débogage effectué — 2 problèmes corrigés.',
+          tools: [{ name: 'debugger', detail: 'Correctifs appliqués' }] },
+        'refactor': { text: 'Refactoring terminé — Code optimisé.',
+          tools: [{ name: 'refactor', detail: '4 refactorings' }] },
+        'docs': { text: 'Documentation générée pour tous les fichiers.',
+          tools: [{ name: 'doc-gen', detail: 'JSDoc ajouté' }] },
+        'test': { text: 'Tests exécutés — 4/4 réussis, couverture 94%',
+          tools: [{ name: 'test-runner', detail: 'Tous les tests passent' }] },
+        'shell': { text: `Commande exécutée dans le terminal.`, tools: [{ name: 'shell-exec',
+            detail: input.substring(0, 50) }] },
+        'search': { text: `Recherche effectuée — 2 résultats trouvés.`, tools: [{ name: 'grep',
+            detail: `"${input}"` }] },
+        'git': { text: 'Statut Git: main · propre.', tools: [{ name: 'git-status',
+            detail: 'Aucun changement' }] },
+        'deploy': { text: 'Déploiement préparé — Build + image Docker prêts.',
+          tools: [{ name: 'deploy', detail: 'Staging prêt' }] },
+      };
+
+      for (const t of active) {
+        if (toolMap[t]) return toolMap[t];
+      }
+
+      if (lower.includes('bonjour') || lower.includes('salut')) return { text: 'Bonjour ! Je suis votre agent IA premium. Que puis-je faire pour vous ?' };
+      if (lower.includes('créer') || lower.includes('nouveau')) return { text: 'Pour créer un fichier, utilisez le bouton + ou la commande `touch` dans le terminal.' };
+      if (lower.includes('erreur') || lower.includes('bug')) return { text: 'Activez l\'outil Debug pour analyser le code et trouver les erreurs.' };
+      if (lower.includes('expliqu') || lower.includes('comment')) return { text: 'Je peux vous expliquer n\'importe quelle partie du code. Ouvrez un fichier et posez votre question.' };
+
+      return { text: `Je comprends. Pour avancer, activez un outil (Générer, Review, Debug, etc.) ou reformulez votre demande. J'ai 10 outils à votre disposition.` };
+    }
+
+    function addAgentMsg(type, text) {
+      const c = document.getElementById('agent-messages');
+      const el = document.createElement('div');
+      el.className = 'agent-msg ' + type;
+      el.textContent = text;
+      c.appendChild(el);
+      c.scrollTop = c.scrollHeight;
+    }
+
+    function addAgentTool(name, detail) {
+      const c = document.getElementById('agent-messages');
+      const el = document.createElement('div');
+      el.className = 'agent-msg-tool';
+      el.innerHTML = `<i class="fas fa-wrench"></i><span><strong>${name}</strong> — ${detail}</span>`;
+      c.appendChild(el);
+      c.scrollTop = c.scrollHeight;
+    }
+
+    function toggleAgentTool(btn) {
+      const tool = btn.dataset.tool;
+      btn.classList.toggle('active');
+      if (state.agentTools.has(tool)) state.agentTools.delete(tool);
+      else state.agentTools.add(tool);
+    }
+
+    function agentQuickAction(action) {
+      const map = { 'compiler': 'shell', 'test': 'test', 'lint': 'review', 'format': 'refactor', 'deploy': 'deploy',
+        'git': 'git' };
+      const tool = map[action];
+      if (!tool) return;
+      state.agentTools.clear();
+      document.querySelectorAll('.agent-tool-btn').forEach(b => b.classList.remove('active'));
+      const btn = document.querySelector(`.agent-tool-btn[data-tool="${tool}"]`);
+      if (btn) btn.classList.add('active');
+      state.agentTools.add(tool);
+      if (!state.agentOpen) toggleAgent();
+      document.getElementById('agent-input').value = `Exécute: ${action}`;
+      sendAgentMessage();
+    }
+
+    // --- TOGGLES ---
+    function toggleSidebar() {
+      state.sidebarOpen = !state.sidebarOpen;
+      document.getElementById('sidebar').classList.toggle('collapsed');
+      document.getElementById('btn-sidebar').classList.toggle('active', state.sidebarOpen);
+    }
+
+    function toggleTerminal() {
+      state.terminalOpen = !state.terminalOpen;
+      document.getElementById('terminal-panel').classList.toggle('collapsed');
+      document.getElementById('btn-terminal').classList.toggle('active', state.terminalOpen);
+      document.getElementById('term-toggle-icon').innerHTML = state.terminalOpen ?
+        '<i class="fas fa-chevron-down"></i>' : '<i class="fas fa-chevron-up"></i>';
+      if (state.terminalOpen) setTimeout(() => document.getElementById('terminal-input').focus(), 100);
+    }
+
+    function toggleAgent() {
+      state.agentOpen = !state.agentOpen;
+      document.getElementById('agent-panel').classList.toggle('collapsed');
+      document.getElementById('btn-agent').classList.toggle('active', state.agentOpen);
+    }
+
+    // --- MODAL ---
+    function showNewFileModal() { document.getElementById('modal-newfile').classList.add('active');
+      setTimeout(() => document.getElementById('newfile-path').focus(), 100); }
+
+    function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+
+    function createNewFile() {
+      const path = document.getElementById('newfile-path').value.trim();
+      const template = document.getElementById('newfile-template').value;
+      if (!path) { showToast('Spécifiez un chemin', 'error'); return; }
+      if (state.files[path]) { showToast('Fichier existe déjà', 'error'); return; }
+
+      const templates = {
+        empty: '',
+        html: `<!DOCTYPE html>\n<html lang="fr">\n<head><meta charset="UTF-8"><title>Document</title></head>\n<body>\n  <h1>Hello</h1>\n</body>\n</html>\n`,
+        js: `// JavaScript\nexport function main() {\n  console.log('Hello');\n}\nmain();\n`,
+        ts: `// TypeScript\ninterface Config { name: string; version: string; }\nconst config: Config = { name: 'app', version: '1.0.0' };\nexport default config;\n`,
+        py: `#!/usr/bin/env python3\ndef main():\n    print("Hello")\nif __name__ == "__main__":\n    main()\n`,
+        swift: `import Foundation\nstruct App { let name: String }\nlet app = App(name: "SecureDev")\nprint(app.name)\n`,
+        cs: `using System;\nclass Program { static void Main() { Console.WriteLine("Hello"); } }\n`,
+        css: `/* Styles */\n:root { --primary: #00ff88; }\nbody { background: #0a0f18; color: #c8d6e5; }\n`,
+        json: `{\n  "name": "project",\n  "version": "1.0.0"\n}\n`,
+        sh: `#!/bin/bash\necho "Hello from Shell"\n`,
+      };
+      state.files[path] = templates[template] || '';
+      renderFileTree();
+      openFile(path);
+      closeModal('modal-newfile');
+      document.getElementById('newfile-path').value = '';
+      showToast(`Fichier créé: ${path}`, 'success');
+    }
+
+    // --- TOAST ---
+    function showToast(message, type) {
+      const c = document.getElementById('toast-container');
+      const t = document.createElement('div');
+      t.className = 'toast ' + (type || '');
+      t.innerHTML =
+        `<i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : 'info-circle'}"></i>${message}`;
+      c.appendChild(t);
+      setTimeout(() => { t.style.opacity = '0';
+        t.style.transform = 'translateX(30px) scale(0.95)';
+        t.style.transition = 'all 0.3s';
+        setTimeout(() => t.remove(), 300); }, 2800);
+    }
+
+    // --- RESOURCES ---
+    function startResourceMonitor() {
+      function update() {
+        const mem = 800 + Math.floor(Math.random() * 500);
+        const cpu = 2 + Math.floor(Math.random() * 12);
+        document.getElementById('sec-mem').innerHTML =
+          `<div class="sec-dot ${mem > 1100 ? 'yellow' : 'green'}"></div>RAM: ${mem} MB`;
+        document.getElementById('sec-cpu').innerHTML =
+          `<div class="sec-dot ${cpu > 10 ? 'yellow' : 'green'}"></div>CPU: ${cpu}%`;
+      }
+      update();
+      setInterval(update, 3000);
+    }
+
+    function startUptime() {
+      setInterval(() => {
+        state.uptimeSeconds++;
+        const mins = String(Math.floor(state.uptimeSeconds / 60)).padStart(2, '0');
+        const secs = String(state.uptimeSeconds % 60).padStart(2, '0');
+        document.getElementById('sec-uptime').innerHTML = `<i class="far fa-clock"></i> ${mins}:${secs}`;
+      }, 1000);
+    }
+
+    // --- TERMINAL INPUT ---
+    document.addEventListener('DOMContentLoaded', () => {
+      const termInput = document.getElementById('terminal-input');
+      termInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          executeCommand(termInput.value.trim());
+          termInput.value = '';
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          if (state.terminalHistory.length > 0) {
+            state.termHistoryIdx = Math.min(state.termHistoryIdx + 1, state.terminalHistory.length - 1);
+            termInput.value = state.terminalHistory[state.terminalHistory.length - 1 - state
+            .termHistoryIdx];
+          }
+        } else if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          if (state.termHistoryIdx > 0) { state.termHistoryIdx--;
+            termInput.value = state.terminalHistory[state.terminalHistory.length - 1 - state
+              .termHistoryIdx]; } else { state.termHistoryIdx = -1;
+            termInput.value = ''; }
+        }
+      });
+
+      const agentInput = document.getElementById('agent-input');
+      agentInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault();
+          sendAgentMessage(); }
+      });
+      agentInput.addEventListener('input', () => {
+        agentInput.style.height = 'auto';
+        agentInput.style.height = Math.min(agentInput.scrollHeight, 100) + 'px';
+      });
+
+      document.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault();
+          saveFile(); }
+        if ((e.ctrlKey || e.metaKey) && e.key === '`') { e.preventDefault();
+          toggleTerminal(); }
+        if ((e.ctrlKey || e.metaKey) && e.key === 'b') { e.preventDefault();
+          toggleSidebar(); }
+        if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'A') { e.preventDefault();
+          toggleAgent(); }
+        if (e.key === 'Escape') closeModal('modal-newfile');
+      });
+
+      document.getElementById('btn-sidebar').classList.add('active');
+      document.getElementById('btn-terminal').classList.add('active');
+      document.getElementById('btn-agent').classList.add('active');
+    });
+
+    // --- START ---
+    runBootSequence();
+  </script>
+</body>
+</html>

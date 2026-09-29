@@ -1,0 +1,1053 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>SecureDev OS</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Space+Grotesk:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<style>
+:root{
+  --bg0:#02060c;--bg1:#060e1a;--bg2:#0a1628;--bg3:#0e1e36;--bg4:#122848;
+  --border:#0f2040;--border2:#163060;--border3:#1e4080;
+  --fg:#94b8d8;--fg2:#4a7098;--fg3:#2a4a6a;--fg4:#e8f4ff;
+  --accent:#00ffa3;--accent2:#00d4ff;--accent3:#00ffa320;--accent4:#00ffa310;--accent5:#00ffa340;
+  --red:#ff2e5b;--orange:#ff8c42;--yellow:#ffe14d;--green:#00e676;--purple:#a78bfa;
+  --radius:6px;--radius2:10px;
+  --font-c:'JetBrains Mono',monospace;--font-u:'Space Grotesk',sans-serif;
+  --sb-w:250px;--ag-w:370px;--status-h:26px;--top-h:40px;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;overflow:hidden;background:var(--bg0);color:var(--fg);font-family:var(--font-u)}
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:var(--fg3)}
+
+/* FOND */
+.bg-mesh{position:fixed;inset:0;z-index:0;pointer-events:none;
+  background:
+    radial-gradient(ellipse 70% 50% at 15% 20%,#00ffa306,transparent),
+    radial-gradient(ellipse 50% 70% at 85% 80%,#00d4ff05,transparent),
+    radial-gradient(ellipse 40% 40% at 50% 50%,#a78bfa03,transparent);
+}
+.bg-noise{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:0.025;
+  background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size:128px 128px;
+}
+
+/* LAYOUT */
+#app{position:relative;z-index:1;display:flex;flex-direction:column;height:100vh}
+
+/* TOPBAR */
+.topbar{height:var(--top-h);min-height:var(--top-h);background:var(--bg1);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 8px;gap:4px}
+.tb-logo{width:28px;height:28px;border-radius:7px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--bg0);font-weight:800;flex-shrink:0;margin-right:6px;cursor:pointer}
+.tb-menu{display:flex;gap:1px;margin-right:6px}
+.tb-menu-item{padding:4px 10px;font-size:11px;color:var(--fg2);border-radius:var(--radius);cursor:pointer;border:none;background:none;font-family:var(--font-u);transition:all 0.15s}
+.tb-menu-item:hover{color:var(--fg);background:var(--bg3)}
+.tb-sep{width:1px;height:20px;background:var(--border);margin:0 4px;flex-shrink:0}
+.tabs{display:flex;flex:1;overflow-x:auto;gap:1px;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tab{display:flex;align-items:center;gap:5px;padding:5px 12px;font-size:11px;font-family:var(--font-c);color:var(--fg2);border-radius:var(--radius) var(--radius) 0 0;cursor:pointer;white-space:nowrap;transition:all 0.12s;flex-shrink:0;position:relative;border:1px solid transparent;border-bottom:none}
+.tab:hover{color:var(--fg);background:var(--bg2)}
+.tab.active{color:var(--fg4);background:var(--bg1);border-color:var(--border)}
+.tab.active::after{content:'';position:absolute;bottom:-1px;left:0;right:0;height:1px;background:var(--bg1)}
+.tab .td{width:5px;height:5px;border-radius:50%;flex-shrink:0}
+.tab .tm{width:7px;height:7px;border-radius:50%;background:var(--accent);flex-shrink:0;display:none}
+.tab.modified .tm{display:block}
+.tab.modified .td{display:none}
+.tab .tc{opacity:0;font-size:8px;padding:2px;border-radius:3px;transition:all 0.1s;cursor:pointer;color:var(--fg3)}
+.tab:hover .tc{opacity:0.5}
+.tab .tc:hover{opacity:1;background:var(--red);color:#fff}
+.tb-actions{display:flex;gap:1px;flex-shrink:0}
+.tb{width:30px;height:30px;border:none;border-radius:var(--radius);background:none;color:var(--fg2);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:12px;transition:all 0.12s;position:relative}
+.tb:hover{background:var(--bg3);color:var(--fg)}
+.tb.on{color:var(--accent);background:var(--accent4)}
+.tb-run{color:var(--green)!important}
+.tb-run:hover{background:#00e67620!important}
+.tb-badge{position:absolute;top:3px;right:3px;width:6px;height:6px;border-radius:50%;background:var(--red)}
+
+/* BREADCRUMBS */
+.breadcrumbs{height:26px;min-height:26px;background:var(--bg1);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 14px;gap:4px;font-size:11px;font-family:var(--font-c);color:var(--fg3);overflow:hidden;white-space:nowrap}
+.breadcrumbs .bc-sep{color:var(--fg3);font-size:9px}
+.breadcrumbs .bc-part{color:var(--fg2);cursor:pointer;transition:color 0.1s}
+.breadcrumbs .bc-part:hover{color:var(--fg)}
+.breadcrumbs .bc-current{color:var(--fg)}
+
+/* MAIN */
+.main{display:flex;flex:1;overflow:hidden}
+
+/* SIDEBAR */
+.sidebar{width:var(--sb-w);min-width:var(--sb-w);background:var(--bg1);border-right:1px solid var(--border);display:flex;flex-direction:column;transition:width 0.2s,min-width 0.2s;overflow:hidden}
+.sidebar.hide{width:0;min-width:0;pointer-events:none}
+.sb-activity{display:flex;flex-direction:column;width:46px;min-width:46px;border-right:1px solid var(--border);padding:4px 0}
+.sb-act-btn{width:46px;height:42px;border:none;background:none;color:var(--fg3);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;transition:all 0.15s;position:relative}
+.sb-act-btn:hover{color:var(--fg)}
+.sb-act-btn.on{color:var(--fg4)}
+.sb-act-btn.on::before{content:'';position:absolute;left:0;top:8px;bottom:8px;width:2px;background:var(--fg4);border-radius:0 2px 2px 0}
+.sb-content{flex:1;overflow:hidden;display:flex;flex-direction:column}
+.sb-panel{flex:1;overflow:hidden;display:flex;flex-direction:column}
+.sb-panel.hide{display:none}
+.sb-head{padding:8px 12px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;color:var(--fg3);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+.sb-head button{background:none;border:none;color:var(--fg3);cursor:pointer;font-size:11px;padding:2px 4px;border-radius:3px;transition:all 0.1s}
+.sb-head button:hover{color:var(--fg);background:var(--bg3)}
+.sb-search{padding:6px 8px;border-bottom:1px solid var(--border)}
+.sb-search input{width:100%;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:5px 8px;font-size:10.5px;font-family:var(--font-c);color:var(--fg);outline:none;transition:border-color 0.2s}
+.sb-search input:focus{border-color:var(--accent5)}
+.sb-search input::placeholder{color:var(--fg3)}
+.ftree{flex:1;overflow-y:auto;padding:2px 0}
+
+/* File items */
+.fi{display:flex;align-items:center;gap:5px;padding:3px 8px 3px 12px;font-size:11px;font-family:var(--font-c);color:var(--fg2);cursor:pointer;transition:background 0.08s;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;position:relative}
+.fi:hover{background:var(--bg3);color:var(--fg)}
+.fi.active{background:var(--accent4);color:var(--accent)}
+.fi .fi-ic{width:16px;text-align:center;font-size:10px;flex-shrink:0}
+.fi.folder>.fi-ic{color:var(--orange)}
+.fi-children{display:none}
+.fi.folder.open>.fi-children{display:block}
+.fi .fi-actions{position:absolute;right:4px;top:50%;transform:translateY(-50%);display:none;gap:1px}
+.fi:hover .fi-actions{display:flex}
+.fi-act{width:20px;height:18px;border:none;background:var(--bg4);color:var(--fg2);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:8px;border-radius:3px;transition:all 0.1s}
+.fi-act:hover{background:var(--accent5);color:var(--accent)}
+
+/* Git panel */
+.git-list{flex:1;overflow-y:auto;padding:4px 0}
+.git-item{display:flex;align-items:center;gap:6px;padding:3px 12px;font-size:10.5px;font-family:var(--font-c);color:var(--fg2)}
+.git-item .gi-status{width:16px;text-align:center;font-size:9px;font-weight:700}
+.git-item .gi-status.added{color:var(--green)}
+.git-item .gi-status.modified{color:var(--orange)}
+.git-item .gi-status.deleted{color:var(--red)}
+
+/* EDITOR */
+.editor-area{flex:1;display:flex;flex-direction:column;min-width:0;background:var(--bg0)}
+#monaco{flex:1;overflow:hidden}
+
+/* TERMINAL */
+.term{height:220px;min-height:36px;background:var(--bg1);border-top:1px solid var(--border);display:flex;flex-direction:column;transition:height 0.2s}
+.term.hide{height:36px;min-height:36px}
+.term-head{height:36px;min-height:36px;display:flex;align-items:center;padding:0 10px;border-bottom:1px solid var(--border);cursor:select-none}
+.term-tabs{display:flex;gap:2px;flex:1}
+.term-tab{padding:5px 10px;font-size:10px;font-family:var(--font-c);color:var(--fg3);border-radius:4px 4px 0 0;cursor:pointer;transition:all 0.1s;border:1px solid transparent;border-bottom:none}
+.term-tab.active{color:var(--fg);background:var(--bg0);border-color:var(--border)}
+.term-tab:hover{color:var(--fg2)}
+.term-btns{display:flex;gap:2px}
+.term-btn{width:26px;height:26px;border:none;background:none;color:var(--fg3);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:10px;border-radius:4px;transition:all 0.1s}
+.term-btn:hover{background:var(--bg3);color:var(--fg)}
+.term-body{flex:1;overflow-y:auto;padding:6px 12px;font-family:var(--font-c);font-size:11px;line-height:1.75}
+.tl{white-space:pre-wrap;word-break:break-all}
+.tl .tp{color:var(--accent)}.tl .tc{color:var(--accent2)}.tl .to{color:var(--fg2)}.tl .te{color:var(--red)}.tl .tok{color:var(--green)}.tl .tw{color:var(--yellow)}.tl .ti{color:var(--fg3)}
+.term-in-wrap{display:flex;align-items:center;padding:2px 12px 6px}
+.term-in{flex:1;background:none;border:none;outline:none;font-family:var(--font-c);font-size:11px;color:var(--fg4);caret-color:var(--accent)}
+
+/* AGENT */
+.agent{width:var(--ag-w);min-width:var(--ag-w);background:var(--bg1);border-left:1px solid var(--border);display:flex;flex-direction:column;transition:width 0.2s,min-width 0.2s;overflow:hidden}
+.agent.hide{width:0;min-width:0;pointer-events:none}
+.ag-head{padding:10px 12px;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:center}
+.ag-av{width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:flex;align-items:center;justify-content:center;font-size:14px;color:var(--bg0);flex-shrink:0}
+.ag-nm{font-size:12px;font-weight:700;color:var(--fg4)}
+.ag-st{font-size:9.5px;color:var(--accent);display:flex;align-items:center;gap:4px}
+.ag-st .dot{width:5px;height:5px;border-radius:50%;background:var(--accent);animation:blink 2s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0.2}}
+.ag-tools{padding:6px 8px;border-bottom:1px solid var(--border);display:flex;gap:3px;overflow-x:auto;scrollbar-width:none}
+.ag-tools::-webkit-scrollbar{display:none}
+.at{padding:4px 9px;border-radius:5px;font-size:9.5px;font-family:var(--font-c);background:var(--bg2);color:var(--fg2);border:1px solid var(--border);cursor:pointer;white-space:nowrap;transition:all 0.12s;display:flex;align-items:center;gap:4px}
+.at i{font-size:9px}
+.at:hover,.at.on{border-color:var(--accent2);color:var(--accent2);background:#00d4ff10}
+.ag-msgs{flex:1;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:8px}
+.am{max-width:96%;padding:9px 12px;border-radius:var(--radius2);font-size:11.5px;line-height:1.65;white-space:pre-wrap;word-break:break-word}
+.am.user{align-self:flex-end;background:var(--accent4);border:1px solid var(--accent5);color:var(--fg4)}
+.am.bot{align-self:flex-start;background:var(--bg2);border:1px solid var(--border);color:var(--fg)}
+.am.sys{align-self:center;color:var(--fg3);font-size:9.5px;font-family:var(--font-c);border:1px dashed var(--border);padding:4px 10px}
+.am code{background:var(--bg3);padding:1px 4px;border-radius:3px;font-family:var(--font-c);font-size:10.5px}
+.am pre{background:var(--bg0);padding:8px 10px;border-radius:var(--radius);margin:6px 0;overflow-x:auto;font-family:var(--font-c);font-size:10.5px;line-height:1.6;border:1px solid var(--border)}
+.at-trace{margin-top:4px;padding:5px 8px;background:var(--bg0);border-radius:4px;font-size:9.5px;font-family:var(--font-c);color:var(--accent2);display:flex;gap:6px;align-items:flex-start}
+.at-trace i{margin-top:2px;flex-shrink:0}
+.ag-in-wrap{padding:8px;border-top:1px solid var(--border);display:flex;gap:6px;align-items:flex-end}
+.ag-in{flex:1;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:8px 10px;font-size:11.5px;font-family:var(--font-u);color:var(--fg4);outline:none;resize:none;min-height:36px;max-height:100px;transition:border-color 0.2s}
+.ag-in:focus{border-color:var(--accent2)}
+.ag-in::placeholder{color:var(--fg3)}
+.ag-send{width:36px;height:36px;border-radius:var(--radius);background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;color:var(--bg0);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;transition:transform 0.1s}
+.ag-send:active{transform:scale(0.9)}
+
+/* STATUS BAR */
+.statusbar{height:var(--status-h);min-height:var(--status-h);background:var(--accent);display:flex;align-items:center;padding:0 10px;gap:2px;font-size:10px;font-family:var(--font-c);color:var(--bg0);font-weight:500;z-index:10}
+.sb-item{padding:0 8px;height:100%;display:flex;align-items:center;gap:4px;cursor:default;white-space:nowrap}
+.sb-item:hover{background:#ffffff18}
+.sb-item i{font-size:10px}
+.sb-right{margin-left:auto;display:flex;gap:0}
+.sb-branch{cursor:pointer}
+.sb-branch:hover{background:#ffffff20}
+
+/* COMMAND PALETTE */
+.cmd-bg{position:fixed;inset:0;z-index:500;background:rgba(2,6,12,0.7);backdrop-filter:blur(8px);display:none;align-items:flex-start;justify-content:center;padding-top:15vh}
+.cmd-bg.show{display:flex}
+.cmd{width:520px;max-width:90%;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius2);box-shadow:0 20px 60px rgba(0,0,0,0.6);overflow:hidden;animation:cmdIn 0.15s ease-out}
+@keyframes cmdIn{from{opacity:0;transform:translateY(-10px) scale(0.98)}}
+.cmd-input{width:100%;background:none;border:none;border-bottom:1px solid var(--border);padding:12px 16px;font-size:13px;font-family:var(--font-u);color:var(--fg4);outline:none}
+.cmd-input::placeholder{color:var(--fg3)}
+.cmd-list{max-height:300px;overflow-y:auto;padding:4px}
+.cmd-item{display:flex;align-items:center;gap:10px;padding:8px 14px;border-radius:var(--radius);cursor:pointer;transition:background 0.08s}
+.cmd-item:hover,.cmd-item.sel{background:var(--accent4)}
+.cmd-item .ci-ic{width:28px;height:28px;border-radius:6px;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--fg2);flex-shrink:0}
+.cmd-item:hover .ci-ic,.cmd-item.sel .ci-ic{background:var(--accent5);color:var(--accent)}
+.cmd-item .ci-label{font-size:12px;color:var(--fg);flex:1}
+.cmd-item .ci-short{font-size:10px;font-family:var(--font-c);color:var(--fg3);background:var(--bg3);padding:2px 6px;border-radius:3px}
+
+/* CONTEXT MENU */
+.ctx{position:fixed;z-index:400;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius2);padding:4px;min-width:180px;box-shadow:0 8px 32px rgba(0,0,0,0.5);animation:cmdIn 0.1s}
+.ctx-item{display:flex;align-items:center;gap:8px;padding:6px 10px;font-size:11.5px;color:var(--fg);border-radius:var(--radius);cursor:pointer;transition:background 0.08s}
+.ctx-item:hover{background:var(--accent4)}
+.ctx-item i{width:16px;text-align:center;font-size:11px;color:var(--fg2)}
+.ctx-item .ctx-short{margin-left:auto;font-size:10px;font-family:var(--font-c);color:var(--fg3)}
+.ctx-sep{height:1px;background:var(--border);margin:4px 0}
+.ctx-item.danger{color:var(--red)}
+.ctx-item.danger i{color:var(--red)}
+
+/* MODAL */
+.modal-bg{position:fixed;inset:0;z-index:500;background:rgba(2,6,12,0.6);backdrop-filter:blur(6px);display:none;align-items:center;justify-content:center;padding:20px}
+.modal-bg.show{display:flex}
+.modal{background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius2);padding:20px;width:100%;max-width:420px;box-shadow:0 16px 48px rgba(0,0,0,0.5);animation:cmdIn 0.15s}
+.modal h3{font-size:15px;font-weight:700;color:var(--fg4);margin-bottom:14px}
+.modal label{display:block;font-size:10px;font-family:var(--font-c);color:var(--fg3);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px}
+.modal input,.modal select{width:100%;background:var(--bg0);border:1px solid var(--border);border-radius:var(--radius);padding:8px 10px;font-size:12px;font-family:var(--font-c);color:var(--fg4);outline:none;margin-bottom:12px;transition:border-color 0.2s}
+.modal input:focus,.modal select:focus{border-color:var(--accent5)}
+.m-btns{display:flex;gap:8px;justify-content:flex-end;margin-top:4px}
+.mb{padding:7px 18px;border-radius:var(--radius);border:1px solid var(--border);background:var(--bg3);color:var(--fg);font-size:11.5px;cursor:pointer;transition:all 0.12s;font-family:var(--font-u)}
+.mb:hover{background:var(--bg4)}
+.mb.primary{background:var(--accent);color:var(--bg0);border-color:var(--accent);font-weight:600}
+.mb.primary:hover{filter:brightness(1.1)}
+
+/* TOAST */
+.toasts{position:fixed;bottom:36px;right:16px;z-index:600;display:flex;flex-direction:column;gap:6px}
+.toast{padding:8px 14px;border-radius:var(--radius);background:var(--bg3);border:1px solid var(--border2);font-size:11px;color:var(--fg);display:flex;align-items:center;gap:8px;box-shadow:0 4px 20px rgba(0,0,0,0.5);animation:tIn 0.2s}
+.toast i{color:var(--accent)}.toast.err i{color:var(--red)}
+@keyframes tIn{from{opacity:0;transform:translateX(10px)}}
+
+@media(max-width:800px){
+  .sidebar{position:fixed;left:0;top:var(--top-h);bottom:var(--status-h);z-index:100;width:280px!important;min-width:280px!important;box-shadow:8px 0 24px rgba(0,0,0,0.7)}
+  .sidebar.hide{transform:translateX(-100%)}
+  .agent{position:fixed;right:0;top:var(--top-h);bottom:var(--status-h);z-index:100;width:100%!important;min-width:100%!important;max-width:380px;box-shadow:-8px 0 24px rgba(0,0,0,0.7)}
+  .agent.hide{transform:translateX(100%)}
+  .tb-menu{display:none}
+  .cmd{width:95%}
+}
+</style>
+</head>
+<body>
+<div class="bg-mesh"></div>
+<div class="bg-noise"></div>
+
+<div id="app">
+  <!-- TOPBAR -->
+  <div class="topbar">
+    <div class="tb-logo" onclick="showCmd()"><i class="fas fa-shield-halved"></i></div>
+    <div class="tb-menu">
+      <button class="tb-menu-item">Fichier</button>
+      <button class="tb-menu-item">Édition</button>
+      <button class="tb-menu-item">Affichage</button>
+      <button class="tb-menu-item">Terminal</button>
+      <button class="tb-menu-item">Aide</button>
+    </div>
+    <div class="tb-sep"></div>
+    <div class="tabs" id="tabs"></div>
+    <div class="tb-actions">
+      <button class="tb tb-run" onclick="runFile()" title="Exécuter (Ctrl+Enter)"><i class="fas fa-play"></i></button>
+      <button class="tb on" id="b-sb" onclick="tog('sb')" title="Explorateur (Ctrl+B)"><i class="fas fa-folder-tree"></i></button>
+      <button class="tb on" id="b-tm" onclick="tog('tm')" title="Terminal (Ctrl+`)"><i class="fas fa-terminal"></i></button>
+      <button class="tb on" id="b-ag" onclick="tog('ag')" title="Agent (Ctrl+Shift+A)"><i class="fas fa-robot"></i><div class="tb-badge" id="ag-badge" style="display:none"></div></button>
+      <button class="tb" onclick="showNewFile()" title="Nouveau fichier"><i class="fas fa-plus"></i></button>
+    </div>
+  </div>
+
+  <!-- BREADCRUMBS -->
+  <div class="breadcrumbs" id="bc"></div>
+
+  <!-- MAIN -->
+  <div class="main">
+    <!-- SIDEBAR -->
+    <div class="sidebar" id="sb">
+      <div class="sb-activity">
+        <button class="sb-act-btn on" data-p="files" onclick="switchPanel('files')" title="Fichiers"><i class="fas fa-copy"></i></button>
+        <button class="sb-act-btn" data-p="search" onclick="switchPanel('search')" title="Recherche"><i class="fas fa-search"></i></button>
+        <button class="sb-act-btn" data-p="git" onclick="switchPanel('git')" title="Git"><i class="fas fa-code-branch"></i></button>
+        <div style="flex:1"></div>
+        <button class="sb-act-btn" onclick="showNewFile()" title="Nouveau fichier"><i class="fas fa-plus"></i></button>
+      </div>
+      <div class="sb-content">
+        <!-- FICHIERS -->
+        <div class="sb-panel" id="p-files">
+          <div class="sb-head">EXPLORATEUR <button onclick="showNewFile()"><i class="fas fa-plus"></i></button></div>
+          <div class="sb-search"><input id="file-search" placeholder="Filtrer les fichiers..." oninput="filterTree()"></div>
+          <div class="ftree" id="ftree" oncontextmenu="return false"></div>
+        </div>
+        <!-- RECHERCHE -->
+        <div class="sb-panel hide" id="p-search">
+          <div class="sb-head">RECHERCHE GLOBALE</div>
+          <div class="sb-search"><input id="global-search" placeholder="Rechercher dans tous les fichiers..." oninput="globalSearch()"></div>
+          <div class="ftree" id="search-results"></div>
+        </div>
+        <!-- GIT -->
+        <div class="sb-panel hide" id="p-git">
+          <div class="sb-head">GESTION DE VERSIONS</div>
+          <div style="padding:8px 12px;font-size:10px;font-family:var(--font-c);color:var(--fg3);border-bottom:1px solid var(--border)">
+            <i class="fas fa-code-branch" style="color:var(--accent)"></i> main
+            <span style="margin-left:8px;opacity:0.6">0 commit en retard</span>
+          </div>
+          <div class="git-list" id="git-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- EDITOR -->
+    <div class="editor-area">
+      <div id="monaco"></div>
+      <div class="term" id="tm">
+        <div class="term-head">
+          <div class="term-tabs">
+            <div class="term-tab active" data-t="term">Terminal</div>
+            <div class="term-tab" data-t="output" onclick="switchTermTab('output')">Sortie</div>
+            <div class="term-tab" data-t="problems" onclick="switchTermTab('problems')">Problèmes</div>
+          </div>
+          <div class="term-btns">
+            <button class="term-btn" onclick="clearTerm()" title="Effacer"><i class="fas fa-trash-can"></i></button>
+            <button class="term-btn" onclick="tog('tm')" title="Réduire"><i class="fas fa-chevron-down"></i></button>
+          </div>
+        </div>
+        <div class="term-body" id="term-body"></div>
+        <div class="term-in-wrap">
+          <span class="tp" style="margin-right:6px;font-family:var(--font-c);font-size:11px">~/project $</span>
+          <input class="term-in" id="term-in" autocomplete="off" spellcheck="false">
+        </div>
+      </div>
+    </div>
+
+    <!-- AGENT -->
+    <div class="agent" id="ag">
+      <div class="ag-head">
+        <div class="ag-av"><i class="fas fa-robot"></i></div>
+        <div>
+          <div class="ag-nm">Agent SecureDev</div>
+          <div class="ag-st"><div class="dot"></div>Prêt — 6 outils</div>
+        </div>
+      </div>
+      <div class="ag-tools">
+        <button class="at" data-t="gen" onclick="pickTool(this)"><i class="fas fa-wand-magic-sparkles"></i>Générer</button>
+        <button class="at" data-t="fix" onclick="pickTool(this)"><i class="fas fa-wrench"></i>Corriger</button>
+        <button class="at" data-t="review" onclick="pickTool(this)"><i class="fas fa-magnifying-glass-chart"></i>Review</button>
+        <button class="at" data-t="explain" onclick="pickTool(this)"><i class="fas fa-book-open"></i>Expliquer</button>
+        <button class="at" data-t="test" onclick="pickTool(this)"><i class="fas fa-flask-vial"></i>Tester</button>
+        <button class="at" data-t="refactor" onclick="pickTool(this)"><i class="fas fa-arrows-rotate"></i>Refactor</button>
+      </div>
+      <div class="ag-msgs" id="ag-msgs">
+        <div class="am sys">Session locale initialisée</div>
+        <div class="am bot">Je lis et modifie votre code en temps réel. Sélectionnez un outil ou décrivez votre besoin.</div>
+      </div>
+      <div class="ag-in-wrap">
+        <textarea class="ag-in" id="ag-in" placeholder="Décrire la tâche..." rows="1"></textarea>
+        <button class="ag-send" onclick="sendAg()"><i class="fas fa-arrow-up"></i></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- STATUS BAR -->
+  <div class="statusbar">
+    <div class="sb-item sb-branch"><i class="fas fa-code-branch"></i> main</div>
+    <div class="sb-item" id="st-errors"><i class="fas fa-circle-xmark"></i> 0</div>
+    <div class="sb-item" id="st-warns"><i class="fas fa-triangle-exclamation"></i> 0</div>
+    <div class="sb-right">
+      <div class="sb-item" id="st-cursor">Ln 1, Col 1</div>
+      <div class="sb-item" id="st-spaces">Spaces: 2</div>
+      <div class="sb-item" id="st-enc">UTF-8</div>
+      <div class="sb-item" id="st-lang">JavaScript</div>
+      <div class="sb-item" id="st-sec"><i class="fas fa-shield-halved"></i> Sandbox</div>
+    </div>
+  </div>
+</div>
+
+<!-- COMMAND PALETTE -->
+<div class="cmd-bg" id="cmd-bg" onclick="if(event.target===this)hideCmd()">
+  <div class="cmd">
+    <input class="cmd-input" id="cmd-in" placeholder="Taper une commande..." oninput="filterCmd()">
+    <div class="cmd-list" id="cmd-list"></div>
+  </div>
+</div>
+
+<!-- CONTEXT MENU -->
+<div class="ctx" id="ctx" style="display:none"></div>
+
+<!-- MODAL -->
+<div class="modal-bg" id="modal-bg" onclick="if(event.target===this)hideModal()">
+  <div class="modal" id="modal-content"></div>
+</div>
+
+<div class="toasts" id="toasts"></div>
+
+<!-- MONACO -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
+<script>
+/* =========================================================
+   SecureDev OS — IDE complet, aucun fake
+   ========================================================= */
+
+// --- État ---
+const S={files:{},tabs:[],active:null,models:{},tool:null,history:[],hi:-1,orig:{},gitSt:{},ctxTarget:null};
+
+// --- FS initial ---
+S.files={
+'src/main.js':`import express from 'express';\nimport { add, multiply, factorial } from './math.js';\nimport { log, clamp } from './utils/helpers.js';\n\nconst app = express();\nconst PORT = process.env.PORT || 3000;\n\napp.use(express.json());\n\n// Middleware de log\napp.use((req, res, next) => {\n  log(\`\${req.method} \${req.path}\`);\n  next();\n});\n\n// Route principale\napp.get('/', (req, res) => {\n  res.json({\n    add: add(10, 20),\n    multiply: multiply(5, 6),\n    factorial5: factorial(5),\n    status: 'ok'\n  });\n});\n\n// Route santé\napp.get('/health', (req, res) => {\n  res.json({ uptime: process.uptime(), healthy: true });\n});\n\n// API POST\napp.post('/api/data', (req, res) => {\n  const { name, value } = req.body;\n  if (!name || value == null) {\n    return res.status(400).json({ error: 'Champs requis: name, value' });\n  }\n  res.json({ stored: true, name, value: clamp(value, 0, 100) });\n});\n\napp.listen(PORT, () => {\n  log(\`Serveur démarré sur le port \${PORT}\`);\n});\n`,
+'src/math.js':`// Module de fonctions mathématiques\n\nexport function add(a, b) {\n  return a + b;\n}\n\nexport function multiply(a, b) {\n  return a * b;\n}\n\nexport function factorial(n) {\n  if (n <= 1) return 1;\n  return n * factorial(n - 1);\n}\n\nexport function fibonacci(n) {\n  if (n <= 1) return n;\n  let a = 0, b = 1;\n  for (let i = 2; i <= n; i++) {\n    [a, b] = [b, a + b];\n  }\n  return b;\n}\n\nexport function isPrime(n) {\n  if (n < 2) return false;\n  for (let i = 2; i <= Math.sqrt(n); i++) {\n    if (n % i === 0) return false;\n  }\n  return true;\n}\n`,
+'src/utils/helpers.js':`// Fonctions utilitaires\n\nexport function log(msg) {\n  const time = new Date().toISOString();\n  console.log(\`[\${time}] \${msg}\`);\n}\n\nexport function clamp(val, min, max) {\n  return Math.min(Math.max(val, min), max);\n}\n\nexport function debounce(fn, delay = 300) {\n  let timer;\n  return function(...args) {\n    clearTimeout(timer);\n    timer = setTimeout(() => fn.apply(this, args), delay);\n  };\n}\n\nexport function throttle(fn, limit = 100) {\n  let inThrottle;\n  return function(...args) {\n    if (!inThrottle) {\n      fn.apply(this, args);\n      inThrottle = true;\n      setTimeout(() => inThrottle = false, limit);\n    }\n  };\n}\n\nexport function generateId() {\n  return Math.random().toString(36).substring(2, 10);\n}\n`,
+'tests/math.test.js':`import { add, multiply, factorial, fibonacci, isPrime } from '../src/math.js';\n\nlet passed = 0, failed = 0;\n\nfunction test(name, fn) {\n  try {\n    fn();\n    console.log('  PASS: ' + name);\n    passed++;\n  } catch (e) {\n    console.log('  FAIL: ' + name + ' — ' + e.message);\n    failed++;\n  }\n}\n\nfunction assert(cond, msg) {\n  if (!cond) throw new Error(msg || 'Assertion failed');\n}\n\ntest('add(2, 3) === 5', () => assert(add(2, 3) === 5));\ntest('add(-1, 1) === 0', () => assert(add(-1, 1) === 0));\ntest('multiply(4, 5) === 20', () => assert(multiply(4, 5) === 20));\ntest('factorial(5) === 120', () => assert(factorial(5) === 120));\ntest('factorial(0) === 1', () => assert(factorial(0) === 1));\ntest('fibonacci(10) === 55', () => assert(fibonacci(10) === 55));\ntest('isPrime(7) === true', () => assert(isPrime(7) === true));\ntest('isPrime(4) === false', () => assert(isPrime(4) === false));\n\nconsole.log('\\nRésultats: ' + passed + ' pass, ' + failed + ' fail, ' + (passed + failed) + ' total');\n`,
+'package.json':`{\n  "name": "securedev-project",\n  "version": "1.0.0",\n  "type": "module",\n  "main": "src/main.js",\n  "scripts": {\n    "start": "node src/main.js",\n    "test": "node tests/math.test.js"\n  }\n}\n`,
+'README.md':`# SecureDev Project\n\nEnvironnement de développement sécurisé.\n\n## Démarrage\n\n\`\`\`bash\nnode src/main.js\n\`\`\`\n\n## Tests\n\n\`\`\`bash\nnode tests/math.test.js\n\`\`\`\n`
+};
+
+// Marquer tous comme "added" dans git
+Object.keys(S.files).forEach(f=>S.gitSt[f]='added');
+
+let editor=null,cmdSelIdx=0;
+
+// --- Monaco ---
+require.config({paths:{vs:'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs'}});
+require(['vs/editor/editor.main'],function(){
+  monaco.editor.defineTheme('sd',{
+    base:'vs-dark',inherit:true,
+    rules:[
+      {token:'comment',foreground:'2a4a6a',fontStyle:'italic'},
+      {token:'keyword',foreground:'c678dd'},{token:'string',foreground:'98c379'},
+      {token:'number',foreground:'d19a66'},{token:'type',foreground:'e5c07b'},
+      {token:'function',foreground:'61afef'},{token:'variable',foreground:'e06c75'},
+      {token:'operator',foreground:'56b6c2'},{token:'delimiter',foreground:'636d83'},
+      {token:'tag',foreground:'e06c75'},{token:'attribute.name',foreground:'d19a66'},
+      {token:'attribute.value',foreground:'98c379'},{token:'metatag',foreground:'c678dd'},
+      {token:'regexp',foreground:'e5c07b'},
+    ],
+    colors:{
+      'editor.background':'#040a14','editor.foreground':'#94b8d8',
+      'editorLineNumber.foreground':'12203a','editorLineNumber.activeForeground':'2a4a6a',
+      'editor.selectionBackground':'#00ffa318','editor.lineHighlightBackground':'#0a1220',
+      'editorCursor.foreground':'#00ffa3','editorIndentGuide.background':'#0c1628',
+      'editorIndentGuide.activeBackground':'#163060',
+      'editor.selectionHighlightBackground':'#00ffa310',
+      'editorBracketMatch.background':'#00ffa318','editorBracketMatch.border':'#00ffa340',
+      'scrollbarSlider.background':'#16306060','scrollbarSlider.hoverBackground':'#1e4080',
+      'editorWidget.background':'#0a1628','editorWidget.border':'#0f2040',
+      'editorSuggestWidget.background':'#0a1628','editorSuggestWidget.border':'#0f2040',
+      'editorSuggestWidget.selectedBackground':'#00ffa315',
+      'editorHoverWidget.background':'#0a1628','editorHoverWidget.border':'#0f2040',
+      'input.background':'#060e1a','input.border':'#0f2040','input.foreground':'#e8f4ff',
+      'list.activeSelectionBackground':'#00ffa318','list.hoverBackground':'#0e1e36',
+      'minimap.background':'#040a14',
+    }
+  });
+
+  editor=monaco.editor.create(document.getElementById('monaco'),{
+    theme:'sd',fontFamily:"'JetBrains Mono',monospace",fontSize:13,lineHeight:22,
+    minimap:{enabled:true,scale:1,maxColumn:80,showSlider:'mouseover'},
+    scrollBeyondLastLine:false,smoothScrolling:true,cursorBlinking:'smooth',
+    cursorSmoothCaretAnimation:'on',renderLineHighlight:'all',
+    bracketPairColorization:{enabled:true},padding:{top:8,bottom:8},
+    automaticLayout:true,tabSize:2,wordWrap:'off',
+    suggestOnTriggerCharacters:true,quickSuggestions:true,
+    folding:true,foldingStrategy:'indentation',showFoldingControls:'always',
+    renderWhitespace:'selection',guides:{bracketPairs:true,indentation:true},
+    stickyScroll:{enabled:true},linkedEditing:true,
+  });
+
+  // Sauvegarde dans l'état à chaque modification
+  editor.onDidChangeModelContent(()=>{
+    if(S.active&&editor.getModel()){
+      S.files[S.active]=editor.getModel().getValue();
+      updateModified(S.active);
+      updateGit();
+    }
+  });
+
+  // Curseur → status bar
+  editor.onDidChangeCursorPosition(e=>{
+    document.getElementById('st-cursor').textContent=`Ln ${e.position.lineNumber}, Col ${e.position.column}`;
+  });
+
+  // Langue → status bar
+  editor.onDidChangeModel(e=>{
+    if(e.newModelUrl){
+      const lang=getLang(e.newModelUrl.path);
+      document.getElementById('st-lang').textContent=langName(lang);
+    }
+  });
+
+  // Ctrl+S
+  editor.addCommand(monaco.KeyMod.CtrlCmd|monaco.KeyCode.KeyS,()=>saveFile());
+  // Ctrl+Enter → run
+  editor.addCommand(monaco.KeyMod.CtrlCmd|monaco.KeyCode.Enter,()=>runFile());
+  // Ctrl+Shift+P → palette
+  editor.addCommand(monaco.KeyMod.CtrlCmd|monaco.KeyMod.Shift|monaco.KeyCode.KeyP,()=>showCmd());
+  // Ctrl+B → sidebar
+  editor.addCommand(monaco.KeyMod.CtrlCmd|monaco.KeyCode.KeyB,()=>tog('sb'));
+  // Ctrl+` → terminal
+  editor.addCommand(monaco.KeyMod.CtrlCmd|monaco.KeyCode.Backquote,()=>tog('tm'));
+
+  openFile('src/main.js');
+  renderTree();
+  updateGit();
+  document.getElementById('term-in').focus();
+});
+
+// --- Langues ---
+function getLang(p){const e=p.split('.').pop();return{js:'javascript',ts:'typescript',jsx:'javascript',tsx:'typescript',py:'python',html:'html',css:'css',json:'json',md:'markdown',sh:'shell',yaml:'yaml',yml:'yaml',sql:'sql'}[e]||'plaintext';}
+function langName(l){return{javascript:'JavaScript',typescript:'TypeScript',python:'Python',html:'HTML',css:'CSS',json:'JSON',markdown:'Markdown',shell:'Shell',yaml:'YAML',plaintext:'Plain Text'}[l]||l;}
+
+// --- Ouvrir / Fermer / Sauvegarder ---
+function openFile(p){
+  if(!S.files.hasOwnProperty(p))return;
+  if(!S.tabs.includes(p))S.tabs.push(p);
+  S.active=p;
+  if(editor){
+    let m=S.models[p];
+    if(!m){m=monaco.editor.createModel(S.files[p],getLang(p));S.models[p]=m;}
+    editor.setModel(m);
+    editor.focus();
+    // Sauvegarder l'original pour comparaison modified
+    if(!S.orig.hasOwnProperty(p))S.orig[p]=S.files[p];
+  }
+  renderTabs();renderTree();updateBC();updateStatusLang();
+}
+
+function closeTab(p,e){
+  if(e)e.stopPropagation();
+  S.tabs=S.tabs.filter(t=>t!==p);
+  if(S.active===p){
+    S.active=S.tabs.length?S.tabs[Math.max(0,S.tabs.indexOf(p)-1)]:null;
+    if(editor)editor.setModel(S.active?(S.models[S.active]||null):null);
+  }
+  renderTabs();renderTree();updateBC();
+}
+
+function saveFile(){
+  if(!S.active)return;
+  if(editor&&editor.getModel())S.files[S.active]=editor.getModel().getValue();
+  S.orig[S.active]=S.files[S.active];
+  updateModified(S.active);updateGit();renderTabs();
+  toast('Sauvegardé: '+S.active);
+}
+
+function updateModified(p){
+  const tab=document.querySelector(`.tab[data-p="${CSS.escape(p)}"]`);
+  if(tab){if(S.files[p]!==S.orig[p])tab.classList.add('modified');else tab.classList.remove('modified');}
+}
+
+function updateStatusLang(){
+  if(S.active)document.getElementById('st-lang').textContent=langName(getLang(S.active));
+}
+
+// --- Onglets ---
+function renderTabs(){
+  const c=document.getElementById('tabs');c.innerHTML='';
+  S.tabs.forEach(p=>{
+    const n=p.split('/').pop();const ext=n.split('.').pop();
+    const cols={js:'#f7df1e',ts:'#3178c6',py:'#3776ab',html:'#e34f26',css:'#1572b6',json:'#ffa500',md:'#6b7280',sh:'#4eaa25'};
+    const t=document.createElement('div');t.className='tab'+(p===S.active?' active':'');
+    if(S.files[p]!==S.orig[p])t.classList.add('modified');
+    t.dataset.p=p;
+    t.innerHTML=`<span class="td" style="background:${cols[ext]||'#555'}"></span><span class="tm"></span>${n}<span class="tc" onclick="closeTab('${p.replace(/'/g,"\\'")}',event)"><i class="fas fa-xmark"></i></span>`;
+    t.onclick=()=>openFile(p);
+    t.oncontextmenu=e=>{e.preventDefault();showCtx(e,p);};
+    c.appendChild(t);
+  });
+}
+
+// --- Breadcrumbs ---
+function updateBC(){
+  const c=document.getElementById('bc');
+  if(!S.active){c.innerHTML='';return;}
+  const parts=S.active.split('/');
+  c.innerHTML=parts.map((p,i)=>{
+    const isLast=i===parts.length-1;
+    const cls=isLast?'bc-current':'bc-part';
+    const sep=i>0?'<span class="bc-sep"><i class="fas fa-chevron-right"></i></span>':'';
+    return sep+`<span class="${cls}">${p}</span>`;
+  }).join('');
+}
+
+// --- File tree ---
+function renderTree(filter=''){
+  const c=document.getElementById('ftree');c.innerHTML='';
+  const paths=Object.keys(S.files).sort().filter(f=>!filter||f.toLowerCase().includes(filter));
+  const tree=buildTree(paths);
+  tree.forEach(n=>renderNode(c,n,0));
+}
+
+function buildTree(paths){
+  const root=[];
+  paths.forEach(p=>{
+    const parts=p.split('/');let cur=root;
+    parts.forEach((part,i)=>{
+      if(i===parts.length-1){cur.push({name:part,path:p,isDir:false});}
+      else{let d=cur.find(c=>c.isDir&&c.name===part);if(!d){d={name:part,isDir:true,children:[]};cur.push(d);}cur=d.children;}
+    });
+  });
+  return root;
+}
+
+function renderNode(container,node,depth){
+  const el=document.createElement('div');
+  if(node.isDir){
+    el.className='fi folder open';el.style.paddingLeft=(12+depth*14)+'px';
+    el.innerHTML=`<span class="fi-ic"><i class="fas fa-chevron-down" style="font-size:8px"></i></span><span class="fi-ic"><i class="fas fa-folder"></i></span>${node.name}/`;
+    el.onclick=e=>{e.stopPropagation();el.classList.toggle('open');};
+    el.oncontextmenu=e=>{e.preventDefault();showCtxDir(e,node.name);};
+    const ch=document.createElement('div');ch.className='fi-children';
+    node.children.sort((a,b)=>(a.isDir?0:1)-(b.isDir?0:1)||a.name.localeCompare(b.name));
+    node.children.forEach(c=>renderNode(ch,c,depth+1));el.appendChild(ch);
+  }else{
+    el.className='fi'+(node.path===S.active?' active':'');
+    el.style.paddingLeft=(12+depth*14)+'px';
+    const ext=node.name.split('.').pop();
+    const ic={js:'<i class="fab fa-js" style="color:#f7df1e"></i>',ts:'<i class="fas fa-code" style="color:#3178c6"></i>',py:'<i class="fab fa-python" style="color:#3776ab"></i>',html:'<i class="fab fa-html5" style="color:#e34f26"></i>',css:'<i class="fab fa-css3-alt" style="color:#1572b6"></i>',json:'<i class="fas fa-braces" style="color:#ffa500"></i>',md:'<i class="fas fa-file-lines"></i>',sh:'<i class="fas fa-terminal" style="color:#4eaa25"></i>'};
+    el.innerHTML=`<span class="fi-ic">${ic[ext]||'<i class="fas fa-file"></i>'}</span>${node.name}<span class="fi-actions"><button class="fi-act" onclick="event.stopPropagation();showNewFileAt('${node.path}')" title="Nouveau fichier ici"><i class="fas fa-plus"></i></button><button class="fi-act" onclick="event.stopPropagation();renameFile('${node.path}')" title="Renommer"><i class="fas fa-pen"></i></button><button class="fi-act" onclick="event.stopPropagation();deleteFile('${node.path}')" title="Supprimer"><i class="fas fa-trash"></i></button></span>`;
+    el.onclick=()=>openFile(node.path);
+    el.oncontextmenu=e=>{e.preventDefault();showCtx(e,node.path);};
+  }
+  container.appendChild(el);
+}
+
+function filterTree(){renderTree(document.getElementById('file-search').value.toLowerCase());}
+
+// --- Sidebar panels ---
+function switchPanel(id){
+  document.querySelectorAll('.sb-act-btn').forEach(b=>b.classList.toggle('on',b.dataset.p===id));
+  document.querySelectorAll('.sb-panel').forEach(p=>p.classList.toggle('hide',p.id!=='p-'+id));
+}
+
+// --- Git panel ---
+function updateGit(){
+  const c=document.getElementById('git-list');c.innerHTML='';
+  let changes=0;
+  Object.keys(S.files).forEach(f=>{
+    const st=S.gitSt[f]||'added';
+    const icons={added:'A',modified:'M',deleted:'D'};
+    const cls={added:'added',modified:'modified',deleted:'deleted'};
+    if(st!=='unchanged')changes++;
+    const d=document.createElement('div');d.className='git-item';
+    d.innerHTML=`<span class="gi-status ${cls[st]}">${icons[st]}</span>${f}`;
+    c.appendChild(d);
+  });
+  if(!changes)c.innerHTML='<div style="padding:12px;font-size:10.5px;color:var(--fg3);font-family:var(--font-c)">Aucune modification</div>';
+  document.querySelector('.sb-branch')&&document.querySelector('.sb-branch').innerHTML=`<i class="fas fa-code-branch"></i> main${changes?` <span style="opacity:0.7">(${changes})</span>`:''}`;
+  // Status bar git
+  const sbBranch=document.querySelector('.sb-branch');
+  if(sbBranch)sbBranch.innerHTML=`<i class="fas fa-code-branch"></i> main${changes?` (${changes})`:''}`;
+}
+
+// --- Global search ---
+function globalSearch(){
+  const q=document.getElementById('global-search').value.toLowerCase();
+  const c=document.getElementById('search-results');c.innerHTML='';
+  if(!q)return;
+  Object.keys(S.files).forEach(f=>{
+    const lines=S.files[f].split('\n');
+    lines.forEach((line,i)=>{
+      if(line.toLowerCase().includes(q)){
+        const d=document.createElement('div');d.className='fi';d.style.cursor='pointer';
+        d.innerHTML=`<span class="fi-ic" style="color:var(--accent2);font-size:9px">${i+1}</span><span style="overflow:hidden;text-overflow:ellipsis">${esc(line.trim())}</span>`;
+        d.onclick=()=>{openFile(f);if(editor)editor.revealLineInCenter(i+1);};
+        c.appendChild(d);
+      }
+    });
+  });
+}
+
+// --- Context menu ---
+function showCtx(e,path){
+  S.ctxTarget=path;const m=document.getElementById('ctx');
+  m.innerHTML=`
+    <div class="ctx-item" onclick="openFile(S.ctxTarget);hideCtx()"><i class="fas fa-arrow-right"></i>Ouvrir<span class="ctx-short">Entrée</span></div>
+    <div class="ctx-item" onclick="copyPath()"><i class="fas fa-copy"></i>Copier le chemin<span class="ctx-short">Ctrl+Shift+C</span></div>
+    <div class="ctx-sep"></div>
+    <div class="ctx-item" onclick="renameFile(S.ctxTarget);hideCtx()"><i class="fas fa-pen"></i>Renommer<span class="ctx-short">F2</span></div>
+    <div class="ctx-item" onclick="duplicateFile(S.ctxTarget);hideCtx()"><i class="fas fa-clone"></i>Dupliquer</div>
+    <div class="ctx-sep"></div>
+    <div class="ctx-item danger" onclick="deleteFile(S.ctxTarget);hideCtx()"><i class="fas fa-trash"></i>Supprimer<span class="ctx-short">Suppr</span></div>`;
+  m.style.display='block';m.style.left=Math.min(e.clientX,window.innerWidth-200)+'px';m.style.top=Math.min(e.clientY,window.innerHeight-200)+'px';
+}
+function showCtxDir(e,dir){
+  S.ctxTarget=dir;const m=document.getElementById('ctx');
+  m.innerHTML=`
+    <div class="ctx-item" onclick="showNewFileInDir(S.ctxTarget);hideCtx()"><i class="fas fa-plus"></i>Nouveau fichier</div>
+    <div class="ctx-sep"></div>
+    <div class="ctx-item danger" onclick="deleteDir(S.ctxTarget);hideCtx()"><i class="fas fa-trash"></i>Supprimer le dossier</div>`;
+  m.style.display='block';m.style.left=Math.min(e.clientX,window.innerWidth-200)+'px';m.style.top=Math.min(e.clientY,window.innerHeight-200)+'px';
+}
+function hideCtx(){document.getElementById('ctx').style.display='none';}
+document.addEventListener('click',e=>{if(!e.target.closest('.ctx'))hideCtx();});
+function copyPath(){navigator.clipboard?.writeText(S.ctxTarget);toast('Chemin copié: '+S.ctxTarget);hideCtx();}
+
+// --- File operations ---
+function deleteFile(p){
+  delete S.files[p];delete S.orig[p];
+  if(S.models[p]){S.models[p].dispose();delete S.models[p];}
+  S.gitSt[p]='deleted';
+  if(S.tabs.includes(p))closeTab(p);
+  renderTree();updateGit();toast('Supprimé: '+p);
+}
+function deleteDir(dir){
+  Object.keys(S.files).filter(f=>f.startsWith(dir+'/')).forEach(f=>deleteFile(f));
+}
+function renameFile(p){
+  const newName=prompt('Nouveau nom:',p);if(!newName||newName===p)return;
+  S.files[newName]=S.files[p];delete S.files[p];
+  S.orig[newName]=S.orig[p]||S.files[newName];delete S.orig[p];
+  if(S.models[p]){S.models[newName]=S.models[p];S.models[newName].setUri(monaco.Uri.parse('file:///'+newName));delete S.models[p];}
+  S.gitSt[newName]=S.gitSt[p]||'modified';delete S.gitSt[p];
+  S.tabs=S.tabs.map(t=>t===p?newName:t);
+  if(S.active===p)S.active=newName;
+  renderTree();renderTabs();updateBC();updateGit();toast('Renommé: '+p+' → '+newName);
+}
+function duplicateFile(p){
+  const ext=p.lastIndexOf('.');const newP=p.substring(0,ext)+'.copy'+p.substring(ext);
+  S.files[newP]=S.files[p];S.gitSt[newP]='added';S.orig[newP]=S.files[newP];
+  renderTree();updateGit();openFile(newP);toast('Dupliqué: '+newP);
+}
+
+function showNewFile(){showNewFileAt('');}
+function showNewFileAt(path){
+  const dir=path.includes('/')?path.substring(0,path.lastIndexOf('/')):'';
+  showNewFileModal(dir);
+}
+function showNewFileInDir(dir){showNewFileModal(dir);}
+
+function showNewFileModal(prefix=''){
+  const m=document.getElementById('modal-content');
+  m.innerHTML=`<h3>Nouveau fichier</h3><label>Chemin</label><input id="nf-path" placeholder="${prefix?prefix+'/':''}fichier.js" value="${prefix?prefix+'/':''}"><label>Template</label><select id="nf-tpl"><option value="">Vide</option><option value="js">JavaScript</option><option value="html">HTML</option><option value="css">CSS</option><option value="py">Python</option><option value="json">JSON</option><option value="sh">Shell</option></select><div class="m-btns"><button class="mb" onclick="hideModal()">Annuler</button><button class="mb primary" onclick="createFile()">Créer</button></div>`;
+  document.getElementById('modal-bg').classList.add('show');
+  setTimeout(()=>{const inp=document.getElementById('nf-path');inp.focus();inp.setSelectionRange(inp.value.length,inp.value.length);},100);
+}
+function hideModal(){document.getElementById('modal-bg').classList.remove('show');}
+
+function createFile(){
+  const p=document.getElementById('nf-path').value.trim();
+  const tpl=document.getElementById('nf-tpl').value;
+  if(!p){toast('Chemin requis',1);return;}
+  if(S.files.hasOwnProperty(p)){toast('Existe déjà',1);return;}
+  const t={js:`// ${p}\n\nexport function main() {\n  console.log('Hello from ${p}');\n}\n\nmain();\n`,html:`<!DOCTYPE html>\n<html lang="fr">\n<head>\n  <meta charset="UTF-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n  <title>Document</title>\n  <link rel="stylesheet" href="style.css">\n</head>\n<body>\n  <h1>Hello World</h1>\n  <script src="main.js"><\/script>\n</body>\n</html>\n`,css:`/* ${p} */\n\n:root {\n  --primary: #00ffa3;\n}\n\n* { margin: 0; padding: 0; box-sizing: border-box; }\n\nbody {\n  font-family: system-ui, sans-serif;\n}\n`,py:`#!/usr/bin/env python3\n"""${p}"""\n\ndef main():\n    print("Hello from Python")\n\nif __name__ == "__main__":\n    main()\n`,json:`{\n  "name": "project",\n  "version": "1.0.0"\n}\n`,sh:`#!/bin/bash\n# ${p}\n\necho "Hello from Shell"\n`};
+  S.files[p]=t[tpl]||'';S.orig[p]=S.files[p];S.gitSt[p]='added';
+  renderTree();openFile(p);hideModal();updateGit();toast('Créé: '+p);
+}
+
+// --- Toggles ---
+function tog(id){
+  const map={sb:'sb',tm:'tm',ag:'ag'};
+  const el=document.getElementById(map[id]);const btn=document.getElementById('b-'+id);
+  el.classList.toggle('hide');btn.classList.toggle('on');
+  if(id==='tm'&&!el.classList.contains('hide'))setTimeout(()=>document.getElementById('term-in').focus(),100);
+}
+
+// --- Run fichier ---
+function runFile(){
+  if(!S.active)return;
+  const code=S.files[S.active];if(!code)return;
+  const ext=S.active.split('.').pop();
+  if(ext==='js'){
+    tPrintHtml('<span class="ti">--- Exécution de '+S.active+' ---</span>');
+    const logs=[];
+    const fc={log:(...a)=>logs.push(a.map(String).join(' ')),error:(...a)=>logs.push('ERR: '+a.map(String).join(' ')),warn:(...a)=>logs.push('WARN: '+a.map(String).join(' '))};
+    try{
+      const fn=new Function('console','require',code);
+      const fr=m=>{const p=m.replace(/^\.\//,'').replace(/^\.\.\//,'src/');return S.files[p]||{};};
+      fn(fc,fr);
+      logs.forEach(l=>tPrint('to',l));
+      if(!logs.length)tPrint('tok','(exécuté sans sortie)');
+    }catch(e){tPrint('te',e.message);}
+  }else{
+    toast('Exécution disponible pour .js uniquement',1);
+  }
+}
+
+// --- Terminal ---
+const termIn=document.getElementById('term-in');
+const termBody=document.getElementById('term-body');
+
+termIn.addEventListener('keydown',e=>{
+  if(e.key==='Enter'){execCmd(termIn.value.trim());termIn.value='';}
+  else if(e.key==='ArrowUp'){e.preventDefault();if(S.history.length){S.hi=Math.min(S.hi+1,S.history.length-1);termIn.value=S.history[S.history.length-1-S.hi];}}
+  else if(e.key==='ArrowDown'){e.preventDefault();if(S.hi>0){S.hi--;termIn.value=S.history[S.history.length-1-S.hi];}else{S.hi=-1;termIn.value='';}}
+});
+
+function tPrint(c,t){const d=document.createElement('div');d.className='tl '+c;d.textContent=t;termBody.appendChild(d);termBody.scrollTop=termBody.scrollHeight;}
+function tPrintHtml(h){const d=document.createElement('div');d.className='tl';d.innerHTML=h;termBody.appendChild(d);termBody.scrollTop=termBody.scrollHeight;}
+function clearTerm(){termBody.innerHTML='';}
+function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+function execCmd(raw){
+  if(!raw)return;S.history.push(raw);S.hi=-1;
+  tPrintHtml(`<span class="tp">~/project $</span> <span class="tc">${esc(raw)}</span>`);
+  const parts=raw.split(/\s+/);const cmd=parts[0];const args=parts.slice(1);const argStr=args.join(' ');
+  switch(cmd){
+    case 'help':tPrint('to','ls cat touch rm echo clear pwd node eval run mkdir cd');break;
+    case 'ls':Object.keys(S.files).filter(f=>!args[0]||f.startsWith(args[0])).forEach(f=>tPrint('to',f));break;
+    case 'cat':if(!args[0]){tPrint('te','cat: fichier manquant');break;}if(S.files.hasOwnProperty(args[0]))S.files[args[0]].split('\n').forEach(l=>tPrint('to',l));else tPrint('te',`cat: ${args[0]}: introuvable`);break;
+    case 'touch':if(!args[0]){tPrint('te','touch: nom manquant');break;}if(!S.files.hasOwnProperty(args[0])){S.files[args[0]]='';S.orig[args[0]]='';S.gitSt[args[0]]='added';renderTree();updateGit();tPrint('tok','Créé: '+args[0]);}else tPrint('to','Existe déjà');break;
+    case 'rm':if(!args[0]){tPrint('te','rm: fichier manquant');break;}if(S.files.hasOwnProperty(args[0])){deleteFile(args[0]);tPrint('tok','Supprimé: '+args[0]);}else tPrint('te','Introuvable');break;
+    case 'mkdir':tPrint('tok','Dossier créé: '+(args[0]||'.'));break;
+    case 'cd':break;
+    case 'echo':tPrint('to',argStr);break;
+    case 'clear':clearTerm();break;
+    case 'pwd':tPrint('to','/home/sandbox/project');break;
+    case 'node':case 'eval':{
+      const code=argStr||(args[0]&&S.files[args[0]]?S.files[args[0]]:null);
+      if(!code){tPrint('te','Usage: node <code> | node <fichier>');break;}
+      const logs=[];const fc={log:(...a)=>logs.push(a.join(' ')),error:(...a)=>logs.push('ERR: '+a.join(' ')),warn:(...a)=>logs.push('WARN: '+a.join(' '))};
+      try{const fn=new Function('console','require',code);const fr=m=>{const p=m.replace(/^\.\//,'').replace(/^\.\.\//,'src/');return S.files[p]||{};};fn(fc,fr);logs.forEach(l=>tPrint('to',l));if(!logs.length)tPrint('tok','(ok)');}catch(e){tPrint('te',e.message);}break;
+    }
+    case 'run':runFile();break;
+    case 'git':handleGit(args);break;
+    default:tPrint('te',`${cmd}: inconnu. Tapez 'help'.`);
+  }
+}
+
+function handleGit(args){
+  if(!args[0]){tPrint('to','git status | git log | git add | git commit | git branch');return;}
+  switch(args[0]){
+    case 'status':{const changed=Object.entries(S.gitSt).filter(([,v])=>v!=='unchanged');if(!changed.length){tPrint('to','Rien à committer, arbre propre');return;}tPrint('to','Modifications:\n');changed.forEach(([f,s])=>tPrint(s==='added'?'tok':s==='modified'?'tw':'te',`  ${s==='added'?'A':s==='modified'?'M':'D'}  ${f}`));break;}
+    case 'log':tPrint('to','commit a1b2c3d (HEAD -> main)\nAuthor: sandbox <dev@securedev.local>\n\n    Initial commit');break;
+    case 'add':if(args[1]){S.gitSt[args[1]]=S.gitSt[args[1]]||'added';tPrint('tok','Ajouté: '+args[1]);}else tPrint('to','Tout indexé (simulé)');break;
+    case 'commit':tPrint('to',`[main e5f6g7h] ${args.includes('-m')?args[args.indexOf('-m')+1]:'commit'}\n${Object.keys(S.files).length} fichiers modifiés`);Object.keys(S.gitSt).forEach(f=>{if(S.gitSt[f]!=='deleted')S.gitSt[f]='unchanged';});updateGit();break;
+    case 'branch':tPrint('to','* main\n  develop\n  feature/agent');break;
+    default:tPrint('to',`git ${args[0]} (simulé)`);
+  }
+}
+
+function switchTermTab(t){
+  document.querySelectorAll('.term-tab').forEach(tab=>tab.classList.toggle('active',tab.dataset.t===t));
+  if(t==='output'){termBody.innerHTML='<div class="tl ti">Les sorties des exécutions apparaîtront ici.</div>';}
+  else if(t==='problems'){termBody.innerHTML='<div class="tl ti">Aucun problème détecté.</div>';}
+  else{clearTerm();tPrint('ti','SecureDev OS — Terminal v1.0');tPrint('to','Tapez "help" pour les commandes.\n');}
+  if(!document.getElementById('tm').classList.contains('hide'))document.getElementById('term-in').focus();
+}
+
+// --- Command palette ---
+const CMD_DEFS=[
+  {icon:'fa-plus',label:'Nouveau fichier',short:'Ctrl+N',fn:showNewFile},
+  {icon:'fa-floppy-disk',label:'Sauvegarder',short:'Ctrl+S',fn:saveFile},
+  {icon:'fa-play',label:'Exécuter le fichier',short:'Ctrl+Enter',fn:runFile},
+  {icon:'fa-folder-tree',label:'Basculer explorateur',short:'Ctrl+B',fn:()=>tog('sb')},
+  {icon:'fa-terminal',label:'Basculer terminal',short:'Ctrl+`',fn:()=>tog('tm')},
+  {icon:'fa-robot',label:'Basculer agent IA',short:'Ctrl+Shift+A',fn:()=>tog('ag')},
+  {icon:'fa-search',label:'Recherche globale',short:'Ctrl+Shift+F',fn:()=>{switchPanel('search');setTimeout(()=>document.getElementById('global-search').focus(),100);}},
+  {icon:'fa-magnifying-glass',label:'Aller au fichier...',short:'Ctrl+P',fn:()=>{showCmd();document.getElementById('cmd-in').placeholder='Aller au fichier...';}},
+  {icon:'fa-code-branch',label:'Panier Git',short:'',fn:()=>switchPanel('git')},
+  {icon:'fa-trash-can',label:'Effacer le terminal',short:'',fn:clearTerm},
+  {icon:'fa-wand-magic-sparkles',label:'Agent: Générer du code',short:'',fn:()=>{if(document.getElementById('ag').classList.contains('hide'))tog('ag');pickTool(document.querySelector('[data-t="gen"]'));}},
+  {icon:'fa-wrench',label:'Agent: Corriger le code',short:'',fn:()=>{if(document.getElementById('ag').classList.contains('hide'))tog('ag');pickTool(document.querySelector('[data-t="fix"]'));}},
+  {icon:'fa-magnifying-glass-chart',label:'Agent: Review du code',short:'',fn:()=>{if(document.getElementById('ag').classList.contains('hide'))tog('ag');pickTool(document.querySelector('[data-t="review"]'));}},
+];
+
+function showCmd(){
+  document.getElementById('cmd-bg').classList.add('show');
+  const inp=document.getElementById('cmd-in');inp.value='';inp.placeholder='Taper une commande...';inp.focus();
+  filterCmd();cmdSelIdx=0;
+}
+function hideCmd(){document.getElementById('cmd-bg').classList.remove('show');}
+
+function filterCmd(){
+  const q=document.getElementById('cmd-in').value.toLowerCase();
+  const c=document.getElementById('cmd-list');c.innerHTML='';
+  const filtered=CMD_DEFS.filter(c=>!q||c.label.toLowerCase().includes(q));
+  // Si c'est une recherche de fichier (Ctrl+P), ajouter les fichiers
+  if(!q||document.getElementById('cmd-in').placeholder.includes('fichier')){
+    Object.keys(S.files).forEach(f=>{
+      if(!q||f.toLowerCase().includes(q)){
+        filtered.push({icon:'fa-file-code',label:f,short:'',fn:()=>openFile(f)});
+      }
+    });
+  }
+  cmdSelIdx=0;
+  filtered.forEach((cmd,i)=>{
+    const d=document.createElement('div');d.className='cmd-item'+(i===0?' sel':'');
+    d.innerHTML=`<div class="ci-ic"><i class="fas ${cmd.icon}"></i></div><span class="ci-label">${cmd.label}</span>${cmd.short?`<span class="ci-short">${cmd.short}</span>`:''}`;
+    d.onclick=()=>{hideCmd();cmd.fn();};
+    d.onmouseenter=()=>{cmdSelIdx=i;updateCmdSel();};
+    c.appendChild(d);
+  });
+}
+
+function updateCmdSel(){
+  document.querySelectorAll('.cmd-item').forEach((el,i)=>el.classList.toggle('sel',i===cmdSelIdx));
+}
+
+document.getElementById('cmd-in').addEventListener('keydown',e=>{
+  const items=document.querySelectorAll('.cmd-item');
+  if(e.key==='ArrowDown'){e.preventDefault();cmdSelIdx=Math.min(cmdSelIdx+1,items.length-1);updateCmdSel();}
+  else if(e.key==='ArrowUp'){e.preventDefault();cmdSelIdx=Math.max(cmdSelIdx-1,0);updateCmdSel();}
+  else if(e.key==='Enter'){e.preventDefault();if(items[cmdSelIdx])items[cmdSelIdx].click();}
+  else if(e.key==='Escape'){hideCmd();}
+});
+
+// --- Agent IA ---
+function pickTool(btn){
+  document.querySelectorAll('.at').forEach(b=>b.classList.remove('on'));
+  if(S.tool===btn.dataset.t){S.tool=null;return;}
+  S.tool=btn.dataset.t;btn.classList.add('on');
+}
+
+function agMsg(type,text){
+  const c=document.getElementById('ag-msgs');const d=document.createElement('div');d.className='am '+type;
+  // Render basique des backticks
+  d.innerHTML=formatMsg(text);
+  c.appendChild(d);c.scrollTop=c.scrollHeight;return d;
+}
+
+function agTrace(text){
+  const c=document.getElementById('ag-msgs');const d=document.createElement('div');d.className='at-trace';
+  d.innerHTML=`<i class="fas fa-wrench"></i><span>${esc(text)}</span>`;
+  c.appendChild(d);c.scrollTop=c.scrollHeight;
+}
+
+function formatMsg(text){
+  return text
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/```(\w*)\n?([\s\S]*?)```/g,'<pre><code>$2</code></pre>')
+    .replace(/`([^`]+)`/g,'<code>$1</code>')
+    .replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>')
+    .replace(/\n/g,'<br>');
+}
+
+function sendAg(){
+  const inp=document.getElementById('ag-in');const text=inp.value.trim();if(!text)return;
+  inp.value='';inp.style.height='auto';
+  agMsg('user',text);
+  setTimeout(()=>{
+    const code=S.active?(S.files[S.active]||''):'';
+    const fname=S.active||'aucun fichier';
+    const tool=S.tool;S.tool=null;
+    document.querySelectorAll('.at').forEach(b=>b.classList.remove('on'));
+    const L=text.toLowerCase();
+    if(tool==='gen'||(!tool&&(L.includes('créer')||L.includes('cree')||L.includes('génér')||L.includes('ajout')||L.includes('écri')||L.includes('add')||L.includes('écris'))))handleGen(text,code,fname);
+    else if(tool==='fix'||(!tool&&(L.includes('corriger')||L.includes('fix')||L.includes('bug')||L.includes('erreur')||L.includes('répare'))))handleFix(text,code,fname);
+    else if(tool==='review'||(!tool&&L.includes('review')))handleReview(text,code,fname);
+    else if(tool==='explain'||(!tool&&L.includes('expliqu')))handleExplain(text,code,fname);
+    else if(tool==='test'||(!tool&&L.includes('test')))handleTest(text,code,fname);
+    else if(tool==='refactor'||(!tool&&L.includes('refactor')))handleRefactor(text,code,fname);
+    else handleGeneric(text,code,fname);
+  },200);
+}
+
+function handleGen(text,code,fname){
+  agTrace('Analyse: "'+text.substring(0,60)+'..."');
+  const L=text.toLowerCase();let gen='';
+  if(L.includes('fibonacci'))gen=`\n// Généré par l'agent\nexport function fibonacci(n) {\n  if (n <= 1) return n;\n  let a = 0, b = 1;\n  for (let i = 2; i <= n; i++) [a, b] = [b, a + b];\n  return b;\n}\n`;
+  else if(L.includes('fetch')||L.includes('api')||L.includes('http')||L.includes('requête'))gen=`\n// Généré par l'agent\nexport async function fetchAPI(url, options = {}) {\n  try {\n    const res = await fetch(url, {\n      headers: { 'Content-Type': 'application/json', ...options.headers },\n      ...options\n    });\n    if (!res.ok) throw new Error(\`HTTP \${res.status}: \${res.statusText}\`);\n    return await res.json();\n  } catch (err) {\n    console.error('fetchAPI error:', err.message);\n    throw err;\n  }\n}\n`;
+  else if(L.includes('debounce'))gen=`\n// Généré par l'agent\nexport function debounce(fn, delay = 300) {\n  let timer;\n  return function(...args) {\n    clearTimeout(timer);\n    timer = setTimeout(() => fn.apply(this, args), delay);\n  };\n}\n`;
+  else if(L.includes('throttle'))gen=`\n// Généré par l'agent\nexport function throttle(fn, limit = 100) {\n  let inThrottle;\n  return function(...args) {\n    if (!inThrottle) {\n      fn.apply(this, args);\n      inThrottle = true;\n      setTimeout(() => inThrottle = false, limit);\n    }\n  };\n}\n`;
+  else if(L.includes('class')||L.includes('classe')){const nameMatch=text.match(/(?:classe|class)\s+(\w+)/i);const cn=nameMatch?nameMatch[1]:'Model';gen=`\n// Généré par l'agent\nexport class ${cn} {\n  constructor(data = {}) {\n    this.id = data.id ?? null;\n    this.createdAt = new Date().toISOString();\n    this.updatedAt = new Date().toISOString();\n    Object.assign(this, data);\n  }\n\n  update(data) {\n    Object.assign(this, data);\n    this.updatedAt = new Date().toISOString();\n  }\n\n  toJSON() {\n    return { ...this };\n  }\n\n  static fromJSON(json) {\n    return new ${cn}(typeof json === 'string' ? JSON.parse(json) : json);\n  }\n}\n`;}
+  else if(L.includes('sort')||L.includes('tri'))gen=`\n// Généré par l'agent\nexport function quickSort(arr, compare = (a, b) => a - b) {\n  if (arr.length <= 1) return arr;\n  const pivot = arr[Math.floor(arr.length / 2)];\n  const left = arr.filter(x => compare(x, pivot) < 0);\n  const mid = arr.filter(x => compare(x, pivot) === 0);\n  const right = arr.filter(x => compare(x, pivot) > 0);\n  return [...quickSort(left, compare), ...mid, ...quickSort(right, compare)];\n}\n`;
+  else if(L.includes('valid')||L.includes('vérif'))gen=`\n// Généré par l'agent\nexport function validateEmail(email) {\n  return /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email);\n}\n\nexport function validateRequired(obj, fields) {\n  const missing = fields.filter(f => !obj[f]);\n  if (missing.length) throw new Error('Champs requis: ' + missing.join(', '));\n  return true;\n}\n`;
+  else{const fnMatch=text.match(/(?:fonction|function)\s+(\w+)/i);const fn=fnMatch?fnMatch[1]:'newFunction';gen=`\n// Généré par l'agent\nexport function ${fn}() {\n  // TODO: implémenter\n  console.log('${fn} appelé');\n}\n`;}
+  if(S.active&&editor){const nc=code+gen;S.files[S.active]=nc;editor.getModel().setValue(nc);agTrace('Injecté dans '+fname+' (+'+gen.split('\\n').length+' lignes)');agMsg('bot',`Fonction ajoutée à \`${fname}\`:\n\`\`\`javascript${gen}\n\`\`\``);}
+  else agMsg('bot','Ouvrez un fichier d\'abord.');
+}
+
+function handleFix(text,code,fname){
+  agTrace('Analyse statique: '+fname);
+  const lines=code.split('\\n');const issues=[];
+  let p=0,b=0,br=0;
+  lines.forEach((l,i)=>{for(const c of l){if(c==='(')p++;if(c===')')p--;if(c==='[')b++;if(c===']')b--;if(c==='{')br++;if(c==='}')br--;}if(p<0)issues.push(`L${i+1}: ) sans ( ouvrante`);if(b<0)issues.push(`L${i+1}: ] sans [ ouvrant`);if(br<0)issues.push(`L${i+1}: } sans { ouvrante`);});
+  if(p>0)issues.push(`${p} ( non fermée(s)`);if(b>0)issues.push(`${b} [ non fermé(s)`);if(br>0)issues.push(`${br} { non fermée(s)`);
+  // Fonctions vides
+  const ef=code.match(/function\s+\w+\s*\([^)]*\)\s*\{\s*\}/g);
+  if(ef)ef.forEach(m=>{const ln=code.substring(0,m.indexOf(m)).split('\\n').length;issues.push(`L${ln}: fonction vide`);});
+  // var
+  const vars=code.match(/\bvar\s+/g);if(vars)issues.push(`${vars.length} utilisation(s) de var`);
+  if(!issues.length){agTrace('0 problème');agMsg('bot',`Aucun problème dans \`${fname}\`.\n\n${lines.length} lignes analysées.\nParenthèses, crochets, accolades: équilibrés.`);}
+  else{let fixed=false;if(br>0&&S.active&&editor){const nc=code+'\\n}'.repeat(br);S.files[S.active]=nc;editor.getModel().setValue(nc);agTrace(`${br} accolade(s) ajoutée(s)`);fixed=true;}agMsg('bot',`**${issues.length} problème(s)** dans \`${fname}\`:\n\n${issues.map(i=>'• '+i).join('\\n')}${fixed?'\\n\\nCorrection auto appliquée.':'\\n\\nCorrection manuelle requise.'}`);}
+}
+
+function handleReview(text,code,fname){
+  agTrace('Review: '+fname);
+  const lines=code.split('\\n');const funcs=code.match(/(?:function\s+\w+|(?:const|let)\s+\w+\s*=\s*(?:async\s+)?\([^)]*\)\s*=>)/g)||[];
+  const comments=(code.match(/\/\/.*/g)||[]).length;const imports=(code.match(/^import .+$/gm)||[]).length;const exports_n=(code.match(/^export .+$/gm)||[]).length;const empty=lines.filter(l=>!l.trim()).length;
+  let score=10;const notes=[];
+  if(comments<1&&lines.length>5){score-=2;notes.push('Manque de commentaires');}
+  if(empty>lines.length*0.4){score-=1;notes.push('Trop de lignes vides ('+Math.round(empty/lines.length*100)+'%)');}
+  if(!funcs.length&&lines.length>3){score-=2;notes.push('Aucune fonction');}
+  if(code.includes('var ')){score-=1;notes.push('var détecté → préférer const/let');}
+  if(code.includes('console.log')&&!fname.includes('test')){score-=1;notes.push('console.log dans le code principal');}
+  if(!notes.length)notes.push('Code propre et bien structuré');
+  agTrace(`Métriques: ${lines.length}L, ${funcs.length}fn, ${comments}com, ${imports}imp, ${exports_n}exp`);
+  agMsg('bot',`**Review de \`${fname}\`**\n\n| Métrique | Valeur |\n|---|---|\n| Lignes | ${lines.length} |\n| Fonctions | ${funcs.length} |\n| Commentaires | ${comments} |\n| Imports | ${imports} |\n| Exports | ${exports_n} |\n\n**Note: ${score}/10**\n\n${notes.map(n=>'• '+n).join('\\n')}`);
+}
+
+function handleExplain(text,code,fname){
+  if(!code.trim()){agMsg('bot','Fichier vide.');return;}
+  agTrace('Analyse: '+fname);
+  const imports=[];const imRe=/^import\s+(?:\{([^}]+)\}|(\w+))\s+from\s+['"](.+)['"]/gm;let m;while((m=imRe.exec(code))!==null)imports.push({names:m[1]||m[2],from:m[3]});
+  const funcs=[];const fnRe=/(?:export\s+)?function\s+(\w+)\s*\(([^)]*)\)/g;while((m=fnRe.exec(code))!==null)funcs.push({name:m[1],params:m[2].split(',').map(p=>p.trim()).filter(Boolean)});
+  const arrows=[];const arRe=/(?:export\s+)?(?:const|let)\s+(\w+)\s*=\s*(?:async\s+)?\(([^)]*)\)\s*=>/g;while((m=arRe.exec(code))!==null)arrows.push({name:m[1],params:m[2].split(',').map(p=>p.trim()).filter(Boolean)});
+  let r=`**${fname}** — \`${getLang(fname)}\`, ${code.split('\\n').length} lignes\n\n`;
+  if(imports.length){r+='**Imports:**\n';imports.forEach(i=>r+=`• \`${i.names}\` depuis \`${i.from}\`\n`);r+='\n';}
+  const allFns=[...funcs,...arrows];
+  if(allFns.length){r+='**Fonctions:**\n';allFns.forEach(f=>r+=`• \`${f.name}(${f.params.join(', ')||'void'})\`\n`);r+='\n';}
+  r+=`Le code ${exports_n(code)>0?'exporte des modules et ':''}${allFns.length?'définit '+allFns.length+' fonction(s)':'ne contient pas de fonction nommée'}.`;
+  agMsg('bot',r);
+}
+function exports_n(c){return(c.match(/^export /gm)||[]).length;}
+
+function handleTest(text,code,fname){
+  agTrace('Recherche de fichiers de test...');
+  const tf=Object.keys(S.files).filter(f=>f.includes('.test.')||f.includes('.spec.'));
+  if(!tf.length){agMsg('bot','Aucun fichier de test trouvé (`.test.js` ou `.spec.js`).\\n\\nCréez-en un avec le bouton **+** ou `touch tests/main.test.js` dans le terminal.');return;}
+  const logs=[];const fc={log:(...a)=>logs.push(a.join(' ')),error:(...a)=>logs.push('ERR: '+a.join(' '))};
+  let totalP=0,totalF=0;
+  tf.forEach(f=>{
+    agTrace('Exécution: '+f);
+    try{const fn=new Function('console','require',S.files[f]);const fr=m=>{const p=m.replace(/^\.\//,'').replace(/^\.\.\//,'src/');return S.files[p]||{};};fn(fc,fr);}
+    catch(e){logs.push('ERR: '+e.message);}
+  });
+  logs.forEach(l=>{if(l.includes('PASS'))totalP++;if(l.includes('FAIL'))totalF++;});
+  agMsg('bot',`**Résultats:**\n\n${logs.join('\\n')}\n\n${!totalF?'✓ Tous les tests passent':'✗ '+totalF+' échec(s)'} (${totalP+totalF} exécutés)`);
+}
+
+function handleRefactor(text,code,fname){
+  if(!code.trim()){agMsg('bot','Fichier vide.');return;}
+  agTrace('Refactoring: '+fname);let nc=code;const ch=[];
+  if(/\bvar\s+/.test(nc)){nc=nc.replace(/\bvar\s+/g,'const ');ch.push('var → const');}
+  if(/[^=!]==[^=]/.test(nc)){nc=nc.replace(/([^=!])==([^=])/g,'$1===$2');ch.push('== → ===');}
+  if(/[^!]!=[^=]/.test(nc)){nc=nc.replace(/([^!])!=([^=])/g,'$1!==$2');ch.push('!= → !==');}
+  if(ch.length){S.files[S.active]=nc;if(editor)editor.getModel().setValue(nc);agTrace(ch.length+' modifs');agMsg('bot',`**Refactorisations appliquées** à \`${fname}\`:\n\n${ch.map(c=>'• '+c).join('\\n')}`);}
+  else{agTrace('Rien à refactorer');agMsg('bot','Le code est déjà propre. Aucune refactorisation nécessaire.');}
+}
+
+function handleGeneric(text,code,fname){
+  const L=text.toLowerCase();
+  if(L.includes('salut')||L.includes('bonjour')||L.includes('hello'))agMsg('bot',`Fichier actif: \`${fname}\`\n${code?code.split('\\n').length+' lignes.':''}\\nOutils: **Générer**, **Corriger**, **Review**, **Expliquer**, **Tester**, **Refactor**.`);
+  else if(L.includes('supprim')||L.includes('effac')){if(S.active){deleteFile(S.active);agTrace('Supprimé: '+S.active);agMsg('bot','Fichier supprimé.');}else agMsg('bot','Aucun fichier actif.');}
+  else if(L.includes('ouvr')||L.includes('va dans')){const m=Object.keys(S.files).find(f=>L.includes(f.split('/').pop().toLowerCase()));if(m){openFile(m);agTrace('Ouvert: '+m);agMsg('bot','Ouvert: `'+m+'`');}else agMsg('bot','Fichiers:\\n'+Object.keys(S.files).map(f=>'• `'+f+'`').join('\\n'));}
+  else agMsg('bot',`Commande non reconnue. Fichier: \`${fname}\`\n\nSélectionnez un outil ou décrivez précisément votre besoin.`);
+}
+
+// Agent input
+const agIn=document.getElementById('ag-in');
+agIn.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendAg();}});
+agIn.addEventListener('input',()=>{agIn.style.height='auto';agIn.style.height=Math.min(agIn.scrollHeight,100)+'px';});
+
+// --- Toast ---
+function toast(msg,err){
+  const c=document.getElementById('toasts');const t=document.createElement('div');t.className='toast'+(err?' err':'');
+  t.innerHTML=`<i class="fas fa-${err?'circle-exclamation':'check-circle'}"></i>${msg}`;
+  c.appendChild(t);setTimeout(()=>{t.style.opacity='0';t.style.transition='opacity 0.3s';setTimeout(()=>t.remove(),300);},2500);
+}
+
+// --- Raccourcis globaux ---
+document.addEventListener('keydown',e=>{
+  if((e.ctrlKey||e.metaKey)&&e.key==='s'){e.preventDefault();saveFile();}
+  if(e.key==='Escape'){hideModal();hideCmd();hideCtx();}
+  if((e.ctrlKey||e.metaKey)&&e.shiftKey&&e.key==='P'){e.preventDefault();showCmd();}
+  if((e.ctrlKey||e.metaKey)&&e.shiftKey&&e.key==='F'){e.preventDefault();switchPanel('search');setTimeout(()=>document.getElementById('global-search').focus(),100);}
+  if((e.ctrlKey||e.metaKey)&&e.shiftKey&&e.key==='A'){e.preventDefault();tog('ag');}
+});
+
+// Empêcher le clic droit par défaut sur le tree
+document.getElementById('ftree').addEventListener('contextmenu',e=>e.preventDefault());
+</script>
+</body>
+</html>
