@@ -9,7 +9,7 @@ import { cascadeServer } from './cascade-server'
 
 const root = fileURLToPath(new URL('.', import.meta.url))
 
-/** Cibles des 4 fournisseurs intégrés (sonde health + proxy partagé). */
+/** Cibles des 6 fournisseurs intégrés (sonde health + proxy partagé). */
 const PROVIDER_TARGETS: Record<string, string> = {
   openrouter: 'https://openrouter.ai',
   nvidia: 'https://integrate.api.nvidia.com',
@@ -40,7 +40,7 @@ function localKeys(): Plugin {
 
 
 /**
- * /api/health : état réseau de l'app + des 4 fournisseurs (HEAD/GET courts, 5 s max).
+ * /api/health : état réseau de l'app + des 6 fournisseurs (HEAD/GET courts, 5 s max).
  * Répond vite même si un fournisseur est hors ligne — chaque test a son propre timeout.
  */
 function healthEndpoint(): Plugin {

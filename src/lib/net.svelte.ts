@@ -1,4 +1,4 @@
-// État réseau ChatDeck : santé du serveur dev (proxy inclus) et des 4 fournisseurs.
+// État réseau ChatDeck : santé du serveur dev (proxy inclus) et des 6 fournisseurs.
 // Sondes /api/health (côté serveur Vite) + /api/openrouter (bout en bout via le proxy).
 // Alimente la bannière « réseau injoignable » et les indicateurs de la barre d'état.
 
@@ -16,7 +16,7 @@ export type ProbeResult = 'up' | 'down' | 'checking' | 'unknown'
 class NetState {
   /** État de la sonde proxy OpenRouter (le chemin critique : envoyer un message) */
   proxy = $state<ProbeResult>('unknown')
-  /** Détail des 4 fournisseurs (indicateurs de la barre d'état) */
+  /** Détail des 6 fournisseurs (indicateurs de la barre d'état) */
   providers = $state<Record<string, ProviderHealth>>({})
   allUp = $state(false)
   /** Dernière sonde réussie (évite de re-sonder en boucle quand tout va bien) */
@@ -33,7 +33,7 @@ class NetState {
     return this.proxy === 'down'
   }
 
-  /** Sonde complète : health (4 providers) + test réel du proxy /api/openrouter. */
+  /** Sonde complète : health (6 providers) + test réel du proxy /api/openrouter. */
   async probe(): Promise<void> {
     if (this.checking) return
     this.checking = true

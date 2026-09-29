@@ -4,12 +4,19 @@
 
 ### Corrigé
 - **« OpenRouter : réponse vide (modèle saturé ?) » en app packagée** : le
-  proxy des 4 fournisseurs intégrés (`/api/openrouter`…) n'existait que dans
+  proxy des fournisseurs intégrés (`/api/openrouter`…) n'existait que dans
   `server.proxy` de Vite — l'api-server autonome de l'app renvoyait le
   fallback SPA (index HTML, HTTP 200), lu comme du SSE sans `data:`. Nouveau
   `provider-proxy-server.ts` partagé : plugin Vite (remplace `server.proxy`,
   doublon retiré) + `providerProxyMount` dans `ChatDeckApi`. Verrous e2e :
   le POST ne doit jamais renvoyer le fallback SPA (7/7 standalone).
+- **« Failed to fetch » aléatoires** : Vite écoutait sur les deux piles et
+  `localhost` se résolvait dans un ordre variable — `host: '127.0.0.1'`
+  explicite dans vite.config.ts.
+- **Crash vite si un spawn MCP échoue** : `spawn npx` ENOENT sous launchd
+  levait un `error` non géré → série e2e instable (9,6 min, 17→27 tests).
+  Handler `child.on('error')` + retrait du process mort — e2e **33/33 en
+  ~30 s**.
 
 ### Ajouté
 - **Tuteur générique** (fiche agent `tuteur.cd`) : révision flashcards de
@@ -24,6 +31,17 @@
 - **Outils OCR PDF scanné** : `tools/render-pdf.mjs` (pdfjs-dist) +
   `tools/ocr-vision.js` (Vision macOS via JXA, zéro compilation) — fiche
   skill `ocr-pdf`.
+- **2 nouveaux fournisseurs intégrés : Groq et xAI** (6 au total) — Groq
+  (path `/openai/v1` : GPT-OSS 120B/20B, Llama 3.3, Qwen3 ; clé gratuite sur
+  console.groq.com) et xAI (path `/v1` : Grok 4, Grok Code Fast). Clés
+  optionnelles dans ⚙︎ Réglages ou `keys.local.json`.
+- **Badges de prix dans le ModelPicker** : « gratuit » (prompt+completion à
+  0 $) sinon USD/Mtok prompt/completion, plus la taille de contexte — et le
+  modèle courant reste listé même hors catalogue.
+- **Connecteurs intégrés web et browser-use** (5 au total) : **web**
+  (historique web_search, favoris, cache des pages fetchées —
+  `~/.chatdeck/web.local.json`) et **browser-use** (pilotage navigateur,
+  16 outils via le serveur MCP de `~/.chatdeck/mcp-servers.local.json`).
 
 ## 0.4.8
 

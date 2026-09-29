@@ -40,11 +40,23 @@ arrêt via `npm run dev:bg:stop` — indispensable après un redémarrage de mac
 
 ## Réseau et santé
 
-- `/api/health` (vite.config.ts) sonde les 4 providers (cache TTL 10 s, timeout
-  5 s) et renvoie `{ok, server, providers:{id:{up,status,ms}}, allUp}`.
+- **6 fournisseurs intégrés** : openrouter, nvidia, cohere, mistral, groq
+  (path `/openai/v1`), xai (path `/v1`) — définis dans `PROVIDERS` (llm.ts),
+  clés dans `Keys` (store.ts).
+- **Proxy fournisseurs partagé** (`provider-proxy-server.ts`) : plugin Vite
+  `providerProxyServer()` en dev **et** `providerProxyMount` monté dans
+  `ChatDeckApi.start()` en app packagée. Ne jamais remettre de `server.proxy`
+  pour les fournisseurs — c'est l'oubli de ce mount en packagé qui causait
+  « réponse vide » (0.4.9). Verrous e2e dans `e2e/standalone-api.spec.ts`.
+- `/api/health` sonde les providers (cache TTL 10 s, timeout 5 s) et renvoie
+  `{ok, server, providers:{id:{up,status,ms}}, allUp}`.
+- Vite écoute en **IPv4 explicite** (`host: '127.0.0.1'` dans vite.config.ts) :
+  ne pas repasser à `localhost` — l'ordre de résolution v4/v6 variait et
+  provoquait des « Failed to fetch » aléatoires.
 - Côté client : `src/lib/net.svelte.ts` (singleton `net`) sonde le proxy toutes
   les 60 s ; `NetworkBanner.svelte` affiche un « Réessayer » si le proxy est
-  down, et StatusBar montre des pastilles vert/rouge par provider.
+  down (hystérésis : 2 échecs consécutifs), et StatusBar montre des pastilles
+  vert/rouge par provider.
 
 ## Interface (éléments récents)
 
@@ -104,6 +116,31 @@ arrêt via `npm run dev:bg:stop` — indispensable après un redémarrage de mac
   mac→windows→mac ne laisse plus de fichiers résiduels.
 - **Rangement Obsidian** : SettingsPanel regroupe les notes par dossier
   (`groupNotes`, `vaultSummary` dans organize.ts).
+- **ModelPicker** : badges « gratuit » / `formatPrice()` (USD/Mtok) + ctx k ;
+  le modèle courant reste listé même hors catalogue (recherche « codex » →
+  gpt-5.1-codex dans les 460 modèles OpenRouter).
+- **Connecteurs intégrés** : `BUILTIN_CONNECTORS` (store.ts) = 5 — workspace,
+  deck, horloge, **web** (`local://web`, historique/favoris/cache via
+  `~/.chatdeck/web.local.json`) et **browser-use** (`local://mcp`, serveur MCP
+  de `~/.chatdeck/mcp-servers.local.json`).
+- **Spawn MCP anti-crash** (sandbox-server.ts) : `child.on('error')` +
+  `mcpProcs.delete(name)` — un spawn raté (ex. `npx` ENOENT sous launchd) ne
+  fait plus crasher vite. C'est ce qui rendait les e2e instables (9,6 min,
+  17→27 tests passés) ; depuis : 33/33 en ~30 s.
+- **Tuteur générique** (fiche globale `tuteur.cd`, remplace tuteur-nexus) :
+  flashcards une carte/message, verdicts ✅/🟡/❌, persiste `progress.md` dans
+  le coffret. Précharge auto : `tutorCardsBlock()` (App.svelte, async) matche
+  `quiz|r[eé]vis\w*` et injecte `[CARTES DU COFFRET « X »]` (anki.md/quiz.md,
+  tronqué 24k) dans le system via /api/sandbox.
+- **Outils StudyVault** : `tools/anki-export.mjs` (<coffret>|`--all <racine>`,
+  sources anki.md Q:/R:/T: ou quiz.md), `tools/render-pdf.mjs` (pdfjs-dist→PNG)
+  et `tools/ocr-vision.js` (OCR Vision macOS via JXA — zéro compilation,
+  remplace un swiftc bloqué). Fiches globales : `ocr-pdf`, `studyvault-anki`.
+- **App/install** : build mac **x64-only** (`build.mac.target`), DMG créée à la
+  main en UDZO (`docs/hdiutil-contournement.md`) — le DMG-mounter
+  d'electron-builder reste bloqué (diskarbitrationd). Les fiches globales
+  vivent dans `~/.chatdeck/` : le bundle n'a pas de `.cd/` et « global » a
+  priorité. LaunchAgents documentés dans `docs/launchagents.md`.
 
 ## Règles du projet
 

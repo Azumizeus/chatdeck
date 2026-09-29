@@ -40,9 +40,11 @@ login
 `~/Library/LaunchAgents/com.mickael.chatdeck.plist` — **KeepAlive + RunAtLoad**.
 ProgramArguments : binaire node **direct** (jamais `npx`, voir pièges) +
 `node_modules/vite/bin/vite.js --port 5199 --strictPort`. Logs :
-`~/Library/Logs/chatdeck-vite.log`. Vite écoute en **IPv6 `[::1]`** : `curl
-http://127.0.0.1:5199` peut échouer là où `http://localhost:5199` (les deux
-piles) ou `http://[::1]:5199` répondent 200.
+`~/Library/Logs/chatdeck-vite.log`. Depuis 0.4.9, Vite écoute en **IPv4
+explicite** (`host: '127.0.0.1'` dans vite.config.ts) :
+`curl http://127.0.0.1:5199` répond 200. (Avant : écoute double-pile et ordre
+de résolution de `localhost` variable → « Failed to fetch » aléatoires —
+raison du fix.)
 
 ### 2. `com.mickael.chatdeck-watchdog` — le gardien de vite
 
@@ -99,6 +101,9 @@ process ChatDeck, puis écrit le bilan dans
 2026-09-29 01:31:07 BILAN: 4/4 services up
 ```
 
+(Log historique, pris avant le fix IPv4 de 0.4.9 : à l'époque vite répondait
+en v6 seulement. Depuis, c'est `v4=200` qui est attendu.)
+
 Après un reboot : `cat ~/Library/Logs/chatdeck-postboot.log` — c'est tout.
 
 ## Commandes utiles
@@ -129,8 +134,10 @@ Un plist modifié doit être rechargé : `bootout` puis `bootstrap` (ou
 4. **Port de l'api-server** : aléatoire à chaque lancement de l'app — ne pas
    lire `~/.chatdeck/chatdeck-port.txt` (périmé), utiliser la commande
    `lsof` ci-dessus.
-5. **IPv4/IPv6** : vite écoute `[::1]` ; sonder les deux piles (le watchdog et
-   le postboot le font).
+5. **IPv4/IPv6** : depuis 0.4.9 vite écoute `127.0.0.1` uniquement —
+   `v4=200` attendu au postboot. Le watchdog et le postboot sondent les deux
+   piles, sans danger. (Avant le fix : double-pile, ordre de résolution
+   variable → « Failed to fetch » aléatoires.)
 6. **freellm lent** : 10-60 s par requête sur les modèles gratuits — pas un
    bug ; la cascade (cascade-server.ts, timeout 60 s) bascule vers le maillon
    suivant si besoin.

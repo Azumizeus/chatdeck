@@ -21,7 +21,15 @@ Après avoir coupé OpenHands (conteneur 3,8 GB / 200 % CPU), ChatDeck offre le 
 | **NVIDIA NIM** | Nemotron 3 Super 120B, Nemotron 3.5 Lightning 30B | lightning parfois saturé |
 | **Cohere** | Command A, Command R+ | rapide (< 2 s), validé |
 | **Mistral** | Mistral Large, Codestral | clé souvent rate-limitée (429) |
+| **Groq** | GPT-OSS 120B/20B, Llama 3.3 70B, Qwen3 32B | inférence ultra-rapide, clé gratuite (console.groq.com) |
+| **xAI Grok** | Grok 4, Grok 4 Fast, Grok Code Fast, Grok 3 Mini | bon en code et raisonnement |
 | **⭑ Personnalisés** | n'importe quel endpoint OpenAI-compatible | ajoutés depuis les réglages, proxifiés génériquement |
+
+Les 6 fournisseurs intégrés partagent le même proxy (`provider-proxy-server.ts`) :
+plugin Vite en dev **et** monté dans l'api-server de l'app packagée — un POST
+`/api/<fournisseur>/…` ne peut plus tomber sur le fallback SPA. **Cascade** :
+`omniroute → freellm → groq → cerebras → mistral → cohere → gemini → openrouter →
+anthropic` — les deux premiers maillons sont des serveurs locaux (LaunchAgents).
 
 ## Démarrer
 
@@ -29,7 +37,7 @@ Après avoir coupé OpenHands (conteneur 3,8 GB / 200 % CPU), ChatDeck offre le 
 npm install
 
 # Clés optionnelles en dev (préchargées auto) — gitignore :
-echo '{"openrouter":"sk-or-…","nvidia":"nvapi-…","cohere":"…","mistral":"…"}' > keys.local.json
+echo '{"openrouter":"sk-or-…","nvidia":"nvapi-…","cohere":"…","mistral":"…","groq":"gsk_…","xai":"xai-…"}' > keys.local.json
 
 npm run dev          # http://localhost:5199
 npm run dev:bg       # Vite en tâche de fond (port 5199) — arrêt : npm run dev:bg:stop
@@ -45,7 +53,7 @@ ChatDeck existe aussi en vraie app macOS (Electron, fenêtre cadre native) :
 npm run app            # build + ouvre l'app de bureau
 npm run app:dev        # app de bureau branchée sur le serveur Vite (hot reload)
 npm run app:multi      # instance SUPPLÉMENTAIRE indépendante (localStorage séparé)
-npm run dmg            # fabrique release/ChatDeck-<version>.dmg (arm64 + x64)
+npm run dmg            # fabrique release/ChatDeck-<version>.dmg (x64, build.mac.target)
 ```
 
 Par défaut une seule instance tourne : relancer l'app focus la fenêtre existante.
@@ -55,9 +63,10 @@ comparer deux conversations côte à côte. La palette ⌘K a aussi une commande
 de bureau, endpoint `/api/sandbox/launch-instance` en web). L'app porte l'icône
 éclair ⚡ ChatDeck dans le Dock et le DMG (`build/icon.icns`, régénérable par
 `node tools/gen-icon.mjs` — PNG écrit sans dépendance). Le DMG n'est pas signé
-(usage local) : au premier lancement, clic droit → Ouvrir.
+(usage local) : au premier lancement, clic droit → Ouvrir. Montage bloqué ? Voir
+`docs/hdiutil-contournement.md` (création UDZO manuelle prouvée).
 
-Les clés se saisissent aussi dans **⚙︎ Réglages** (⌘K → « Réglages ») : test en direct par fournisseur, stockage `localStorage`, jamais envoyées ailleurs qu'au fournisseur choisi (via le proxy Vite). Fournisseurs custom : `custom-providers.local.json` (gitignore) alimente le proxy générique.
+Les clés se saisissent aussi dans **⚙︎ Réglages** (⌘K → « Réglages ») : test en direct par fournisseur, stockage `localStorage`, jamais envoyées ailleurs qu'au fournisseur choisi (via le proxy fournisseurs). Fournisseurs custom : `custom-providers.local.json` (gitignore) alimente le proxy générique.
 
 En app packagée, l'UI et les endpoints `/api/*` sont servis par un petit serveur
 local (`http://127.0.0.1:<port>`, spawné par Electron : bundle
@@ -125,7 +134,14 @@ npm run build        # bundle production + build:api (electron/api-server.mjs)
 
 ### Modèles
 - **Catalogue OpenRouter complet** : combobox avec recherche (nom, id, contexte), navigation clavier, saisie libre de n'importe quel id, cache 10 min, repli sur la liste courte
+- **Badges de prix** dans le ModelPicker : « gratuit » (prompt+completion à 0 $) sinon USD/Mtok prompt/completion, plus la taille de contexte ; le modèle courant reste listé même hors catalogue
 - **Fournisseurs personnalisés** : nom, base URL, en-tête d'auth, clé, models en CSV, bouton « tester »
+
+### StudyVault & tuteur (apprentissage)
+- **Coffrets d'étude** `StudyVault/<nom>/` : README, notes, quiz, `anki.md` (source canonique des cartes) et `progress.md` (reprise de session)
+- **Tuteur générique** 🎓 (fiche agent globale) : une carte par message, verdicts ✅/🟡/❌, score courant, progression persistée dans le coffret — « quiz » / « révise <coffret> » dans le message précharge les cartes dans le prompt système
+- **Export Anki** : `node tools/anki-export.mjs <coffret>` (ou `--all <racine>`) — TSV natif Anki 23.10+, sources `anki.md` ou `quiz.md`
+- **OCR PDF scanné** : `tools/render-pdf.mjs` (pdfjs-dist → PNG) + `tools/ocr-vision.js` (Vision macOS via JXA, zéro compilation)
 
 ### Vie privée & données
 - **Mode incognito 👻** (⌘⇧N) : conversation éphémère jamais écrite dans `localStorage` (id en `sessionStorage`, fin de session = fin des 👻), badge visible, **fusion manuelle** dans l'historique
@@ -189,10 +205,11 @@ src/
         ├── ChatMessage.svelte    # bulle markdown sûre + badges agents
         └── Popout.svelte         # fenêtre secondaire synchronisée
 sandbox-server.ts                # sandbox disque : bootstrap/arbre/fichiers/exec/terminal (dev)
-vite.config.ts                    # proxies par fournisseur + /api/health (santé providers) + /keys.local (dev)
+vite.config.ts                    # /api/health (santé providers) + /keys.local (dev)
+provider-proxy-server.ts          # proxy des 6 fournisseurs (plugin Vite + monté dans l'api-server app)
 ```
 
-Le navigateur ne parle **qu'à localhost** : fournisseurs intégrés proxifiés par Vite (SSE inclus), fournisseurs custom relayés par le proxy générique vers leur base URL. En production : `npm run build` + reverse-proxy équivalent.
+Le navigateur ne parle **qu'à localhost** : fournisseurs intégrés proxifiés par le serveur (plugin Vite en dev, api-server en app, SSE inclus), fournisseurs custom relayés par le proxy générique vers leur base URL. En production : `npm run build` + reverse-proxy équivalent.
 
 ## Stack
 
@@ -205,6 +222,7 @@ Le navigateur ne parle **qu'à localhost** : fournisseurs intégrés proxifiés 
 - `src/lib/cost.test.ts` — usage réel vs estimé, tarifs catalogue vs repli, formatage des coûts
 - `src/lib/float.test.ts` — resize 8 directions (minima, viewport), zones de snap, cycle, enfoncement
 - `src/lib/search.test.ts` — extraits, casse, plafonnement par conversation, agents
+- `e2e/standalone-api.spec.ts` — le VRAI serveur autonome (bundle sandbox-server) : endpoints, cascade, et le POST `/api/<fournisseur>/…` ne renvoie jamais le fallback SPA
 
 ## Onglets frères
 

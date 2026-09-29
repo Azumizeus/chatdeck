@@ -38,7 +38,7 @@
     {
       emoji: '📡',
       title: 'Réseau & raccourcis',
-      body: 'Les pastilles vertes/rouges en bas à gauche montrent l\'état des 4 fournisseurs (sonde 1×/min). Si OpenRouter devient injoignable, une bannière avec « réessayer » apparaît. Raccourcis : ⌘K palette, ⌘N nouvelle conv, ⌘⇧F recherche.',
+      body: 'Les pastilles vertes/rouges en bas à gauche montrent l\'état des 6 fournisseurs (sonde 1×/min). Si OpenRouter devient injoignable, une bannière avec « réessayer » apparaît. Raccourcis : ⌘K palette, ⌘N nouvelle conv, ⌘⇧F recherche.',
       action: { label: 'Relancer la sonde réseau', cmd: 'net' },
     },
   ]
