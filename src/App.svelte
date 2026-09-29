@@ -114,8 +114,8 @@
   function tourAction(cmd: string): void {
     if (cmd === 'agents') setAgents(current?.agents?.length ? [] : ['nexus', 'seeker'])
     else if (cmd === 'duel') toggleDuel()
-    else if (cmd === 'files') showFiles = true
-    else if (cmd === 'graph') showGraph = true
+    else if (cmd === 'files') toggleToolDock('files')
+    else if (cmd === 'graph') toggleToolDock('graph')
     else if (cmd === 'net') void net.probe()
   }
 
@@ -846,10 +846,10 @@
         setAgents(c?.agents?.length ? [] : ['nexus', 'seeker'])
         return true
       case '/fichiers':
-        openHub('files')
+        toggleToolDock('files', cid)
         return true
       case '/terminal':
-        openHub('terminal')
+        toggleToolDock('terminal', cid)
         return true
       default:
         // Commande inconnue : le texte partira au modèle tel quel.
@@ -1118,15 +1118,9 @@
   }
 
   function toggleTerminal(): void {
-    // Terminal : dock outils à droite (comme Réglages) quand le hub est fermé ;
-    // sous le composer sinon (comportement historique conservé).
-    if (showHub) {
-      openHub('terminal')
-      return
-    }
-    if (!showTerminal) terminalConvId = currentId
-    showTerminal = !showTerminal
-    dockTool = showTerminal ? 'terminal' : null
+    // Terminal : dock outils à droite (comme Réglages), dans TOUS les modes
+    // (docké, flottant, duel) — plus de détour par la fenêtre hub.
+    toggleToolDock('terminal')
   }
 
   /** Exécution d'outil avec erreur capturée (utilisé par la gate de permissions).
@@ -1200,23 +1194,22 @@
   }
 
   /** Dock outils à droite (comme Réglages) : un seul panneau actif à la fois. */
-  type DockTool = 'files' | 'terminal' | 'preview' | 'cascade' | null
+  type DockTool = 'files' | 'terminal' | 'preview' | 'graph' | 'cascade' | null
   let dockTool = $state<DockTool>(null)
   function toggleToolDock(tool: Exclude<DockTool, null>, convId?: string): void {
     if (tool === 'files') filesConvId = convId ?? currentId
     if (tool === 'terminal') terminalConvId = convId ?? currentId
     if (tool === 'preview') previewConvId = convId ?? currentId
-    // Si le hub est ouvert, il prend l'onglet correspondant (comportement IDE) ;
-    // sinon le panneau se dock à droite du chat, comme Réglages.
-    // (« cascade » n'existe pas comme onglet hub : il reste toujours en dock.)
-    if (showHub && tool !== 'cascade') {
-      openHub(tool)
-      return
-    }
+    // Les outils se dockent TOUJOURS à droite du chat (comme Réglages) —
+    // y compris en mode duel et en fenêtre flottante. Le hub (bouton 🗂)
+    // reste disponible, mais n'est plus un passage obligé : plus d'overlay
+    // flottant par-dessus le chat quand on clique Fichiers/Terminal.
     dockTool = dockTool === tool ? null : tool
-    if (tool === 'files') showFiles = dockTool === 'files'
-    if (tool === 'terminal') showTerminal = dockTool === 'terminal'
-    if (tool === 'preview') showPreview = dockTool === 'preview'
+    // Synchro des 3 états (pas seulement l'outil cliqué) : basculer Fichiers →
+    // Terminal ne doit pas laisser le bouton Fichiers surligné.
+    showFiles = dockTool === 'files'
+    showTerminal = dockTool === 'terminal'
+    showPreview = dockTool === 'preview'
   }
 
   /** Fichiers : hub s'il est ouvert, sinon dock outils à droite. */
@@ -1225,16 +1218,10 @@
   }
 
   /** Exécuter (FilesPanel, Secure AI phase 4) : affiche la sortie du terminal
-   * du fil — sous le composer si le terminal est déjà docké dessus, sinon
-   * dock outils. Ne réactive JAMAIS un onglet hub ouvert (il resterait masqué). */
+   * du fil — le dock outils existe dans TOUS les modes : on l'active simplement. */
   function onFilesExec(convId: string): void {
-    if (showHub && hubActive === 'terminal') return
-    if (showTerminal && terminalConvId === convId) return
     terminalConvId = convId
-    if (showTerminal) return
-    if (showHub) return
-    showTerminal = true
-    dockTool = 'terminal'
+    if (dockTool !== 'terminal') dockTool = 'terminal'
   }
 
   /** Preview : hub s'il est ouvert, sinon dock outils à droite. */
@@ -1572,7 +1559,7 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
     { id: 'agents', label: current?.agents?.length ? 'Désactiver les agents Nexus & Seeker' : 'Activer les agents Nexus & Seeker (sandbox)', run: () => setAgents(current?.agents?.length ? [] : ['nexus', 'seeker']) },
     { id: 'collab', label: 'Collaboration : Nexus + PromptDeck en parallèle (workspace partagé)', run: startCollab },
     { id: 'files', label: showFiles ? 'Fermer le panneau Fichiers (sandbox)' : 'Ouvrir le panneau Fichiers (sandbox)', run: () => (showFiles = !showFiles) },
-    { id: 'graph', label: 'Graphe Graphify (fenêtre outils)', run: () => openHub('graph') },
+    { id: 'graph', label: 'Graphe Graphify (docké à droite)', run: () => toggleToolDock('graph') },
     { id: 'commit', label: 'Commit auto de la sandbox (git add + commit)', run: () => currentId && void autoCommit(currentId) },
     { id: 'search', label: 'Rechercher dans toutes les conversations', hint: '⌘⇧F', run: () => (showSearch = true) },
     { id: 'hub', label: showHub ? 'Fermer la fenêtre outils' : 'Fenêtre outils : Graphify, Fichiers, Terminal, Preview, Réglages', run: () => openHub(hubTab) },
@@ -1599,16 +1586,16 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
     streaming={anyStreaming}
     duelActive={Boolean(layout.duel)}
     agentsActive={Boolean(current?.agents?.length)}
-    filesOpen={showFiles}
-    terminalOpen={showTerminal}
-    previewOpen={showPreview}
-    graphOpen={showGraph}
+    filesOpen={showFiles || dockTool === 'files'}
+    terminalOpen={showTerminal || dockTool === 'terminal'}
+    previewOpen={showPreview || dockTool === 'preview'}
+    graphOpen={dockTool === 'graph'}
     onToggleAgents={() => setAgents(current?.agents?.length ? [] : ['nexus', 'seeker'])}
     onToggleDuel={toggleDuel}
     onToggleFiles={() => toggleFiles()}
     onToggleTerminal={toggleTerminal}
     onTogglePreview={() => togglePreview()}
-    onToggleGraph={() => openHub('graph')}
+    onToggleGraph={() => toggleToolDock('graph')}
     onToggleHub={() => openHub(hubTab)}
     hubOpen={showHub}
     onSearch={() => (showSearch = true)}
@@ -1720,61 +1707,68 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
       {/if}
     </main>
 
-    {#if !layout.layout.settingsCollapsed && !(showHub && hubActive === 'settings')}
-      <div class="dock-right" style="width: {layout.layout.settingsWidth}px">
-        <SettingsPanel
-          {keys}
-          {settings}
-          {customs}
-          onKeys={(k) => (keys = k)}
-          onSettings={(s) => (settings = s)}
-          onAddCustom={() => {
-            const id = `custom:${Math.random().toString(36).slice(2, 7)}`
-            customs = [...customs, { id, name: 'Nouveau fournisseur', baseUrl: '', keyHeader: 'Authorization', models: [] }]
-          }}
-          onUpdateCustom={(p) => (customs = customs.map((x) => (x.id === p.id ? p : x)))}
-          onRemoveCustom={(id) => (customs = customs.filter((x) => x.id !== id))}
-          onClose={() => layout.toggleSettings()}
-          onPopout={() => void popout('settings')}
-          onSendNote={send}
-          onReplayTour={() => (showTour = true)}
-        />
-        <div class="splitter" role="separator" aria-orientation="vertical"
-          onpointerdown={(e) => startSettingsResize(e)}
-          ondblclick={() => layout.setSettingsWidth(400)}
-        ></div>
-      </div>
-    {/if}
-
-    <!-- Dock outils à droite (comme Réglages) : Fichiers / Terminal / Preview,
-         quand le hub est fermé et que l'outil est demandé depuis la toolbar. -->
-    {#if dockTool && !showHub && (dockTool !== 'terminal' || hubActive !== 'terminal')}
-      <div class="dock-right dock-tools" style="width: {Math.max(300, Math.min(560, layout.layout.settingsWidth))}px">
-        {#if dockTool === 'files'}
-          {#if filesFid && filesConv}
-            <FilesPanel convId={filesFid} enabled={Boolean(filesConv.agents?.length)} onExec={onFilesExec} onClose={() => { dockTool = null; showFiles = false }} />
-          {:else}
-            <p class="hub-empty">Aucune conversation — crée-en une pour voir ses fichiers.</p>
-          {/if}
-        {:else if dockTool === 'terminal'}
-          {#if terminalConvId}
-            <TerminalPanel convId={terminalConvId} onClose={() => { dockTool = null; showTerminal = false }} />
-          {:else}
-            <p class="hub-empty">Aucune conversation pour le terminal.</p>
-          {/if}
-        {:else if dockTool === 'preview' && (previewConvId ?? currentId)}
-          <PreviewPanel convId={previewConvId ?? currentId!} onClose={() => { dockTool = null; showPreview = false }} />
-        {:else if dockTool === 'cascade'}
-          <CascadePanel onClose={() => (dockTool = null)} />
-        {/if}
-      </div>
-    {/if}
+    {@render rightDocks()}
     {#if showPalette}
       <!-- Palette ⌘K ancrée à la fenêtre IDE (absolute dans .body), pas un
            overlay fixed sur tout l'écran — le hub reste visible à côté. -->
       <CommandPalette {commands} onClose={() => (showPalette = false)} />
     {/if}
   </div>
+{/snippet}
+
+<!-- Docks DROITS réutilisés dans tous les modes (docké, flottant, duel) :
+     Réglages, puis les outils (Fichiers/Terminal/Preview/Graphify/Cascade)
+     empilés côté à côte verticalement — le même pattern que la capture
+     « Réglages + Preview ». Un seul outil à la fois (dockTool). -->
+{#snippet rightDocks()}
+  {#if !layout.layout.settingsCollapsed && !(showHub && hubActive === 'settings')}
+    <div class="dock-right" style="width: {layout.layout.settingsWidth}px">
+      <SettingsPanel
+        {keys}
+        {settings}
+        {customs}
+        onKeys={(k) => (keys = k)}
+        onSettings={(s) => (settings = s)}
+        onAddCustom={() => {
+          const id = `custom:${Math.random().toString(36).slice(2, 7)}`
+          customs = [...customs, { id, name: 'Nouveau fournisseur', baseUrl: '', keyHeader: 'Authorization', models: [] }]
+        }}
+        onUpdateCustom={(p) => (customs = customs.map((x) => (x.id === p.id ? p : x)))}
+        onRemoveCustom={(id) => (customs = customs.filter((x) => (x.id !== id)))}
+        onClose={() => layout.toggleSettings()}
+        onPopout={() => void popout('settings')}
+        onSendNote={send}
+        onReplayTour={() => (showTour = true)}
+      />
+      <div class="splitter" role="separator" aria-orientation="vertical"
+        onpointerdown={(e) => startSettingsResize(e)}
+        ondblclick={() => layout.setSettingsWidth(400)}
+      ></div>
+    </div>
+  {/if}
+  {#if dockTool}
+    <div class="dock-right dock-tools" style="width: {Math.max(300, Math.min(560, layout.layout.settingsWidth))}px">
+      {#if dockTool === 'files'}
+        {#if filesFid && filesConv}
+          <FilesPanel convId={filesFid} enabled={Boolean(filesConv.agents?.length)} onExec={onFilesExec} onClose={() => { dockTool = null; showFiles = false }} />
+        {:else}
+          <p class="hub-empty">Aucune conversation — crée-en une pour voir ses fichiers.</p>
+        {/if}
+      {:else if dockTool === 'terminal'}
+        {#if terminalConvId}
+          <TerminalPanel convId={terminalConvId} onClose={() => { dockTool = null; showTerminal = false }} />
+        {:else}
+          <p class="hub-empty">Aucune conversation pour le terminal.</p>
+        {/if}
+      {:else if dockTool === 'preview' && (previewConvId ?? currentId)}
+        <PreviewPanel convId={previewConvId ?? currentId!} onClose={() => { dockTool = null; showPreview = false }} />
+      {:else if dockTool === 'graph'}
+        <GraphPanel {conversations} onOpen={(id) => selectChat(id)} onClose={() => (dockTool = null)} />
+      {:else if dockTool === 'cascade'}
+        <CascadePanel onClose={() => (dockTool = null)} />
+      {/if}
+    </div>
+  {/if}
 {/snippet}
 
 <!-- Une colonne de conversation, réutilisée pour les deux côtés du duel -->
@@ -1792,7 +1786,7 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
       onToggleAgents={() => setAgentsFor(convId, c.agents?.length ? [] : ['nexus', 'seeker'])}
       onToggleDuel={toggleDuel}
       onToggleFiles={() => toggleFiles(convId)}
-      onToggleTerminal={() => { terminalConvId = convId; showTerminal = !showTerminal }}
+      onToggleTerminal={() => toggleToolDock('terminal', convId)}
       onSearch={() => (showSearch = true)}
       onSettings={() => layout.toggleSettings()}
     />
@@ -1899,6 +1893,10 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
         <div class="duel-col" data-conv={layout.duel.right} style="width:{100 - layout.duelSplit}%">
           {@render convPane(layout.duel.right)}
         </div>
+        <!-- Les outils SE DOCKENT à droite du duel, côte à côte comme Réglages
+             + Preview (bug 0.4.10 : Fichiers/Terminal n'apparaissaient nulle
+             part en duel, ou partaient dans le hub flottant par-dessus le chat). -->
+        {@render rightDocks()}
       </div>
       <div class="verdictbar">
         <select bind:value={arbitreModel} title="Modèle arbitre">
@@ -1920,7 +1918,7 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
         <button class="ghost" onclick={() => void autoCommit(layout.duel!.left)} disabled={commitBusy} title="git add + commit de la sandbox via l'endpoint sécurisé">
           {commitBusy ? '…' : '⑂ commit auto'}
         </button>
-        <button class="ghost" class:active={showGraph} onclick={() => openHub('graph')} title="Graphe des conversations et workspaces (fenêtre outils)">🕸</button>
+        <button class="ghost" class:active={dockTool === 'graph'} onclick={() => toggleToolDock('graph')} title="Graphify : graphe des conversations et workspaces (docké à droite)">🕸</button>
         <button class="ghost quit" onclick={toggleDuel} title="Quitter le mode duel (la barre principale est fusionnée dans les colonnes)">✕ quitter le duel</button>
       </div>
       {#if verdict}
