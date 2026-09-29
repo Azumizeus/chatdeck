@@ -36,7 +36,7 @@ export const PROVIDERS: Provider[] = [
     label: 'OpenRouter',
     base: '/api/openrouter',
     path: '/api/v1',
-    docs: '458 modèles — GPT, Claude, Llama, Grok…',
+    docs: 'Catalogue complet (~460 modèles) — GPT, Claude, Llama, Grok…',
     color: '#4f8cff',
     models: [
       { id: 'openai/gpt-4.1-mini', label: 'GPT-4.1 mini (rapide)' },

@@ -1634,7 +1634,7 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
         {#if showCleanup}
           <CleanupBanner onDone={() => (showCleanup = false)} />
         {/if}
-        <div class="messages" bind:this={scroller}>
+        <div class="messages" bind:this={scroller} role="log" aria-label="Messages de la conversation" aria-live="polite">
           {#if current.messages.length === 0}
             <div class="hero">
               <div class="logo">⚡</div>
@@ -1773,9 +1773,9 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
       <span class="dot" style="background:{providerOf(c.providerId, customs).color}"></span>
       <span class="col-title">{c.incognito ? '👻 ' : ''}{c.title}</span>
       <span class="mono col-model">{c.model}</span>
-      <button class="mini" onclick={() => stop(convId)} disabled={!streamingIds.has(convId)} title="Arrêter">■</button>
+      <button class="mini" onclick={() => stop(convId)} disabled={!streamingIds.has(convId)} title="Arrêter" aria-label="Arrêter la génération">■</button>
     </div>
-    <div class="messages">
+    <div class="messages" role="log" aria-label="Messages du duel" aria-live="polite">
       {#each c.messages as m, i (i)}
         <div class="msg" class:flash={flashTs === m.ts} data-ts={m.ts}>
           <ChatMessage msg={m} />

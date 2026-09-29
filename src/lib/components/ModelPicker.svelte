@@ -14,7 +14,7 @@
   let {
     value,
     onCommit,
-    placeholder = 'openai/gpt-4.1-mini — tape pour chercher (458 modèles)',
+    placeholder = 'openai/gpt-4.1-mini — tape pour chercher',
   }: {
     value: string
     onCommit: (modelId: string) => void
@@ -115,9 +115,13 @@
     {placeholder}
     spellcheck="false"
     autocomplete="off"
+    role="combobox"
+    aria-expanded={openList}
+    aria-controls="model-listbox"
+    aria-label="Modèle (recherche dans le catalogue)"
   />
   {#if openList}
-    <div class="list" role="listbox">
+    <div class="list" role="listbox" id="model-listbox" aria-label="Modèles du catalogue">
       {#if loading}
         <div class="empty">Chargement du catalogue…</div>
       {:else if filtered.length === 0}
@@ -188,17 +192,28 @@
   .item.hl {
     background: var(--panel2);
   }
+  /* L'id est la colonne FLEXIBLE : sans min-width:0, les badges prix
+   * (flex-shrink:0) l'écrasaient à 0 px dans la liste étroite du composer
+   * → « sonnet » affichait 0 résultat visible sur 10 existants. */
   .id {
     font-family: var(--mono);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    min-width: 0;
+    flex: 1 1 auto;
   }
   .meta {
     color: var(--muted);
     font-size: 10.5px;
-    flex-shrink: 0;
     font-family: var(--mono);
+    /* Rétrécissable + ellipsis : les badges prix (109 px) + ctx dépassaient
+     * la largeur de la liste étroite → l'id (flex) était écrasé à 0 px. */
+    flex-shrink: 1;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
   }
   .empty {
     padding: 10px;
@@ -212,6 +227,7 @@
     font-size: 9.5px;
     margin-right: 5px;
     border: 1px solid transparent;
+    white-space: nowrap;
   }
   .badge.free {
     color: #35d07f;

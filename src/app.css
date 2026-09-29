@@ -88,6 +88,22 @@ select:focus {
   border-color: var(--accent);
 }
 
+/* Focus clavier VISIBLE (WCAG 2.4.7) : le reset `button { border: none }`
+ * supprimait l'anneau du user-agent sans rien à la place — la navigation
+ * Tab était invisible sur toute l'app. :focus-visible ne s'affiche qu'au
+ * clavier (pas au clic souris) ; le test e2e a11y le verrouille. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-radius: 4px;
+}
+button:focus-visible,
+[role='tab']:focus-visible,
+[role='option']:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 ::-webkit-scrollbar {
   width: 9px;
   height: 9px;

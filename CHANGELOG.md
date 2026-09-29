@@ -83,6 +83,42 @@
 
 ## Non publié
 
+### Corrigé
+- **Recherche ModelPicker qui « ne trouvait rien »** : dans la liste déroulante
+  (197 px), le bloc `.meta` (badge prix + ctx, inflexible) écrasait l'id du
+  modèle — réduit à 0 px, la recherche « sonnet » n'affichait aucun des 10
+  résultats existants. `.meta` devient rétrécissable (ellipsis), `.id` prend
+  l'espace restant ; vérifié en live (ids 72-156 px, « sonnet » → 5 modèles).
+- **Faux « Réseau injoignable »** : la sonde proxy comptait un chargement
+  lent (> 6 s, vite saturé) comme une panne — `net.svelte.ts` distingue
+  désormais « lent mais up » (> 6 s) d'un vrai down (timeout 8 s) ;
+  l'hystérésis 2 échecs consécutifs reste en place.
+- **Focus clavier invisible** : aucun contour n'était rendu sur la navigation
+  Tab — `:focus-visible` global (2 px, `var(--accent)`) dans app.css, avec
+  variantes button/[role=tab]/[role=option]. Vérifié en e2e (outline 2 px
+  visible après Tab).
+- **Accessibilité du fil et des contrôles** : `.messages` en `role="log"`
+  + `aria-live="polite"` (vue principale et duel) — les lecteurs d'écran
+  annoncent les réponses ; aria-labels ajoutés (Envoyer/Stop/⇉ du composer,
+  fermeture d'onglet nommée, ＋, suppression de conversation avec son titre,
+  combobox ARIA complète sur le picker : role/aria-expanded/aria-controls/
+  aria-label + listbox id).
+- **Cibles tactiles < 24 px** : fermeture d'onglet (16 px), ＋ et `.del` de
+  la sidebar (21×20) portés à ≥ 24 px (hit area, visuel inchangé).
+- **Barre d'état** : séparateur ajouté entre le bouton ⚡cascade et les
+  pastilles fournisseurs (elles étaient collées, lues comme un seul bloc).
+- **Comptes de modèles codés en dur** : placeholder « (458 modèles) » du
+  picker retiré (« tape pour chercher »), doc llm.ts alignée sur
+  « ~460 modèles » — le vrai catalogue OpenRouter est dynamique (460 au
+  29/09, 20 gratuits).
+- **Tests deck e2e en timeout sous charge** : `GET /api/deck/cards` relisait
+  ~640 fichiers à chaque appel (1-3 s à froid, > 30 s sous forte charge
+  machine — les 3 tests deck échouaient systématiquement). Cache de la
+  liste invalidé par mtime des dossiers de fiches + invalidation explicite
+  après création/édition + `?fresh=1` (bouton ⟳ du panneau). Mesuré :
+  cold 0,99 s → warm 4 ms ; suite e2e complète **33/33**. (sandbox-server.ts,
+  DeckPanel)
+
 ### Ajouté
 - **Équipe V5 « Secure AI » en fiches agents** (phase 1 de
   `docs/roadmap-secure-ai.md`) : FullStack Lead, DevSec Expert, Web3X

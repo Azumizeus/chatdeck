@@ -59,7 +59,7 @@
     loading = true
     error = ''
     try {
-      const r = await fetch('/api/deck/cards')
+      const r = await fetch('/api/deck/cards?fresh=1')
       const j = (await r.json()) as { cards?: Card[]; error?: string }
       if (j.error) error = j.error
       else cards = j.cards ?? []

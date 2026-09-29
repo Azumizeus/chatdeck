@@ -422,12 +422,12 @@
           : 'Écris ton message…  (Entrée = envoyer · @fichier · /commandes)'}
     ></textarea>
     {#if streaming}
-      <button class="stop" onclick={onStop} title="Arrêter la génération">■</button>
+      <button class="stop" onclick={onStop} title="Arrêter la génération" aria-label="Arrêter la génération">■</button>
     {:else}
       {#if onSendBoth}
-        <button class="send both" onclick={submitBoth} disabled={!text.trim()} title="Envoyer aux deux">⇉</button>
+        <button class="send both" onclick={submitBoth} disabled={!text.trim()} title="Envoyer aux deux" aria-label="Envoyer aux deux conversations">⇉</button>
       {/if}
-      <button class="send" onclick={submit} disabled={!text.trim()} title="Envoyer">↑</button>
+      <button class="send" onclick={submit} disabled={!text.trim()} title="Envoyer" aria-label="Envoyer le message">↑</button>
     {/if}
   </div>
 </div>

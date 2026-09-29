@@ -43,9 +43,15 @@ class NetState {
       //    réponse en <1 s quand le réseau va). Abort au bout de 8 s.
       const ctrl = new AbortController()
       const timer = setTimeout(() => ctrl.abort(), 8000)
+      let slow = false
       try {
+        const t0 = Date.now()
         const r = await fetch('/api/openrouter/api/v1/models', { signal: ctrl.signal })
-        this.proxy = r.ok ? 'up' : 'down'
+        // Une réponse > 6 s est « lente » (machine sous charge, catalogue de
+        // 754 ko qui transite) : ce n'est PAS une panne — on ne compte un
+        // échec que si c'est un vrai statut d'erreur ou un timeout.
+        slow = Date.now() - t0 > 6000
+        this.proxy = r.ok || slow ? 'up' : 'down'
       } catch {
         this.proxy = 'down'
       } finally {

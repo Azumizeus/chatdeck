@@ -1298,6 +1298,14 @@ const parseFrontmatter = (src: string): { name: string; description: string; kin
   return { name: pick('name'), description: pick('description'), kind: pick('kind') || 'skill' }
 }
 
+/** Cache de la liste des fiches : le GET relisait ~640 fichiers à chaque
+ * appel (> 30 s sous forte charge machine). Signature = mtimes des dossiers
+ * de fiches ; invalidation explicite après création/édition. */
+let cardsCache: { dirMtimes: string; cards: Card[] } | null = null
+const invalidateCardsCache = (): void => {
+  cardsCache = null
+}
+
 /** Handler /api/deck partagé : plugin Vite (dev) ET serveur autonome (app packagée). */
 const deckHandler: RequestHandler = (req, res) => {
   void (async () => {
@@ -1314,8 +1322,19 @@ const deckHandler: RequestHandler = (req, res) => {
             /** Dossiers de fiches par catégorie : skills/, agents/ et outils/. */
             const kindDirs = ['skills', 'agents', 'outils'] as const
 
-            // Liste des fiches
+            // Liste des fiches (mise en cache — voir cardsCache ci-dessus).
+            // ?fresh=1 : saute le cache (bouton ⟳ du panneau).
             if ((pathPart === 'cards' || pathPart === '') && req.method === 'GET') {
+              const mtimes = await Promise.all(
+                roots.flatMap(({ dir }) =>
+                  kindDirs.map(async (kindDir) => {
+                    const full = path.join(dir, kindDir)
+                    return existsSync(full) ? String((await stat(full)).mtimeMs) : '-'
+                  }),
+                ),
+              )
+              const sig = mtimes.join('|')
+              if (!query.has('fresh') && cardsCache && cardsCache.dirMtimes === sig) return json(res, 200, { cards: cardsCache.cards })
               const cards: Card[] = []
               const seen = new Set<string>()
               for (const { dir, source } of roots) {
@@ -1337,6 +1356,7 @@ const deckHandler: RequestHandler = (req, res) => {
                 }
               }
               cards.sort((a, b) => a.id.localeCompare(b.id))
+              cardsCache = { dirMtimes: sig, cards }
               return json(res, 200, { cards })
             }
 
@@ -1370,6 +1390,7 @@ const deckHandler: RequestHandler = (req, res) => {
                   const p = path.join(asarAware(path.join(projectRoot, '.cd')), kindDir, `${id}${ext}`)
                   if (existsSync(p)) {
                     await writeFile(p, content, 'utf8')
+                    invalidateCardsCache()
                     return json(res, 200, { ok: true, path: `.cd/${kindDir}/${id}${ext}` })
                   }
                 }
@@ -1393,6 +1414,7 @@ const deckHandler: RequestHandler = (req, res) => {
                 `---\nname: ${slug}\ndescription: ${body.description ?? 'Décris ici QUAND utiliser cette fiche (déclencheurs concrets).'}\nkind: ${kindVal}\ntools: [read, list, bash]\n---\n\n# ${slug}\n\n## Quand\n\n## Procédure\n\n1. \n\n## Vérification\n\n`,
                 'utf8',
               )
+              invalidateCardsCache()
               return json(res, 200, { ok: true, path: `.cd/${kind}/${slug}.cd` })
             }
 

@@ -69,6 +69,7 @@
       <button
         class="close"
         title="Fermer l'onglet"
+        aria-label="Fermer l'onglet {c.title}"
         onclick={(e) => {
           e.stopPropagation()
           onClose(c.id)
@@ -76,7 +77,7 @@
       >
     </div>
   {/each}
-  <button class="add" onclick={onNew} title="Nouvelle conversation (⌘N)">＋</button>
+  <button class="add" onclick={onNew} title="Nouvelle conversation (⌘N)" aria-label="Nouvelle conversation">＋</button>
 </div>
 
 <style>
@@ -154,8 +155,14 @@
     color: var(--muted);
     font-size: 13px;
     line-height: 1;
-    padding: 0 2px;
-    border-radius: 4px;
+    /* Cible tactile ≥ 24 px (WCAG 2.5.8) : le × nu faisait 12×13 px —
+       impossible à viser précisément, surtout en bout de liste d'onglets. */
+    width: 24px;
+    height: 24px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
     opacity: 0;
     transition: opacity 120ms;
   }
@@ -172,6 +179,8 @@
     padding: 2px 9px;
     border-radius: 7px;
     margin-bottom: 3px;
+    min-width: 28px;
+    min-height: 24px;
   }
   .add:hover {
     color: var(--text);

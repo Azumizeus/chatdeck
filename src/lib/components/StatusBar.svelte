@@ -58,6 +58,7 @@
       <i class="hdot {proxyState}" ></i>proxy
     </span>
     <button class="cascade-btn" onclick={onCascade} title="Cascade LLM : santé des 9 providers du méga-pack + test réel">⚡ cascade</button>
+    <span class="sep" aria-hidden="true"></span>
     {#each Object.keys(DOT_LABELS) as pid (pid)}
       {@const st = healthOf(pid)}
       <span class="health" title="{DOT_LABELS[pid]} : {st === 'up' ? 'joignable' : st === 'down' ? 'injoignable' : 'non sondé'}">

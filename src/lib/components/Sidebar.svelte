@@ -172,6 +172,7 @@
         <button
           class="del"
           title="Supprimer"
+          aria-label="Supprimer la conversation {c.title}"
           onclick={(e) => {
             e.stopPropagation()
             onDelete(c.id)
@@ -448,6 +449,10 @@
     font-size: 15px;
     opacity: 0;
     transition: 0.12s;
+    /* Cible ≥ 24 px (WCAG 2.5.8) : le × nu faisait 21×20 px */
+    min-width: 24px;
+    min-height: 24px;
+    border-radius: 6px;
   }
   .item:hover .del {
     opacity: 1;
