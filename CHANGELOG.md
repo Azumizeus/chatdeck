@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.4.9
+
+### Corrigé
+- **« OpenRouter : réponse vide (modèle saturé ?) » en app packagée** : le
+  proxy des 4 fournisseurs intégrés (`/api/openrouter`…) n'existait que dans
+  `server.proxy` de Vite — l'api-server autonome de l'app renvoyait le
+  fallback SPA (index HTML, HTTP 200), lu comme du SSE sans `data:`. Nouveau
+  `provider-proxy-server.ts` partagé : plugin Vite (remplace `server.proxy`,
+  doublon retiré) + `providerProxyMount` dans `ChatDeckApi`. Verrous e2e :
+  le POST ne doit jamais renvoyer le fallback SPA (7/7 standalone).
+
+### Ajouté
+- **Tuteur générique** (fiche agent `tuteur.cd`) : révision flashcards de
+  n'importe quel coffret StudyVault — une carte par message, verdicts
+  ✅/🟡/❌, score courant, reprise via `progress.md`.
+- **Précharge auto des cartes du coffret** : « quiz nexus » / « révise
+  <coffret> » injecte `anki.md`/`quiz.md` de la sandbox dans le system
+  (`[CARTES DU COFFRET]`) — le tuteur démarre sans outil read.
+- **`tools/anki-export.mjs`** : export Anki TSV d'un coffret (source
+  `anki.md` ou `quiz.md`) — un coffret ou `--all` ; en-têtes natifs Anki
+  23.10+. Fiche skill `studyvault-anki`.
+- **Outils OCR PDF scanné** : `tools/render-pdf.mjs` (pdfjs-dist) +
+  `tools/ocr-vision.js` (Vision macOS via JXA, zéro compilation) — fiche
+  skill `ocr-pdf`.
+
 ## 0.4.8
 
 ### Ajouté
