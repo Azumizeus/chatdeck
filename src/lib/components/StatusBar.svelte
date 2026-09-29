@@ -32,6 +32,8 @@
     nvidia: 'NVIDIA NIM',
     cohere: 'Cohere',
     mistral: 'Mistral',
+    groq: 'Groq',
+    xai: 'Grok',
   }
   const healthOf = (id: string): 'up' | 'down' | 'unknown' => {
     const h = net.providers[id]

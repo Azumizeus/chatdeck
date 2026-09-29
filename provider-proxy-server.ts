@@ -15,6 +15,8 @@ const TARGETS: Record<string, string> = {
   nvidia: 'https://integrate.api.nvidia.com',
   cohere: 'https://api.cohere.ai',
   mistral: 'https://api.mistral.ai',
+  groq: 'https://api.groq.com',
+  xai: 'https://api.x.ai',
 }
 
 /**
@@ -81,7 +83,7 @@ export function providerProxyMount(req: IncomingMessage, res: ServerResponse): v
   })
 }
 
-/** Plugin Vite (dev) : remplace server.proxy pour les 4 fournisseurs intégrés. */
+/** Plugin Vite (dev) : remplace server.proxy pour les 6 fournisseurs intégrés. */
 export function providerProxyServer(): Plugin {
   return {
     name: 'chatdeck-provider-proxy',

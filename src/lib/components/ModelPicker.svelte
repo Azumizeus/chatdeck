@@ -3,6 +3,14 @@
   // Fetch proxifié au focus, cache 10 min côté llm.ts, repli sur la liste courte.
   import { fetchOpenRouterCatalog, type CatalogModel } from '../llm'
 
+  /** Badge prix : « gratuit » si 0/0, sinon USD par million de tokens (prompt+completion). */
+  function formatPrice(m: CatalogModel): string {
+    const p = (m.promptPrice ?? 0) * 1e6
+    const c = (m.completionPrice ?? 0) * 1e6
+    const fmt = (n: number): string => (n >= 100 ? String(Math.round(n)) : n >= 1 ? n.toFixed(1) : n.toFixed(2))
+    return `${fmt(p)}/${fmt(c)}`
+  }
+
   let {
     value,
     onCommit,
@@ -125,7 +133,14 @@
             onclick={() => pick(m)}
           >
             <span class="id">{m.id}</span>
-            <span class="meta">{#if m.context}{Math.round(m.context / 1000)}k ctx{/if}</span>
+            <span class="meta">
+              {#if m.promptPrice === 0 && m.completionPrice === 0}
+                <span class="badge free">gratuit</span>
+              {:else if m.promptPrice !== undefined && m.completionPrice !== undefined}
+                <span class="badge paid">{formatPrice(m)} USD/Mtok</span>
+              {/if}
+              {#if m.context}{Math.round(m.context / 1000)}k ctx{/if}
+            </span>
           </button>
         {/each}
       {/if}
@@ -189,5 +204,22 @@
     padding: 10px;
     color: var(--muted);
     font-size: 12px;
+  }
+  .badge {
+    display: inline-block;
+    padding: 0 5px;
+    border-radius: 6px;
+    font-size: 9.5px;
+    margin-right: 5px;
+    border: 1px solid transparent;
+  }
+  .badge.free {
+    color: #35d07f;
+    border-color: #35d07f55;
+    background: #35d07f14;
+  }
+  .badge.paid {
+    color: var(--muted);
+    border-color: var(--border);
   }
 </style>

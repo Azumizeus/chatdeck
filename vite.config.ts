@@ -15,6 +15,8 @@ const PROVIDER_TARGETS: Record<string, string> = {
   nvidia: 'https://integrate.api.nvidia.com',
   cohere: 'https://api.cohere.ai',
   mistral: 'https://api.mistral.ai',
+  groq: 'https://api.groq.com',
+  xai: 'https://api.x.ai',
 }
 
 /** Sert keys.local.json en dev (gitignore) pour précharger les clés — jamais bundlé. */
@@ -254,6 +256,10 @@ export default defineConfig({
   server: {
     port: 5199,
     strictPort: true,
+    // localhost ne resolve pas toujours en ::1 d'abord (ordre DNS variable) :
+    // écouter explicitement les deux piles sinon « Failed to fetch » aléatoire
+    // côté tests Playwright et app, selon la machine.
+    host: '127.0.0.1',
   },
   // Vitest : environnement DOM léger pour les tests du store (localStorage)
   test: {

@@ -2,8 +2,8 @@
 
 import type { CustomProvider } from './store'
 
-/** Identifiant de fournisseur : les 4 intégrés, ou « custom:xyz » pour les fournisseurs personnalisés. */
-export type ProviderId = 'openrouter' | 'nvidia' | 'cohere' | 'mistral' | (string & {})
+/** Identifiant de fournisseur : les 6 intégrés, ou « custom:xyz » pour les fournisseurs personnalisés. */
+export type ProviderId = 'openrouter' | 'nvidia' | 'cohere' | 'mistral' | 'groq' | 'xai' | (string & {})
 
 export interface ModelInfo {
   id: string
@@ -90,6 +90,34 @@ export const PROVIDERS: Provider[] = [
       { id: 'codestral-latest', label: 'Codestral (code)' },
       { id: 'mistral-small-latest', label: 'Mistral Small (rapide)' },
       { id: 'devstral-medium-latest', label: 'Devstral Medium (code agent)' },
+    ],
+  },
+  {
+    id: 'groq',
+    label: 'Groq',
+    base: '/api/groq',
+    path: '/openai/v1',
+    docs: 'Inférence ultra-rapide — Llama, GPT-OSS (clé gratuite console.groq.com)',
+    color: '#f55036',
+    models: [
+      { id: 'openai/gpt-oss-120b', label: 'GPT-OSS 120B' },
+      { id: 'openai/gpt-oss-20b', label: 'GPT-OSS 20B (rapide)' },
+      { id: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B Versatile' },
+      { id: 'qwen/qwen3-32b', label: 'Qwen3 32B' },
+    ],
+  },
+  {
+    id: 'xai',
+    label: 'xAI Grok',
+    base: '/api/xai',
+    path: '/v1',
+    docs: 'Grok (console.x.ai) — bon en code et raisonnement',
+    color: '#ffffff',
+    models: [
+      { id: 'grok-4', label: 'Grok 4' },
+      { id: 'grok-4-fast', label: 'Grok 4 Fast' },
+      { id: 'grok-code-fast-1', label: 'Grok Code Fast (code)' },
+      { id: 'grok-3-mini', label: 'Grok 3 Mini (rapide)' },
     ],
   },
 ]

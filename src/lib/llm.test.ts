@@ -136,8 +136,8 @@ describe('streamChat — parsing SSE', () => {
 })
 
 describe('registre des fournisseurs', () => {
-  it('les 4 fournisseurs sont présents avec leurs modèles', () => {
-    expect(PROVIDERS.map((p) => p.id)).toEqual(['openrouter', 'nvidia', 'cohere', 'mistral'])
+  it('les 6 fournisseurs sont présents avec leurs modèles', () => {
+    expect(PROVIDERS.map((p) => p.id)).toEqual(['openrouter', 'nvidia', 'cohere', 'mistral', 'groq', 'xai'])
     for (const p of PROVIDERS) expect(p.models.length).toBeGreaterThan(0)
   })
 

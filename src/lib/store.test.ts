@@ -22,7 +22,7 @@ describe('clés API', () => {
   })
 
   it('saveKeys puis loadKeys font un aller-retour fidèle', () => {
-    const k = { openrouter: 'sk-or-1', nvidia: 'nvapi-2', cohere: 'c-3', mistral: 'm-4', custom: {} }
+    const k = { openrouter: 'sk-or-1', nvidia: 'nvapi-2', cohere: 'c-3', mistral: 'm-4', groq: 'gsk-5', xai: 'xai-6', custom: {} }
     saveKeys(k)
     expect(loadKeys()).toEqual(k)
   })

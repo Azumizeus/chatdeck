@@ -54,6 +54,8 @@
     nvidia: 'NVIDIA NIM',
     cohere: 'Cohere',
     mistral: 'Mistral',
+    groq: 'Groq',
+    xai: 'xAI Grok',
   }
 
   function keyFor(pid: string): string {

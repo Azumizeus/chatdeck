@@ -82,6 +82,13 @@ function mcpRpc(name: string, method: string, params: unknown, timeoutMs = 25_00
       env: { ...process.env, ...(cfg.env ?? {}) },
       stdio: ['pipe', 'pipe', 'pipe'],
     })
+    // Un binaire MCP absent (ex. npx hors PATH sous launchd) ne doit JAMAIS
+    // tuer le serveur dev : sans ce handler, l'event 'error' est non géré et
+    // fait planter tout Vite en cours de run (tests e2e morts en série).
+    child.on('error', (e: Error) => {
+      mcpProcs.delete(name)
+      console.error(`[mcp:${name}] spawn impossible : ${e.message}`)
+    })
     entry = { child, buf: '', pending: new Map(), id: 0, ready: Promise.resolve() }
     mcpProcs.set(name, entry)
     needInit = true

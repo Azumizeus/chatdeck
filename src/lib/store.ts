@@ -54,6 +54,8 @@ export interface Keys {
   nvidia: string
   cohere: string
   mistral: string
+  groq: string
+  xai: string
   /** Clés des fournisseurs personnalisés, indexées par identifiant (« custom:xyz ») */
   custom: Record<string, string>
 }
@@ -109,6 +111,8 @@ export const BUILTIN_CONNECTORS: { name: string; baseUrl: string; desc: string }
   { name: 'workspace', baseUrl: 'local://workspace', desc: 'Fichiers de la sandbox courante (tree, read) — via les endpoints internes' },
   { name: 'deck', baseUrl: 'local://deck', desc: 'Bibliothèque PromptDeck : fiches skills/agents (cards, card, search)' },
   { name: 'horloge', baseUrl: 'local://clock', desc: 'Date/heure locale et fuseau — pour dater notes et rapports' },
+  { name: 'web', baseUrl: 'local://web', desc: 'Recherche web natif de l\'agent : historique web_search, favoris, cache des pages fetchées (~/.chatdeck/web.local.json)' },
+  { name: 'browser-use', baseUrl: 'local://mcp', desc: 'Pilotage de navigateur (16 outils) via le serveur MCP browser-use — se règle dans ~/.chatdeck/mcp-servers.local.json' },
 ]
 
 /** Outils soumis aux permissions (les lectures restent toujours libres). */
@@ -421,7 +425,7 @@ const LAYOUT_KEY = 'chatdeck.layout.v1'
 const CUSTOMS_KEY = 'chatdeck.customproviders.v1'
 const INCOG_KEY = 'chatdeck.incognito.id'
 
-export const emptyKeys = (): Keys => ({ openrouter: '', nvidia: '', cohere: '', mistral: '', custom: {} })
+export const emptyKeys = (): Keys => ({ openrouter: '', nvidia: '', cohere: '', mistral: '', groq: '', xai: '', custom: {} })
 export const defaultSettings = (): Settings => ({
   temperature: 0.7,
   maxTokens: 2048,
