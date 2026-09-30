@@ -6,6 +6,9 @@
   import SettingsPanel from './SettingsPanel.svelte'
   import DeckPanel from './DeckPanel.svelte'
   import GraphPanel from './GraphPanel.svelte'
+  import FilesPanel from './FilesPanel.svelte'
+  import TerminalPanel from './TerminalPanel.svelte'
+  import PreviewPanel from './PreviewPanel.svelte'
   import {
     loadConversations,
     loadKeys,
@@ -125,6 +128,24 @@
     <div class="graphpop">
       <GraphPanel conversations={loadConversations()} onOpen={() => window.close()} onClose={() => window.close()} />
     </div>
+  {:else if panel === 'files' || panel === 'terminal' || panel === 'preview'}
+    <!-- Panneau lié à la conversation active : Fichiers (édition + ▶ Exécuter),
+         Terminal réel ou Preview live — même fonction que dans l'app. -->
+    {#if !active}
+      <div class="placeholder">Aucune conversation active — sélectionne-en une dans l'app principale.</div>
+    {:else if panel === 'files'}
+      <div class="toolpop">
+        <FilesPanel convId={active.id} enabled={Boolean(active.agents?.length)} onClose={() => window.close()} />
+      </div>
+    {:else if panel === 'terminal'}
+      <div class="toolpop">
+        <TerminalPanel convId={active.id} onClose={() => window.close()} />
+      </div>
+    {:else}
+      <div class="toolpop">
+        <PreviewPanel convId={active.id} onClose={() => window.close()} />
+      </div>
+    {/if}
   {:else}
     <div class="chat">
       <div class="msgs">
@@ -196,6 +217,26 @@
     inset: 0;
     width: auto;
     max-height: none;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+  }
+  .toolpop {
+    flex: 1;
+    display: flex;
+    min-height: 0;
+    position: relative;
+  }
+  /* Ces panneaux sont fixed chez eux → ancrés dans la fenêtre popout. */
+  .toolpop :global(.files),
+  .toolpop :global(.term),
+  .toolpop :global(.preview) {
+    position: absolute;
+    inset: 0;
+    width: auto;
+    max-width: none;
+    max-height: none;
+    height: auto;
     border: none;
     border-radius: 0;
     box-shadow: none;

@@ -94,6 +94,43 @@ test.describe('parcours critiques', () => {
     await expect(page.locator('.duel-col')).toHaveCount(0)
   })
 
+  test('duel : Fichiers puis Preview se dockent à droite (empilés), sans hub flottant ; Terminal sous le chat', async () => {
+    // Bug 0.4.10 verrouillé : en duel, Fichiers/Terminal n'apparaissaient
+    // nulle part, ou partaient dans la fenêtre hub PAR-DESSUS le chat.
+    await page.keyboard.press('Meta+k')
+    await page.locator('.palette input').fill('duel')
+    await page.keyboard.press('Enter')
+    await expect(page.locator('.duel-col')).toHaveCount(2)
+    // Aucun hub ouvert au départ (localStorage vierge par test Playwright :
+    // la session hub n'est jamais restaurée ouverte ici)
+    await expect(page.locator('.hub')).toHaveCount(0)
+    // Fichiers depuis la mini-toolbar de la colonne de gauche → docké à droite
+    await page.locator('.duel-col').first().locator('.toolbar .tb', { hasText: 'Fichiers' }).click()
+    await expect(page.locator('.shell > .dock-tools .files')).toBeVisible()
+    // Preview (colonne de droite) → s'EMPILE à côté, jamais de hub flottant
+    await page.locator('.duel-col').last().locator('.toolbar .tb', { hasText: 'Preview' }).click()
+    await expect(page.locator('.shell > .dock-tools .preview')).toBeVisible()
+    await expect(page.locator('.shell > .dock-tools .files')).toBeVisible()
+    await expect(page.locator('.hub')).toHaveCount(0)
+    // Les deux docks sont à droite des colonnes du duel (x supérieur au bord droit)
+    const geo = await page.evaluate(() => {
+      const cols = [...document.querySelectorAll('.duel-col')]
+      const col = cols[cols.length - 1]?.getBoundingClientRect()
+      const docks = [...document.querySelectorAll('.shell > .dock-tools')].map((d) => d.getBoundingClientRect())
+      return { colRight: col?.right ?? 0, docks: docks.map((d) => ({ x: d.x, w: d.width })) }
+    })
+    expect(geo.colRight).toBeGreaterThan(0)
+    for (const d of geo.docks) expect(d.x).toBeGreaterThanOrEqual(geo.colRight - 1)
+    // Fermeture de Preview : Fichiers reste ouvert (toggle indépendant)
+    await page.locator('.duel-col').last().locator('.toolbar .tb', { hasText: 'Preview' }).click()
+    await expect(page.locator('.shell > .dock-tools .preview')).toHaveCount(0)
+    await expect(page.locator('.shell > .dock-tools .files')).toBeVisible()
+    // Terminal : SOUS le chat de la colonne (term-docked, comportement historique)
+    await page.locator('.duel-col').last().locator('.toolbar .tb', { hasText: 'Terminal' }).click()
+    await expect(page.locator('.duel-col').last().locator('.term-docked .term')).toBeVisible()
+    await expect(page.locator('.hub')).toHaveCount(0)
+  })
+
   test('recherche globale ⌘⇧F : ouverture, résultat, saut', async () => {
     await page.locator('.toolbar .tb', { hasText: 'Chercher' }).click()
     const panel = page.locator('.search-panel')

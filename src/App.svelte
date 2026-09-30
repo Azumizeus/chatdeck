@@ -191,12 +191,13 @@
 
   /** Détache un onglet du hub en fenêtre dédiée (drag hors de la barre, comme un IDE). */
   function detachHubTab(t: HubTab): void {
-    if (t === 'files' || t === 'terminal' || t === 'preview') {
-      // Ces panneaux dépendent d'une conversation : on garde le hub pour eux.
-      return
+    if (t === 'deck') {
+      popoutDeck()
+    } else {
+      // files/terminal/preview suivent la conversation ACTIVE (rendue par le
+      // popout via BroadcastChannel) — les outils quittent aussi le hub.
+      window.open(`/#popout=${t}`, `chatdeck-${t}`, 'popup=yes,width=760,height=620,left=180,top=120')
     }
-    if (t === 'deck') popoutDeck()
-    else window.open(`/#popout=${t}`, `chatdeck-${t}`, 'popup=yes,width=760,height=620,left=180,top=120')
     if (hubActive === t) showHub = false
   }
   let showTerminal = $state(false)
@@ -849,7 +850,8 @@
         toggleToolDock('files', cid)
         return true
       case '/terminal':
-        toggleToolDock('terminal', cid)
+        terminalConvId = cid ?? currentId
+        showTerminal = !showTerminal
         return true
       default:
         // Commande inconnue : le texte partira au modèle tel quel.
@@ -1117,12 +1119,6 @@
     void sendTo(d.right, text)
   }
 
-  function toggleTerminal(): void {
-    // Terminal : dock outils à droite (comme Réglages), dans TOUS les modes
-    // (docké, flottant, duel) — plus de détour par la fenêtre hub.
-    toggleToolDock('terminal')
-  }
-
   /** Exécution d'outil avec erreur capturée (utilisé par la gate de permissions).
    *  Les outils projet (read_project_file / list_project_tree) routent vers le
    *  workspace dédié p-<projectId> + dossiers Mac autorisés. */
@@ -1193,23 +1189,34 @@
     pendingPerm = null
   }
 
-  /** Dock outils à droite (comme Réglages) : un seul panneau actif à la fois. */
-  type DockTool = 'files' | 'terminal' | 'preview' | 'graph' | 'cascade' | null
-  let dockTool = $state<DockTool>(null)
-  function toggleToolDock(tool: Exclude<DockTool, null>, convId?: string): void {
+  /** Docks outils à droite (comme Réglages) : PLUSIEURS outils peuvent être
+   *  empilés côte à côte (ex. Fichiers + Preview), comme Réglages + Preview.
+   *  dockTools préserve l'ordre d'activation ; DOCK_ORDER fixe la disposition.
+   *  NB : le Terminal n'est PAS dans ce dock — il revient SOUS le chat
+   *  (term-docked, comportement historique), y compris dans les colonnes du duel. */
+  type DockTool = 'files' | 'preview' | 'graph' | 'cascade'
+  const DOCK_ORDER: DockTool[] = ['files', 'preview', 'graph', 'cascade']
+  let dockTools = $state<DockTool[]>([])
+  /** Un outil docké ? (utile pour les gardes « panneau déjà ouvert ») */
+  const dockHas = (tool: DockTool): boolean => dockTools.includes(tool)
+  function toggleToolDock(tool: DockTool, convId?: string): void {
     if (tool === 'files') filesConvId = convId ?? currentId
-    if (tool === 'terminal') terminalConvId = convId ?? currentId
     if (tool === 'preview') previewConvId = convId ?? currentId
     // Les outils se dockent TOUJOURS à droite du chat (comme Réglages) —
     // y compris en mode duel et en fenêtre flottante. Le hub (bouton 🗂)
     // reste disponible, mais n'est plus un passage obligé : plus d'overlay
-    // flottant par-dessus le chat quand on clique Fichiers/Terminal.
-    dockTool = dockTool === tool ? null : tool
-    // Synchro des 3 états (pas seulement l'outil cliqué) : basculer Fichiers →
-    // Terminal ne doit pas laisser le bouton Fichiers surligné.
-    showFiles = dockTool === 'files'
-    showTerminal = dockTool === 'terminal'
-    showPreview = dockTool === 'preview'
+    // flottant par-dessus le chat quand on clique Fichiers.
+    dockTools = dockHas(tool) ? dockTools.filter((t) => t !== tool) : [...dockTools, tool]
+    // Synchro (pas seulement l'outil cliqué) : basculer Fichiers → Preview
+    // ne doit pas laisser le bouton Fichiers surligné. Terminal hors dock.
+    showFiles = dockHas('files')
+    showPreview = dockHas('preview')
+  }
+
+  /** Terminal : SOUS le chat (term-docked, historique) — principal comme duel. */
+  function toggleTerminal(): void {
+    if (!showTerminal) terminalConvId = currentId
+    showTerminal = !showTerminal
   }
 
   /** Fichiers : hub s'il est ouvert, sinon dock outils à droite. */
@@ -1217,11 +1224,11 @@
     toggleToolDock('files', convId)
   }
 
-  /** Exécuter (FilesPanel, Secure AI phase 4) : affiche la sortie du terminal
-   * du fil — le dock outils existe dans TOUS les modes : on l'active simplement. */
+  /** Exécuter (FilesPanel, Secure AI phase 4) : ouvre le terminal SOUS le
+   *  chat du fil (comportement historique « App ouvre le terminal du fil »). */
   function onFilesExec(convId: string): void {
     terminalConvId = convId
-    if (dockTool !== 'terminal') dockTool = 'terminal'
+    showTerminal = true
   }
 
   /** Preview : hub s'il est ouvert, sinon dock outils à droite. */
@@ -1549,6 +1556,9 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
     { id: 'theme', label: `Basculer en thème ${settings.theme === 'dark' ? 'clair' : 'sombre'}`, run: () => (settings = { ...settings, theme: settings.theme === 'dark' ? 'light' : 'dark' }) },
     { id: 'popout-chat', label: 'Sortir la conversation en fenêtre', hint: '⌘⌥F', run: () => void popout('chat') },
     { id: 'popout-settings', label: 'Sortir les réglages en fenêtre', run: () => void popout('settings') },
+    { id: 'popout-files', label: 'Fenêtre outils : Fichiers (conversation active)', run: () => window.open('/#popout=files', 'chatdeck-files', 'popup=yes,width=760,height=620,left=180,top=120') },
+    { id: 'popout-terminal', label: 'Fenêtre outils : Terminal (conversation active)', run: () => window.open('/#popout=terminal', 'chatdeck-terminal', 'popup=yes,width=760,height=620,left=200,top=140') },
+    { id: 'popout-preview', label: 'Fenêtre outils : Preview (conversation active)', run: () => window.open('/#popout=preview', 'chatdeck-preview', 'popup=yes,width=760,height=620,left=220,top=160') },
     { id: 'sidebar', label: 'Afficher/masquer le panneau latéral', hint: '⌘\\', run: () => layout.toggleSidebar() },
     { id: 'settings', label: 'Réglages', hint: '⌘,', run: () => layout.toggleSettings() },
     { id: 'export', label: 'Exporter la conversation courante', hint: '⌘E', run: exportCurrent },
@@ -1586,10 +1596,10 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
     streaming={anyStreaming}
     duelActive={Boolean(layout.duel)}
     agentsActive={Boolean(current?.agents?.length)}
-    filesOpen={showFiles || dockTool === 'files'}
-    terminalOpen={showTerminal || dockTool === 'terminal'}
-    previewOpen={showPreview || dockTool === 'preview'}
-    graphOpen={dockTool === 'graph'}
+    filesOpen={showFiles}
+    terminalOpen={showTerminal}
+    previewOpen={showPreview}
+    graphOpen={dockHas('graph')}
     onToggleAgents={() => setAgents(current?.agents?.length ? [] : ['nexus', 'seeker'])}
     onToggleDuel={toggleDuel}
     onToggleFiles={() => toggleFiles()}
@@ -1699,7 +1709,7 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
           onAgents={setAgents}
           onSlash={(cmd) => void runSlash(cmd, current.id)}
         />
-        {#if showTerminal && terminalConvId === current.id && (!showHub || hubActive !== 'terminal') && dockTool !== 'terminal'}
+        {#if showTerminal && terminalConvId === current.id}
           <div class="term-docked">
             <TerminalPanel convId={terminalConvId} onClose={() => (showTerminal = false)} />
           </div>
@@ -1719,7 +1729,7 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
 <!-- Docks DROITS réutilisés dans tous les modes (docké, flottant, duel) :
      Réglages, puis les outils (Fichiers/Terminal/Preview/Graphify/Cascade)
      empilés côté à côte verticalement — le même pattern que la capture
-     « Réglages + Preview ». Un seul outil à la fois (dockTool). -->
+     « Réglages + Preview ». Plusieurs outils peuvent être empilés. -->
 {#snippet rightDocks()}
   {#if !layout.layout.settingsCollapsed && !(showHub && hubActive === 'settings')}
     <div class="dock-right" style="width: {layout.layout.settingsWidth}px">
@@ -1746,28 +1756,29 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
       ></div>
     </div>
   {/if}
-  {#if dockTool}
-    <div class="dock-right dock-tools" style="width: {Math.max(300, Math.min(560, layout.layout.settingsWidth))}px">
-      {#if dockTool === 'files'}
-        {#if filesFid && filesConv}
-          <FilesPanel convId={filesFid} enabled={Boolean(filesConv.agents?.length)} onExec={onFilesExec} onClose={() => { dockTool = null; showFiles = false }} />
-        {:else}
-          <p class="hub-empty">Aucune conversation — crée-en une pour voir ses fichiers.</p>
+  {#if dockTools.length}
+    <!-- Plusieurs outils empilés côte à côte : largeur totale plafonnée,
+         chaque panneau reçoit une part égale (ordre canonique DOCK_ORDER). -->
+    {@const dockW = Math.max(300, Math.min(560, layout.layout.settingsWidth))}
+    {@const n = dockTools.length}
+    {@const sorted = DOCK_ORDER.filter((t) => dockTools.includes(t))}
+    {#each sorted as tool (tool)}
+      <div class="dock-right dock-tools" style="width: {Math.max(240, Math.round(dockW / Math.sqrt(n)))}px">
+        {#if tool === 'files'}
+          {#if filesFid && filesConv}
+            <FilesPanel convId={filesFid} enabled={Boolean(filesConv.agents?.length)} onExec={onFilesExec} onClose={() => toggleToolDock('files')} />
+          {:else}
+            <p class="hub-empty">Aucune conversation — crée-en une pour voir ses fichiers.</p>
+          {/if}
+        {:else if tool === 'preview' && (previewConvId ?? currentId)}
+          <PreviewPanel convId={previewConvId ?? currentId!} onClose={() => toggleToolDock('preview')} />
+        {:else if tool === 'graph'}
+          <GraphPanel {conversations} onOpen={(id) => selectChat(id)} onClose={() => toggleToolDock('graph')} />
+        {:else if tool === 'cascade'}
+          <CascadePanel onClose={() => toggleToolDock('cascade')} />
         {/if}
-      {:else if dockTool === 'terminal'}
-        {#if terminalConvId}
-          <TerminalPanel convId={terminalConvId} onClose={() => { dockTool = null; showTerminal = false }} />
-        {:else}
-          <p class="hub-empty">Aucune conversation pour le terminal.</p>
-        {/if}
-      {:else if dockTool === 'preview' && (previewConvId ?? currentId)}
-        <PreviewPanel convId={previewConvId ?? currentId!} onClose={() => { dockTool = null; showPreview = false }} />
-      {:else if dockTool === 'graph'}
-        <GraphPanel {conversations} onOpen={(id) => selectChat(id)} onClose={() => (dockTool = null)} />
-      {:else if dockTool === 'cascade'}
-        <CascadePanel onClose={() => (dockTool = null)} />
-      {/if}
-    </div>
+      </div>
+    {/each}
   {/if}
 {/snippet}
 
@@ -1783,10 +1794,12 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
       agentsActive={Boolean(c.agents?.length)}
       filesOpen={showFiles && filesConvId === convId}
       terminalOpen={showTerminal && terminalConvId === convId}
+      previewOpen={showPreview && previewConvId === convId}
       onToggleAgents={() => setAgentsFor(convId, c.agents?.length ? [] : ['nexus', 'seeker'])}
       onToggleDuel={toggleDuel}
       onToggleFiles={() => toggleFiles(convId)}
-      onToggleTerminal={() => toggleToolDock('terminal', convId)}
+      onToggleTerminal={() => { terminalConvId = convId; showTerminal = !showTerminal }}
+      onTogglePreview={() => toggleToolDock('preview', convId)}
       onSearch={() => (showSearch = true)}
       onSettings={() => layout.toggleSettings()}
     />
@@ -1842,7 +1855,7 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
       onAgents={(l) => setAgentsFor(convId, l)}
       onSendBoth={sendBoth}
     />
-    {#if showTerminal && terminalConvId === convId && (!showHub || hubActive !== 'terminal') && dockTool !== 'terminal'}
+    {#if showTerminal && terminalConvId === convId}
       <div class="term-docked">
         <TerminalPanel convId={terminalConvId} onClose={() => (showTerminal = false)} />
       </div>
@@ -1918,7 +1931,7 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
         <button class="ghost" onclick={() => void autoCommit(layout.duel!.left)} disabled={commitBusy} title="git add + commit de la sandbox via l'endpoint sécurisé">
           {commitBusy ? '…' : '⑂ commit auto'}
         </button>
-        <button class="ghost" class:active={dockTool === 'graph'} onclick={() => toggleToolDock('graph')} title="Graphify : graphe des conversations et workspaces (docké à droite)">🕸</button>
+        <button class="ghost" class:active={dockHas('graph')} onclick={() => toggleToolDock('graph')} title="Graphify : graphe des conversations et workspaces (docké à droite)">🕸</button>
         <button class="ghost quit" onclick={toggleDuel} title="Quitter le mode duel (la barre principale est fusionnée dans les colonnes)">✕ quitter le duel</button>
       </div>
       {#if verdict}
@@ -1936,7 +1949,7 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
       {/if}
     </WindowFrame>
 
-    <StatusBar conv={current} streaming={anyStreaming} {latencyMs} {customs} sandboxOpen={sandboxOpenIds} onCascade={() => { dockTool = dockTool === 'cascade' ? null : 'cascade' }} />
+    <StatusBar conv={current} streaming={anyStreaming} {latencyMs} {customs} sandboxOpen={sandboxOpenIds} onCascade={() => toggleToolDock('cascade')} />
     {#if notice}
       <div class="notice" role="status">{notice}</div>
     {/if}
@@ -1951,7 +1964,7 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
       onMinimize={togglePill}
     >
     {@render ideShell()}
-    <StatusBar conv={current} streaming={anyStreaming} {latencyMs} {customs} sandboxOpen={sandboxOpenIds} onCascade={() => { dockTool = dockTool === 'cascade' ? null : 'cascade' }} />
+    <StatusBar conv={current} streaming={anyStreaming} {latencyMs} {customs} sandboxOpen={sandboxOpenIds} onCascade={() => toggleToolDock('cascade')} />
   </FloatingWindow>
 {:else}
   <div class="app">
@@ -1964,7 +1977,7 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
     {@render ideShell()}
     </WindowFrame>
 
-    <StatusBar conv={current} streaming={anyStreaming} {latencyMs} {customs} sandboxOpen={sandboxOpenIds} onCascade={() => { dockTool = dockTool === 'cascade' ? null : 'cascade' }} />
+    <StatusBar conv={current} streaming={anyStreaming} {latencyMs} {customs} sandboxOpen={sandboxOpenIds} onCascade={() => toggleToolDock('cascade')} />
   </div>
 {/if}
 
@@ -2000,7 +2013,7 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
         <p class="hub-empty">Aucune conversation — crée-en une pour voir ses fichiers.</p>
       {/if}
     </div>
-    <div hidden={hubActive !== 'terminal' || dockTool === 'terminal'}>
+    <div hidden={hubActive !== 'terminal'}>
       {#if terminalConvId}
         <TerminalPanel convId={terminalConvId} onClose={() => (showHub = false)} />
       {:else}
