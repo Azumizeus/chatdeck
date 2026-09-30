@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.4.11
+
+### Corrigé
+- **Duel : Fichiers/Terminal invisibles** : le shell duel ne rendait aucun
+  dock — les outils n'apparaissaient nulle part, ou partaient dans la
+  fenêtre hub PAR-DESSUS le chat. Tous les outils se dockent maintenant à
+  droite du chat (comme Réglages) dans TOUS les modes, via un snippet
+  `rightDocks()` partagé ; plus aucun routage vers le hub flottant.
+
+### Ajouté
+- **Multi-outils empilés** : plusieurs panneaux dockés côte à côte (ex.
+  Fichiers + Preview), largeur partagée, ordre canonique, toggles
+  indépendants — le même pattern que Réglages + Preview.
+- **Terminal rendu au chat** : il revient SOUS le composer (comportement
+  historique), y compris dans chaque colonne du duel ; ▶ Exécuter et
+  /terminal l'y rouvrent.
+- **Fenêtre outils popout** : ⌘K « Fenêtre outils : Fichiers/Terminal/
+  Preview » ouvre le vrai panneau lié à la conversation active dans une
+  fenêtre dédiée (BroadcastChannel) ; détachable aussi depuis le hub.
+- **E2e verrou** : en duel, Fichiers + Preview empilés à droite des
+  colonnes, Terminal sous la colonne, zéro hub flottant.
+
 ## 0.4.9
 
 ### Corrigé
