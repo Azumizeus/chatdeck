@@ -89,13 +89,25 @@
   // Fenêtre outils (hub) : regroupe Graphify/Fichiers/Terminal/Preview/Réglages
   // dans une fenêtre déployable — le chat reste visible derrière.
   // Rouvert au lancement sur l'onglet actif de la session précédente (VS Code style).
+  /** Docks outils à droite (comme Réglages) : Fichiers/Preview/Graphify/Cascade.
+   *  Déclaré tôt : l'init depuis la session précédente a besoin de DOCK_ORDER. */
+  type DockTool = 'files' | 'preview' | 'graph' | 'cascade'
+  const DOCK_ORDER: DockTool[] = ['files', 'preview', 'graph', 'cascade']
   const hubSession = loadHubSession()
-  let showHub = $state(hubSession.open)
+  /* Le hub flottant NE se rouvre PAS au lancement (retour utilisateur : « une
+   * fenêtre flottante s'affiche à chaque fois ») — les outils vivent en docks
+   * à droite, restaurés eux via hubSession.docks. showHub reste persisté par
+   * l'$effect pour la session en cours. */
+  let showHub = $state(false)
   // svelte-ignore state_referenced_locally (valeur initiale voulue : dernier onglet de la session précédente)
   let hubTab = $state<HubTab>(hubSession.tab ?? settings.hubDefault ?? 'graph')
-  // Persistance de l'état du hub (ouvert/onglet) à chaque changement.
+  // svelte-ignore state_referenced_locally (valeur initiale voulue : docks de la session précédente)
+  let dockTools = $state<DockTool[]>(
+    (hubSession.docks ?? []).filter((t): t is DockTool => DOCK_ORDER.includes(t as DockTool)),
+  )
+  // Persistance de l'état du hub (ouvert/onglet) ET des docks outils.
   $effect(() => {
-    saveHubSession({ open: showHub, tab: hubTab })
+    saveHubSession({ open: showHub, tab: hubTab, docks: [...dockTools] })
   })
   /** Semi-nettoyage sandbox : vérifié À CHAQUE LANCEMENT de l'app — la bannière
    *  ne s'affiche que s'il y a quelque chose à nettoyer (check local instantané)
@@ -244,9 +256,18 @@
   // Garde-fou d'initialisation : la conversation restaurée doit exister + préchargement des clés dev
   $effect.root(() => {
     if (!currentId || !conversations.find((c) => c.id === currentId)) {
-      const c = newConversation('openrouter', providerOf('openrouter').models[0].id)
-      conversations = [c, ...conversations]
-      currentId = c.id
+      // currentId n'est persisté que pour l'incognito : au lancement normal on
+      // RE-SÉLECTIONNE la première conversation ouverte existante au lieu d'en
+      // créer une — sinon une « Nouvelle conversation » fantôme s'ajoutait à
+      // chaque reload (bug visible : items qui s'accumulent dans la sidebar).
+      const first = conversations.find((c) => c.open !== false) ?? conversations[0]
+      if (first) {
+        currentId = first.id
+      } else {
+        const c = newConversation('openrouter', providerOf('openrouter').models[0].id)
+        conversations = [c, ...conversations]
+        currentId = c.id
+      }
     }
     // Clés dev (keys.local.json, gitignore) servies par le plugin Vite — jamais bundlées
     fetch('/keys.local')
@@ -304,14 +325,27 @@
         const { conversationId, text } = msg.payload as { conversationId: string; text: string }
         void sendTo(conversationId, text)
       }
+      // Un popout outil (Fichiers/Terminal/Preview) s'enregistre → on lui pousse
+      // immédiatement la conversation active (sinon il démarre « à vide »).
+      if (msg.type === 'popout-registered') {
+        const panel = msg.payload as string
+        if (panel === 'files' || panel === 'terminal' || panel === 'preview') {
+          layout.broadcastConversation(currentId, panel as 'chat')
+        }
+      }
     }
     ch.addEventListener('message', handler)
     return () => ch.removeEventListener('message', handler)
   })
 
-  // Pousser la conversation active au popout chat quand il s'ouvre
+  // Pousser la conversation active au popout conversation ET aux popouts outils
+  // (Fichiers/Terminal/Preview) à chaque changement de conversation active.
   $effect(() => {
     if (layout.popouts.chat) layout.broadcastConversation(currentId, 'chat')
+    // Les noms d'outils ne sont pas des PanelId : le canal ne transporte qu'une étiquette.
+    layout.broadcastConversation(currentId, 'files' as 'chat')
+    layout.broadcastConversation(currentId, 'terminal' as 'chat')
+    layout.broadcastConversation(currentId, 'preview' as 'chat')
   })
 
   /* ---------- utilitaires ---------- */
@@ -1194,9 +1228,6 @@
    *  dockTools préserve l'ordre d'activation ; DOCK_ORDER fixe la disposition.
    *  NB : le Terminal n'est PAS dans ce dock — il revient SOUS le chat
    *  (term-docked, comportement historique), y compris dans les colonnes du duel. */
-  type DockTool = 'files' | 'preview' | 'graph' | 'cascade'
-  const DOCK_ORDER: DockTool[] = ['files', 'preview', 'graph', 'cascade']
-  let dockTools = $state<DockTool[]>([])
   /** Un outil docké ? (utile pour les gardes « panneau déjà ouvert ») */
   const dockHas = (tool: DockTool): boolean => dockTools.includes(tool)
   function toggleToolDock(tool: DockTool, convId?: string): void {
@@ -1568,11 +1599,11 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
     { id: 'reset-layout', label: 'Réinitialiser la disposition des panneaux', run: () => layout.reset() },
     { id: 'agents', label: current?.agents?.length ? 'Désactiver les agents Nexus & Seeker' : 'Activer les agents Nexus & Seeker (sandbox)', run: () => setAgents(current?.agents?.length ? [] : ['nexus', 'seeker']) },
     { id: 'collab', label: 'Collaboration : Nexus + PromptDeck en parallèle (workspace partagé)', run: startCollab },
-    { id: 'files', label: showFiles ? 'Fermer le panneau Fichiers (sandbox)' : 'Ouvrir le panneau Fichiers (sandbox)', run: () => (showFiles = !showFiles) },
+    { id: 'files', label: showFiles ? 'Fermer le panneau Fichiers (sandbox)' : 'Ouvrir le panneau Fichiers (sandbox)', run: () => toggleToolDock('files') },
     { id: 'graph', label: 'Graphe Graphify (docké à droite)', run: () => toggleToolDock('graph') },
     { id: 'commit', label: 'Commit auto de la sandbox (git add + commit)', run: () => currentId && void autoCommit(currentId) },
     { id: 'search', label: 'Rechercher dans toutes les conversations', hint: '⌘⇧F', run: () => (showSearch = true) },
-    { id: 'hub', label: showHub ? 'Fermer la fenêtre outils' : 'Fenêtre outils : Graphify, Fichiers, Terminal, Preview, Réglages', run: () => openHub(hubTab) },
+    { id: 'hub', label: '🛠 Fenêtre outils : Skills & Agents (.CD)', run: () => openHub('deck') },
     { id: 'tour', label: "Mode d'emploi interactif (visite guidée)", run: () => (showTour = true) },
     { id: 'duel', label: layout.duel ? 'Quitter le mode duel' : 'Mode duel : deux conversations côte à côte', run: toggleDuel },
     { id: 'debate', label: `Arbitre : débat en 2 tours ${settings.arbitreDebate ? '✓ (désactiver)' : '(activer)'}`, run: () => (settings = { ...settings, arbitreDebate: !settings.arbitreDebate }) },
@@ -1606,8 +1637,9 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
     onToggleTerminal={toggleTerminal}
     onTogglePreview={() => togglePreview()}
     onToggleGraph={() => toggleToolDock('graph')}
-    onToggleHub={() => openHub(hubTab)}
-    hubOpen={showHub}
+    // 🗂 Outils retiré de la toolbar : le hub flottant au-dessus du chat était
+    // indésirable (retour utilisateur) — il reste accessible via ⌘K
+    // (« Fenêtre outils : Skills & Agents »). Les outils vivent en docks.
     onSearch={() => (showSearch = true)}
     onSettings={() => layout.toggleSettings()}
   />
@@ -2146,7 +2178,11 @@ Rends le verdict DÉFINITIF en tenant compte des répliques : « Verdict : A »,
     position: absolute !important;
     inset: 0 !important;
     width: 100% !important;
+    /* max-height:none : .files/.deck se brident eux-mêmes à 74vh — dans un
+       dock plus grand que 74vh, ce plafond coupait le bas du panneau. */
+    max-height: none !important;
     height: 100% !important;
+    min-height: 0 !important;
     border-radius: 0 !important;
   }
   .splitter {

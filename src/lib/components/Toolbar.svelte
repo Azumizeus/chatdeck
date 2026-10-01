@@ -21,8 +21,6 @@
     onToggleGraph,
     onSearch,
     onSettings,
-    onToggleHub,
-    hubOpen,
   }: {
     conv: { id: string; agents?: string[] } | null
     streaming: boolean
@@ -41,9 +39,7 @@
     onToggleGraph?: () => void
     onSearch: () => void
     onSettings: () => void
-    /** Fenêtre outils (hub) : bouton affiché si fourni, actif si hubOpen */
-    onToggleHub?: () => void
-    hubOpen?: boolean
+    /** NB : pas de bouton hub dans la toolbar (voir commentaire plus bas). */
   } = $props()
 
   const compact = $derived(variant === 'compact')
@@ -98,11 +94,9 @@
         <span aria-hidden="true">🕸</span> {#if !compact}<span>Graphify</span>{/if}
       </button>
     {/if}
-    {#if onToggleHub && !perConv}
-      <button class="tb" class:active={hubOpen} aria-pressed={hubOpen} onclick={onToggleHub} title="Hub à onglets : Graphify, Fichiers, Terminal, Preview, Réglages, Skills — double-clic sur son titre pour le replier">
-        <span aria-hidden="true">🗂</span> {#if !compact}<span>Outils</span>{/if}
-      </button>
-    {/if}
+    <!-- Fenêtre outils (hub) : volontairement SANS bouton toolbar — le hub
+         flottant au-dessus du chat était indésirable (retour utilisateur).
+         Il reste accessible via ⌘K (« Fenêtre outils : Skills & Agents »). -->
   </div>
 
   {#if !perConv}

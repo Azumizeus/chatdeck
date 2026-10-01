@@ -301,18 +301,21 @@ export function saveHubGeometry(g: HubGeometry): void {
 }
 
 /** État d'ouverture du hub, restauré au lancement (hub ouvert sur l'onglet
- *  actif d'une session à l'autre, comme VS Code rouvre ses panneaux). */
+ *  actif d'une session à l'autre, comme VS Code rouvre ses panneaux).
+ *  docks : outils dockés à droite (files/preview/graph/cascade) — restaurés
+ *  au lancement dans le même esprit. */
 export interface HubSession {
   open: boolean
   tab?: HubTab
+  docks?: string[]
 }
 const HUB_SESSION_KEY = 'chatdeck.hub-session.v1'
 export function loadHubSession(): HubSession {
   try {
     const v = JSON.parse(localStorage.getItem(HUB_SESSION_KEY) || '{}') as HubSession
-    return { open: Boolean(v.open), tab: v.tab }
+    return { open: Boolean(v.open), tab: v.tab, docks: Array.isArray(v.docks) ? v.docks : [] }
   } catch {
-    return { open: false }
+    return { open: false, docks: [] }
   }
 }
 export function saveHubSession(s: HubSession): void {

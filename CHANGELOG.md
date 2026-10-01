@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.4.12
+
+### Corrigé
+- **Plus de fenêtre outils flottante** : le bouton 🗂 « Outils » est retiré de
+  la toolbar (il rouvrait le hub par-dessus le chat) ; le hub reste accessible
+  via ⌘K « Fenêtre outils : Skills & Agents (.CD) ». Le hub ne se rouvre plus
+  non plus au lancement — les outils restaurés sont les docks à droite.
+- **Panneau Fichiers coupé en bas** : dans un dock, le `max-height: 74vh` du
+  panneau n'était pas neutralisé — il occupe maintenant toute la hauteur du
+  dock (fin du chevauchement avec la colonne Seeker en duel).
+- **Bouton 📋 Plan hors cadre** : la rangée de pickers du composer débordait
+  de la colonne du duel et s'affichait par-dessus le panneau Fichiers — elle
+  passe à la ligne (flex-wrap).
+- **« Nouvelle conversation » fantômes** : au lancement, la garde d'init
+  créait une conversation vide à chaque reload (currentId non persisté) —
+  elle re-sélectionne désormais la première conversation ouverte existante.
+
+### Ajouté
+- **Popouts outils synchronisés** : `#popout=files|terminal|preview` démarre
+  sur la conversation active et la suit en direct (broadcast + réponse au
+  `popout-registered`) ; repli localStorage si l'app est fermée.
+- **E2e popout outils** : `#popout=files` affiche le panneau de la conv active
+  et bascule quand on change de conversation dans l'app principale.
+
 ## 0.4.11
 
 ### Corrigé

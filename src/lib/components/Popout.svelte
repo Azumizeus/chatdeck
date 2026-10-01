@@ -26,7 +26,19 @@
   const panel = new URLSearchParams(location.hash.slice(1)).get('popout') ?? 'chat'
 
   let conversations = $state<Conversation[]>([])
-  let activeId = $state<string | null>(null)
+  /** Conversation active initiale : l'app principale marque la conv ouverte
+   *  (open:true) dans localStorage — le popout démarre dessus sans attendre le
+   *  1er message du canal (et fonctionne même ouvert hors de l'app). Les
+   *  broadcasts « active-conversation » prennent ensuite la main. */
+  function initialActiveId(): string | null {
+    try {
+      const convs = JSON.parse(localStorage.getItem('chatdeck.conversations.v1') || '[]') as { id: string; open?: boolean; incognito?: boolean }[]
+      return (convs.find((c) => c.open && !c.incognito) ?? convs.find((c) => !c.incognito))?.id ?? null
+    } catch {
+      return null
+    }
+  }
+  let activeId = $state<string | null>(initialActiveId())
   let keys = $state<Keys>(loadKeys())
   let settings = $state<Settings>(loadSettings())
   let customs = $state<CustomProvider[]>(loadCustomProviders())
@@ -48,7 +60,9 @@
     if (msg.type === 'state-saved' || msg.type === 'conversations-changed') reload()
     if (msg.type === 'active-conversation') {
       const p = msg.payload as { conversationId: string | null; panel: string }
-      if (p.panel === 'chat') activeId = p.conversationId
+      // panel === 'chat' : popout conversation · panel = nom d'outil (files/
+      // terminal/preview) : popout outil, il suit AUSSI la conversation active.
+      if (p.panel === 'chat' || p.panel === 'files' || p.panel === 'terminal' || p.panel === 'preview') activeId = p.conversationId
     }
   }
   // Enregistrement auprès de l'app principale (elle poussera la conversation active)

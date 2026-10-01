@@ -486,6 +486,7 @@
     display: flex;
     align-items: center;
     gap: 8px;
+    flex-wrap: wrap; /* colonne de duel étroite : passe à la ligne au lieu de déborder sur les docks */
     margin-bottom: 8px;
   }
   .plan-btn {

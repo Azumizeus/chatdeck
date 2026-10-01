@@ -364,7 +364,11 @@ test.describe('profils OS sécurisés (Secure AI Multi-OS)', () => {
 // Panneau deck (Skills & Agents .CD) : liste, activation par clic, création
 test.describe('deck : skills & agents (.CD)', () => {
   test('onglet deck : liste des fiches, activation persistée, désactivation', async () => {
-    await page.locator('.toolbar .tb', { hasText: 'Outils' }).click()
+    // Le hub (fenêtre outils) ne s'ouvre plus depuis la toolbar (🗂 retiré) :
+    // ⌘K → « Fenêtre outils : Skills & Agents (.CD) ».
+    await page.keyboard.press('Meta+k')
+    await page.locator('.palette input').fill('Skills')
+    await page.keyboard.press('Enter')
     const hub = page.locator('.hub')
     await expect(hub).toBeVisible()
     await hub.locator('nav button', { hasText: 'Skills' }).click()
@@ -518,11 +522,16 @@ test.describe('undo sandbox (checkpoint/revert)', () => {
 // Fenêtre outils (hub) : onglets, chat toujours visible, réglage quels panneaux afficher
 test.describe('fenêtre outils (hub)', () => {
   test('ouverture, switch d\'onglets, chat visible derrière, fermeture', async () => {
-    await page.locator('.toolbar .tb', { hasText: 'Outils' }).click()
+    // Le hub (fenêtre outils) ne s'ouvre plus depuis la toolbar (🗂 retiré) :
+    // ⌘K → « Fenêtre outils : Skills & Agents (.CD) ».
+    await page.keyboard.press('Meta+k')
+    await page.locator('.palette input').fill('Skills')
+    await page.keyboard.press('Enter')
     const hub = page.locator('.hub')
     await expect(hub).toBeVisible()
 
-    // Onglet par défaut = Graphify, et le chat reste entièrement utilisable derrière
+    // Onglet demandé = Skills ; Graphify s'affiche au clic, chat utilisable derrière
+    await hub.locator('nav button', { hasText: 'Graphify' }).click()
     await expect(hub.locator('svg')).toBeVisible()
     await expect(page.locator('.messages').first()).toBeVisible()
     await expect(page.locator('.composer')).toBeVisible()
@@ -555,7 +564,11 @@ test.describe('fenêtre outils (hub)', () => {
 
     // Le hub n'affiche plus ces onglets
     await page.locator('.toolbar .tb', { hasText: 'Réglages' }).click() // referme le dock
-    await page.locator('.toolbar .tb', { hasText: 'Outils' }).click()
+    // Le hub (fenêtre outils) ne s'ouvre plus depuis la toolbar (🗂 retiré) :
+    // ⌘K → « Fenêtre outils : Skills & Agents (.CD) ».
+    await page.keyboard.press('Meta+k')
+    await page.locator('.palette input').fill('Skills')
+    await page.keyboard.press('Enter')
     const hub = page.locator('.hub')
     await expect(hub).toBeVisible()
     await expect(hub.locator('nav button', { hasText: 'Terminal' })).toHaveCount(0)
@@ -741,7 +754,11 @@ test.describe('Secure AI 0.4.10 : hint agents, barre sécurité, Exécuter', () 
     await request.put(`/api/sandbox/${id}/file`, { data: { path: 'sec.txt', content: 'SECURE-AI-SEC' } })
     // Ouvrir l'onglet Fichiers du hub : le workspace devient « ouvert » → la
     // barre d'état affiche la sécurité (poll 10 s + mesure immédiate au montage).
-    await page.locator('.toolbar .tb', { hasText: 'Outils' }).click()
+    // Le hub (fenêtre outils) ne s'ouvre plus depuis la toolbar (🗂 retiré) :
+    // ⌘K → « Fenêtre outils : Skills & Agents (.CD) ».
+    await page.keyboard.press('Meta+k')
+    await page.locator('.palette input').fill('Skills')
+    await page.keyboard.press('Enter')
     const hub = page.locator('.hub')
     await hub.locator('nav button', { hasText: 'Fichiers' }).click()
     await expect(hub.locator('.files')).toBeVisible()
@@ -753,7 +770,11 @@ test.describe('Secure AI 0.4.10 : hint agents, barre sécurité, Exécuter', () 
     const id = await convId()
     await request.post(`/api/sandbox/${id}/bootstrap`)
     await request.put(`/api/sandbox/${id}/file`, { data: { path: 'exec-demo.txt', content: 'EXEC-OK-42' } })
-    await page.locator('.toolbar .tb', { hasText: 'Outils' }).click()
+    // Le hub (fenêtre outils) ne s'ouvre plus depuis la toolbar (🗂 retiré) :
+    // ⌘K → « Fenêtre outils : Skills & Agents (.CD) ».
+    await page.keyboard.press('Meta+k')
+    await page.locator('.palette input').fill('Skills')
+    await page.keyboard.press('Enter')
     const hub = page.locator('.hub')
     await hub.locator('nav button', { hasText: 'Fichiers' }).click()
     const files = hub.locator('.files')
@@ -790,5 +811,39 @@ test.describe('outil switch_os', () => {
     const plat2 = tree.tree.find((n) => n.name === 'platform')
     expect(plat2?.children?.some((c) => c.name === 'app.config.json')).toBeFalsy()
     expect(plat2?.children?.length).toBeGreaterThan(0)
+  })
+})
+
+// Popouts outils (Fichiers/Terminal/Preview) : fenêtres window.open qui doivent
+// suivre la conversation ACTIVE de l'app principale (BroadcastChannel).
+test.describe('popout outils', () => {
+  test('#popout=files suit la conversation active (changement de conv dans l\'app)', async () => {
+    // Deux conversations : la 2e est créée puis active ; le popout démarre dessus
+    // puis suit le retour à la 1re quand l'app change de conversation.
+    const c1 = await page.evaluate(
+      () => (JSON.parse(localStorage.getItem('chatdeck.conversations.v1') || '[]')[0] as { id: string }).id,
+    )
+    await page.evaluate(() => (document.querySelector('.side .head .new') as HTMLElement)?.click())
+    await expect(page.locator('.side .list .item')).toHaveCount(2)
+    const c2 = await page.evaluate(
+      () => (JSON.parse(localStorage.getItem('chatdeck.conversations.v1') || '[]')[0] as { id: string }).id,
+    )
+    expect(c2).not.toBe(c1)
+    // Ouvre le popout Fichiers : il démarre sur la conv active (c2) — l'app lui a
+    // poussé la conv au popout-registered (sinon repli localStorage open:true).
+    const pop = await page.context().newPage()
+    await pop.goto('/#popout=files')
+    await expect(pop.locator('.files')).toBeVisible()
+    await expect(pop.locator('.placeholder', { hasText: 'Aucune conversation active' })).toHaveCount(0)
+    const header = (): Promise<string> => pop.evaluate(() => document.querySelector('.files header strong')?.textContent ?? '')
+    const before = await header()
+    expect(before).toBe(`📁 ${c2.slice(0, 10)}…`)
+    // L'app repasse sur la 1re conversation → le panneau suit (canal).
+    await page.evaluate(() => {
+      const items = document.querySelectorAll('.side .list .item')
+      ;(items[items.length - 1] as HTMLElement | undefined)?.click() // item le plus ancien = c1
+    })
+    await expect.poll(header, { timeout: 10_000 }).toBe(`📁 ${c1.slice(0, 10)}…`)
+    await pop.close()
   })
 })
